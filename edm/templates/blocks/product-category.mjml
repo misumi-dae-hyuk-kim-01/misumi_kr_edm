@@ -1,0 +1,148 @@
+<mjml>
+  <mj-head>
+    <mj-title>{{categoryName}} - MISUMI Korea</mj-title>
+    <mj-preview>{{previewText}}</mj-preview>
+
+    <mj-attributes>
+      <mj-all font-family="'Apple SD Gothic Neo', 'Malgun Gothic', Arial, sans-serif" />
+      <mj-text font-size="13px" color="#333333" line-height="1.6" />
+      <mj-button background-color="#003087" color="#ffffff" font-weight="700" border-radius="6px" />
+    </mj-attributes>
+
+    <mj-style>
+      /* 뱃지 / 가격 강조 등 세부 스타일 (인라인 CSS로 컴파일되지 않는 것만 여기 배치) */
+      .discount-pill { background:#fde8e8; color:#c62828; font-weight:700; font-size:11px; padding:3px 8px; border-radius:12px; display:inline-block; }
+      .new-pill { background:#e6efff; color:#003087; font-weight:700; font-size:11px; padding:3px 8px; border-radius:12px; display:inline-block; }
+      .spec-text { color:#999999; font-size:10.5px; }
+      .price-text { color:#003087; font-weight:700; font-size:15px; }
+      @media only screen and (max-width:480px) {
+        .mobile-stack { width:100% !important; }
+      }
+    </mj-style>
+  </mj-head>
+
+  <mj-body background-color="#eeeeee" width="600px">
+
+    <!-- ================= HERO ================= -->
+    <mj-section background-color="#003087" padding="36px 24px">
+      <mj-column>
+        <mj-text align="center" color="#ffffff" font-size="11px" letter-spacing="2px" font-weight="700" padding-bottom="8px">
+          MISUMI KOREA
+        </mj-text>
+        <mj-text align="center" color="#ffffff" font-size="22px" font-weight="700" line-height="1.4">
+          {{categoryName}}
+        </mj-text>
+        {{#if categorySubtext}}
+        <mj-text align="center" color="#c9d6f5" font-size="12.5px" padding-top="4px">
+          {{categorySubtext}}
+        </mj-text>
+        {{/if}}
+      </mj-column>
+    </mj-section>
+
+    <!-- 히어로 이미지 배너 (선택) -->
+    {{#if heroImageUrl}}
+    <mj-section background-color="#ffffff" padding="0">
+      <mj-column>
+        <mj-image src="{{heroImageUrl}}" alt="{{categoryName}}" href="{{categoryUrl}}" padding="0" />
+      </mj-column>
+    </mj-section>
+    {{/if}}
+
+    <!-- ================= 추천상품 헤딩 ================= -->
+    <mj-section background-color="#ffffff" padding="26px 24px 10px">
+      <mj-column>
+        <mj-text align="center" font-size="14px" font-weight="700" color="#1a1a1a">
+          추천상품
+        </mj-text>
+        <mj-divider border-width="2px" border-color="#f5c842" width="36px" padding="8px 0 0" />
+      </mj-column>
+    </mj-section>
+
+    <!-- ================= 추천상품 그리드 (3열, 모바일 1열 자동 스택) ================= -->
+    {{#each productRows}}
+    <mj-section background-color="#ffffff" padding="10px 16px">
+      {{#each this}}
+      <mj-column css-class="mobile-stack" padding="8px">
+        <mj-image src="{{image}}" alt="{{name}}" href="{{url}}" border-radius="6px" padding="0 0 8px" />
+
+        {{#if isNew}}
+        <mj-text align="center" padding="0 0 4px">
+          <span class="new-pill">신규상품</span>
+        </mj-text>
+        {{/if}}
+        {{#if discountPercent}}
+        <mj-text align="center" padding="0 0 4px">
+          <span class="discount-pill">동종품비 최대 {{discountPercent}}% 절감</span>
+        </mj-text>
+        {{/if}}
+
+        <mj-text align="center" font-size="11.5px" color="#333333" padding="0 4px 2px" line-height="1.4">
+          <a href="{{url}}" style="color:#333333;text-decoration:none;">{{name}}</a>
+        </mj-text>
+        <mj-text align="center" padding="0 0 2px">
+          <span class="price-text">{{price}}원~</span>
+        </mj-text>
+        {{#if spec}}
+        <mj-text align="center" padding="0" css-class="spec-text">
+          <span class="spec-text">{{spec}}</span>
+        </mj-text>
+        {{/if}}
+      </mj-column>
+      {{/each}}
+    </mj-section>
+    {{/each}}
+
+    <!-- ================= 전상품 보러가기 CTA ================= -->
+    <mj-section background-color="#ffffff" padding="14px 24px 28px">
+      <mj-column>
+        <mj-button href="{{categoryUrl}}" font-size="13px" padding="0" inner-padding="13px 30px">
+          {{ctaLabel}} →
+        </mj-button>
+      </mj-column>
+    </mj-section>
+
+    <!-- ================= 관련상품 서브 섹션 (선택) ================= -->
+    {{#if relatedProducts}}
+    <mj-section background-color="#f7f8fa" padding="24px 24px 8px">
+      <mj-column>
+        <mj-text align="center" font-size="13px" font-weight="700" color="#1a1a1a">
+          {{relatedSectionTitle}}
+        </mj-text>
+      </mj-column>
+    </mj-section>
+
+    {{#each relatedRows}}
+    <mj-section background-color="#f7f8fa" padding="6px 16px">
+      {{#each this}}
+      <mj-column css-class="mobile-stack" padding="6px">
+        <mj-image src="{{image}}" alt="{{name}}" href="{{url}}" border-radius="6px" padding="0 0 6px" />
+        <mj-text align="center" font-size="10.5px" color="#555555" padding="0">
+          <a href="{{url}}" style="color:#555555;text-decoration:none;">{{name}}</a>
+        </mj-text>
+      </mj-column>
+      {{/each}}
+    </mj-section>
+    {{/each}}
+
+    <mj-section background-color="#f7f8fa" padding="12px 24px 24px">
+      <mj-column>
+        <mj-button href="{{relatedDetailUrl}}" background-color="#ffffff" color="#003087" border="1.5px solid #003087" font-size="12.5px" inner-padding="10px 24px">
+          더 자세히 살펴보기 →
+        </mj-button>
+      </mj-column>
+    </mj-section>
+    {{/if}}
+
+    <!-- ================= 푸터 ================= -->
+    <mj-section background-color="#f5f5f5" padding="18px 24px">
+      <mj-column>
+        <mj-text align="center" font-size="10px" color="#999999">
+          MISUMI Korea · 본 메일은 발신 전용입니다 ·
+          <a href="{{unsubscribeUrl}}" style="color:#999999;">수신거부</a>
+        </mj-text>
+      </mj-column>
+    </mj-section>
+
+  </mj-body>
+</mjml>

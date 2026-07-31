@@ -1,0 +1,7 @@
+<mj-section background-color="#ffffff" padding="0 24px 28px">
+  <mj-column>
+    <mj-button href="{{linkUrl}}" font-size="13px" padding="0" inner-padding="13px 30px">
+      {{ctaLabel}}
+    </mj-button>
+  </mj-column>
+</mj-section>

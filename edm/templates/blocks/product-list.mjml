@@ -1,0 +1,12 @@
+<mj-section background-color="#ffffff" padding="10px 16px">
+  {{#each products}}
+  <mj-column css-class="mobile-stack" padding="8px">
+    <mj-image src="{{image}}" alt="{{code}}" border-radius="6px" padding="0 0 8px" />
+    <mj-text align="center" font-size="11px" color="#888888" font-family="monospace" padding="0">{{code}}</mj-text>
+    <mj-text align="center" padding="0">
+      <span style="font-size:13px;font-weight:700;color:#0F218B;">₩{{price}}</span>
+    </mj-text>
+    <mj-text align="center" font-size="11px" color="#999999" padding="0">{{shipDate}} 출하</mj-text>
+  </mj-column>
+  {{/each}}
+</mj-section>

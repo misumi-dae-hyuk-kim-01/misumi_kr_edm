@@ -1,0 +1,7 @@
+<mj-section background-color="#f5f5f5" padding="18px 24px">
+  <mj-column>
+    <mj-text align="center" font-size="11px" color="#999999">
+      MISUMI Korea · 본 메일은 발신 전용입니다 · <a href="{{unsubscribeUrl}}" style="color:#999999;">수신거부</a>
+    </mj-text>
+  </mj-column>
+</mj-section>

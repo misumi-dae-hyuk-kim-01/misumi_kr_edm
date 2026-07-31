@@ -1,0 +1,22 @@
+<mj-section background-color="#ffffff" padding="24px 40px">
+  <mj-column>
+
+    <mj-text
+      font-size="22px"
+      font-weight="bold"
+      color="#003087"
+      padding-bottom="12px"
+      line-height="1.4">
+      {{ body_headline }}
+    </mj-text>
+
+    <mj-text
+      font-size="14px"
+      color="#444444"
+      line-height="1.7"
+      padding-bottom="16px">
+      {{ body_copy }}
+    </mj-text>
+
+  </mj-column>
+</mj-section>

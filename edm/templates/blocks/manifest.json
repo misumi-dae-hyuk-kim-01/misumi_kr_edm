@@ -1,0 +1,18 @@
+{
+  "_comment": "키 이름은 mockData.js seedTemplates()의 blocks 배열 표기, blocks.js의 blockRegistry 키와 반드시 정확히 일치해야 합니다. 새 블록을 추가할 때는 여기, blockRegistry, 실제 템플릿의 blocks 배열 세 곳에 이름을 동일하게 씁니다.",
+  "히어로": "hero.mjml",
+  "헤더+캐치카피": "hero.mjml",
+  "쿠폰": "coupon.mjml",
+  "사용방법 이미지": "usage-image.mjml",
+  "본문": "body-copy.mjml",
+  "환영 본문": "body-copy.mjml",
+  "재참여 본문": "body-copy.mjml",
+  "상품 설명": "body-copy.mjml",
+  "상품 리스트": "product-list.mjml",
+  "추천상품 그리드": "product-grid.mjml",
+  "관련상품": "related-products-grid.mjml",
+  "CTA": "cta.mjml",
+  "전상품 CTA": "cta.mjml",
+  "상세보기 CTA": "related-detail-cta.mjml",
+  "푸터": "footer.mjml"
+}

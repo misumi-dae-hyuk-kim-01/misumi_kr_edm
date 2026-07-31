@@ -1,0 +1,10 @@
+<mj-section background-color="{{heroBgColor}}" padding="36px 24px">
+  <mj-column>
+    <mj-text align="center" color="#ffffff" font-size="11px" letter-spacing="2px" font-weight="700" padding-bottom="8px">
+      MISUMI KOREA
+    </mj-text>
+    <mj-text align="center" color="#ffffff" font-size="22px" font-weight="700" line-height="1.4">
+      {{headline}}
+    </mj-text>
+  </mj-column>
+</mj-section>
