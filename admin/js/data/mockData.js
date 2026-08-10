@@ -1,6 +1,8 @@
 // 실제 배포 시 이 목업 데이터는 DynamoDB(캠페인) / S3(에셋·템플릿) 조회로 교체합니다.
 // API 연동 지점은 js/lib/api.js 의 각 함수를 참고하세요.
 
+import { EDM_TEMPLATE_FIELDS } from "./edmTemplateFields.js";
+
 export const seedCampaigns = () => [
   {
     id: "c1",
@@ -52,48 +54,39 @@ export const seedAssets = () => [
   { id: "a5", filename: "product_bush.jpg", category: "상품 이미지", sizeKB: 55, uploadedAt: "2026.07.05" }
 ];
 
-export const seedTemplates = () => [
-  {
-    id: "t1",
-    name: "쿠폰 + 사용방법 안내",
-    category: "비상품계",
-    segment: "육성",
-    blocks: ["히어로", "쿠폰", "사용방법 이미지", "본문", "푸터"]
-  },
-  {
-    id: "t2",
-    name: "웰컴 + 쿠폰",
-    category: "비상품계",
-    segment: "신규",
-    blocks: ["히어로", "환영 본문", "쿠폰", "푸터"]
-  },
-  {
-    id: "t3",
-    name: "재참여 + 쿠폰",
-    category: "비상품계",
-    segment: "이탈 예측",
-    blocks: ["히어로", "재참여 본문", "쿠폰", "푸터"]
-  },
-  {
-    id: "t5",
-    name: "상품 카테고리형 (추천상품 그리드 + 관련상품)",
-    category: "상품계",
-    segment: "전체",
-    blocks: ["히어로", "추천상품 그리드", "전상품 CTA", "관련상품", "상세보기 CTA", "푸터"],
-    // ⭐ 자동 추천용 메타데이터. 템플릿이 늘어나면 각 템플릿에 이 필드를 채우는 것만으로
-    // js/lib/templateRecommender.js가 자동으로 더 정교하게 추천합니다 (코드 수정 불필요).
-    // minProducts/maxProducts: 이 템플릿이 적합한 상품 개수 범위. tags: 상황별 적합도 태그.
-    recommend: { minProducts: 1, tags: ["다품목", "그리드형"] }
-    // ⚠️ 실서비스 연동 지점: 위 blocks 배열의 각 항목은 S3(kor-smartlp/edm/templates/blocks/)의
-    // 개별 .mjml 파일 하나씩과 1:1 대응됩니다 (어떤 블록명이 어떤 파일인지는 같은 폴더의
-    // manifest.json 참고, 로컬 blockRegistry 키와도 동일). 이 템플릿 하나를 담은 단일 파일은
-    // 없습니다 — 블록을 이 순서대로 이어붙여 컴파일하는 것이 "이 템플릿을 렌더링한다"는 뜻입니다.
-  }
-];
+// ⚠️ 아키텍처 전환: 예전엔 blocks.js의 블록 레지스트리 이름 배열("히어로","쿠폰" 등)이었는데,
+// 실제 운영 템플릿 18개(js/data/edmTemplateHtml.js)가 완성된 HTML로 있어서, 이제 템플릿은
+// "어떤 원본 HTML을 쓸지"(id) + "그 안에 뭘 채워야 하는지"(fields, edmTemplateFields.js)로
+// 정의됩니다. 18개 목록 자체는 edmTemplateFields.js에서 자동으로 가져옵니다 — 새 템플릿을
+// 추가할 때는 원본 HTML을 edmTemplateHtml.js에, 필드 스키마를 edmTemplateFields.js에
+// 추가하기만 하면 이 목록에 자동으로 나타납니다 (여기 코드 수정 불필요).
+export const seedTemplates = () => Object.entries(EDM_TEMPLATE_FIELDS).map(([id, info]) => ({
+  id,
+  name: info.name,
+  purpose: info.purpose, // 온보딩 / 육성 / 이탈방지 / 상품소개 / 쿠폰 / 내부영업
+  fields: info.fields
+}));
 
-// 세그먼트 → 추천 템플릿 매핑 (CMN-04)
-export const segmentTemplateMap = {
-  "신규": "t2",
-  "육성": "t1",
-  "이탈 예측": "t3"
+// 캠페인 목적(purpose) → 대표 템플릿 1개. 목적을 고르면 일단 이 템플릿이 기본 선택되고,
+// 같은 목적의 다른 템플릿으로 언제든 바꿀 수 있습니다 (예전 segmentTemplateMap의 역할을
+// purpose 기준으로 이어받은 것 — 신규/육성/이탈예측이라는 세그먼트 축과, 상품그리드가
+// 있는지는 무관하다는 걸 이번에 확인했기 때문입니다).
+export const purposeDefaultTemplate = () => {
+  const map = {};
+  for (const [id, info] of Object.entries(EDM_TEMPLATE_FIELDS)) {
+    if (!map[info.purpose]) map[info.purpose] = id;
+  }
+  return map;
 };
+
+// ⚠️ 하위 호환용 — 기존 segmentTemplateMap을 쓰는 코드가 있다면 이 매핑으로 당분간 동작합니다.
+// 신규→온보딩, 육성→육성, 이탈 예측→이탈방지로 대응시켰습니다. 새 코드는 purposeDefaultTemplate()을
+// 쓰는 걸 권장합니다 — "세그먼트"와 "목적"은 이름이 비슷해도 서로 다른 개념입니다.
+export const segmentTemplateMap = (() => {
+  const byPurpose = purposeDefaultTemplate();
+  return {
+    "신규": byPurpose["온보딩"],
+    "육성": byPurpose["육성"],
+    "이탈 예측": byPurpose["이탈방지"]
+  };
+})();

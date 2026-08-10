@@ -6,24 +6,21 @@ import { assembleEdmHtml } from "../lib/blocks.js";
 import { checkGuidelines, summarizeGuidelineIssues } from "../lib/guidelineCheck.js";
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
 import { fetchSeriesInfo } from "../lib/seriesApi.js";
-import { segmentTemplateMap } from "../data/mockData.js";
+import { EDM_TEMPLATE_FIELDS } from "../data/edmTemplateFields.js";
 
-const SEGMENTS = [
-  { key: "신규", icon: "🌱" },
-  { key: "육성", icon: "📈" },
-  { key: "이탈 예측", icon: "⚠️" }
-];
+// ⚠️ 아키텍처 전환: "상품계/비상품계" 이분법과 "신규/육성/이탈예측" 세그먼트를 없애고,
+// 실제 템플릿 18개가 실제로 갖는 "목적"(온보딩/육성/이탈방지/상품소개/쿠폰/내부영업) 하나로
+// 통일했습니다. 이유: edm-no10(육성)에 상품그리드가 들어가는 등, "상품계냐 아니냐"와
+// "목적이 뭐냐"는 서로 무관한 축이라는 게 실제 템플릿에서 확인됐기 때문입니다.
+const PURPOSES = ["온보딩", "육성", "이탈방지", "상품소개", "쿠폰", "내부영업"];
 
 export function renderGenerator(root, params) {
   const editId = params.get("id");
   const existing = editId ? store.getCampaign(editId) : null;
-  const initialCategory = existing
-    ? (existing.category === "상품계" ? "product" : "non-product")
-    : (params.get("type") === "product" ? "product" : "non-product");
+  const initialTemplateId = existing?.draftData?.templateId || params.get("template") || Object.keys(EDM_TEMPLATE_FIELDS)[0];
 
-  const draft = buildInitialDraft(initialCategory, existing);
+  const draft = buildInitialDraft(initialTemplateId, existing);
 
-  // ---------- 레이아웃 뼈대 ----------
   root.appendChild(el("div", { class: "gen-app" }, [
     buildFormArea(),
     buildPreviewArea()
@@ -36,7 +33,6 @@ export function renderGenerator(root, params) {
   renderForm();
   renderPreview();
 
-  // ==================================================================
   function buildFormArea() {
     return el("section", { class: "gen-form-area" }, [
       el("div", { class: "gen-topbar" }, [
@@ -93,206 +89,235 @@ export function renderGenerator(root, params) {
   }
 
   let logHistory = [];
-
   function log(msg) {
     const t = new Date().toLocaleTimeString();
     logHistory.push(`[${t}] ${msg}`);
-
     const summaryEl = root.querySelector("#log-summary-text");
     if (summaryEl) summaryEl.textContent = msg;
-
     const detailsEl = root.querySelector("#log-details");
-    if (detailsEl && detailsEl.style.display !== "none") {
-      renderLogDetails();
-    }
+    if (detailsEl && detailsEl.style.display !== "none") renderLogDetails();
   }
-
   function renderLogDetails() {
     const detailsEl = root.querySelector("#log-details");
     detailsEl.textContent = logHistory.join("\n");
     detailsEl.scrollTop = detailsEl.scrollHeight;
   }
-
   function toggleLogDetails() {
     const detailsEl = root.querySelector("#log-details");
     const chevron = root.querySelector("#log-chevron");
     const isHidden = detailsEl.style.display === "none";
-    if (isHidden) {
-      renderLogDetails();
-      detailsEl.style.display = "block";
-      chevron.textContent = "▾";
-    } else {
-      detailsEl.style.display = "none";
-      chevron.textContent = "▸";
-    }
+    if (isHidden) { renderLogDetails(); detailsEl.style.display = "block"; chevron.textContent = "▾"; }
+    else { detailsEl.style.display = "none"; chevron.textContent = "▸"; }
   }
-
   function toggleExportMenu() {
     const menu = root.querySelector("#export-menu");
     menu.style.display = menu.style.display === "none" ? "block" : "none";
   }
-
   function closeExportMenu() {
     const menu = root.querySelector("#export-menu");
     if (menu) menu.style.display = "none";
   }
 
-  // ---------- 폼 렌더 ----------
+  function resolveTemplate() {
+    return EDM_TEMPLATE_FIELDS[draft.templateId] || null;
+  }
+  function templateHasFieldType(type) {
+    const t = resolveTemplate();
+    return !!(t && t.fields.some(f => f.type === type));
+  }
+  function withGenSuffix(offerNo) {
+    return offerNo.endsWith("_GEN") ? offerNo : `${offerNo}_GEN`;
+  }
+  function buildUtmQuery() {
+    return `utm_source=misumi&utm_medium=email&utm_campaign=${encodeURIComponent(withGenSuffix(draft.offerNo || ""))}`;
+  }
+  function withUtm(url) {
+    const q = buildUtmQuery();
+    return `${url}${url.includes("?") ? "&" : "?"}${q}`;
+  }
+
+  function currentValues() {
+    const t = resolveTemplate();
+    if (!t) return {};
+    const values = { ...draft.fieldValues };
+
+    if (templateHasFieldType("coupon-field")) {
+      const c = draft.coupon;
+      values.coupon_value = c.value; values.coupon_max = c.max;
+      values.coupon_target = c.target; values.coupon_note = c.note;
+      values.coupon_code = c.code; values.coupon_expiry = c.expiry;
+    }
+    if (templateHasFieldType("product-field")) {
+      draft.products.forEach((p, i) => {
+        const n = i + 1;
+        values[`seriesName_${n}`] = p.name;
+        values[`price_${n}`] = p.price;
+        values[`image_${n}`] = p.image;
+        values[`brandName_${n}`] = p.brand || "MISUMI";
+        values[`link_${n}`] = p.code ? withUtm(`https://kr.misumi-ec.com/vona2/detail/${encodeURIComponent(p.code)}/`) : "";
+      });
+    }
+    for (const f of t.fields) {
+      if (f.type === "link" && values[f.key]) values[f.key] = withUtm(values[f.key]);
+    }
+    return values;
+  }
+
   function renderForm() {
     formBody.innerHTML = "";
-
-    // 헤더 서브타이틀 갱신 — buildFormArea()는 최초 1회만 그려지므로,
-    // 카테고리가 바뀔 때마다(=renderForm 호출될 때마다) 여기서 같이 최신화합니다.
     const subtitle = root.querySelector("#gen-form-subtitle");
-    if (subtitle) {
-      subtitle.textContent = draft.category === "product"
-        ? "상품계 · 시리즈 코드 최대 15개 · 세그먼트 없음"
-        : "비상품계 · 고객 분류 기반";
-    }
+    const t = resolveTemplate();
+    if (subtitle) subtitle.textContent = t ? `${t.purpose} · ${t.name}` : "";
 
-    formBody.appendChild(sectionCategoryToggle());
     formBody.appendChild(sectionPromotionLink());
-    if (draft.category === "non-product") {
-      formBody.appendChild(sectionSegment());
-      formBody.appendChild(sectionTemplateNonProduct());
-      formBody.appendChild(sectionCoupon());
-    } else {
-      formBody.appendChild(sectionTemplateProduct());
-      formBody.appendChild(sectionSeriesCodes());
-      formBody.appendChild(sectionCatchcopy());
-    }
-    formBody.appendChild(sectionAiCopy());
-    formBody.appendChild(sectionHero());
-    if (draft.category === "product") formBody.appendChild(sectionBodyImage());
+    formBody.appendChild(sectionPurposeAndTemplate());
+    if (templateHasFieldType("product-field")) formBody.appendChild(sectionSeriesCodes());
+    if (templateHasFieldType("coupon-field")) formBody.appendChild(sectionCoupon());
+    formBody.appendChild(sectionAiPrompt());
+    formBody.appendChild(sectionDynamicFields());
     formBody.appendChild(sectionOffer());
   }
 
-  // ① 상품계 / 비상품계
-  /** 같은 프로모션의 다른 캠페인(예: EDM+LP)과 느슨하게 묶기 위한 선택 입력란.
-   *  ID로 관리하지 않고, 사람이 같은 문자열을 각 캠페인에 입력하면 캠페인 목록에서
-   *  자동으로 "연결된 캠페인"으로 묶여 보입니다. 비워두면 지금까지처럼 독립 캠페인입니다. */
   function sectionPromotionLink() {
     return el("div", { class: "field", style: "margin-bottom:14px;" }, [
       el("label", {}, "프로모션명 (선택)"),
       el("input", {
-        type: "text",
-        value: draft.promotionName || "",
+        type: "text", value: draft.promotionName || "",
         placeholder: "예: 2026년 7월 경제형 프로모션",
         oninput: e => { draft.promotionName = e.target.value; }
       }),
-      el("p", { class: "hint" }, "같은 프로모션의 EDM/LP를 나중에 묶어보고 싶으면, 양쪽에 똑같은 이름을 입력하세요. 안 쓰셔도 됩니다.")
+      el("p", { class: "hint" }, "같은 프로모션의 EDM/LP를 나중에 묶어보고 싶으면, 양쪽에 똑같은 이름을 입력하세요.")
     ]);
   }
 
-  function sectionCategoryToggle() {
-    return el("div", { class: "cat-toggle" }, [
-      catTab("non-product", "비상품계", "쿠폰형 · 고객 분류 기반"),
-      catTab("product", "상품계", "시리즈 코드 · 세그먼트 없음")
-    ]);
-  }
-  function catTab(value, label, desc) {
-    return el("div", {
-      class: "cat-tab" + (draft.category === value ? " active" : ""),
-      onclick: () => {
-        if (draft.category === value) return;
-        // 원래 불러온 캠페인(existing)과 같은 카테고리로 돌아오는 거라면 그 데이터를 복원하고,
-        // 그렇지 않다면(반대 카테고리로 처음 넘어가는 거라면) 복원할 데이터가 없으므로 기본값으로
-        // 초기화합니다 — 단, id는 어느 경우든 유지해서 저장 시 새 캠페인이 중복 생성되지 않게 합니다.
-        const matchesExisting = existing && (
-          (value === "product" && existing.category === "상품계") ||
-          (value === "non-product" && existing.category === "비상품계")
-        );
-        const restored = buildInitialDraft(value, matchesExisting ? existing : null);
-        restored.id = draft.id;
-        Object.assign(draft, restored);
-        renderForm();
-        renderPreview();
-      }
-    }, [
-      el("div", { class: "cn" }, label),
-      el("div", { class: "cd" }, desc)
-    ]);
-  }
-
-  // ② 고객 분류 (비상품계)
-  function sectionSegment() {
-    return sectionWrap("②", "고객 분류", "high", [
-      el("div", { class: "seg-tabs" }, SEGMENTS.map(s =>
+  function sectionPurposeAndTemplate() {
+    const t = resolveTemplate();
+    const templatesForPurpose = Object.entries(EDM_TEMPLATE_FIELDS).filter(([, info]) => info.purpose === draft.purpose);
+    return sectionWrap("①", "캠페인 목적 · 템플릿", "high", [
+      el("div", { class: "seg-tabs" }, PURPOSES.map(p =>
         el("div", {
-          class: "seg-tab" + (draft.segment === s.key ? " active" : ""),
+          class: "seg-tab" + (draft.purpose === p ? " active" : ""),
           onclick: () => {
-            draft.segment = s.key;
-            draft.templateId = segmentTemplateMap[s.key];
-            renderForm();
-            renderPreview();
+            if (draft.purpose === p) return;
+            draft.purpose = p;
+            const firstOfPurpose = Object.entries(EDM_TEMPLATE_FIELDS).find(([, info]) => info.purpose === p);
+            if (firstOfPurpose) switchTemplate(firstOfPurpose[0]);
           }
-        }, [
-          el("div", { class: "si" }, s.icon),
-          el("div", { class: "sn" }, s.key)
-        ])
-      ))
-    ]);
-  }
-
-  // ③ 템플릿 (비상품계 — 자동 추천)
-  function sectionTemplateNonProduct() {
-    const t = store.templates.find(t => t.id === draft.templateId);
-    return sectionWrap("③", "템플릿 (자동 추천)", "high", [
-      el("select", {
-        onchange: e => { draft.templateId = e.target.value; renderPreview(); }
-      }, store.templates.filter(t => t.category === "비상품계").map(opt =>
-        el("option", { value: opt.id, ...(opt.id === draft.templateId ? { selected: "selected" } : {}) },
-          `${opt.id === draft.templateId ? "✓ " : ""}${opt.name}`)
+        }, [el("div", { class: "sn" }, p)])
       )),
-      t ? el("p", { class: "hint" }, "블록: " + t.blocks.join(" → ")) : null
-    ]);
-  }
-
-  // ② 템플릿 (상품계)
-  function sectionTemplateProduct() {
-    const t = store.templates.find(t => t.id === draft.templateId);
-    return sectionWrap("②", "템플릿", "high", [
       el("select", {
-        onchange: e => { draft.templateId = e.target.value; renderPreview(); }
-      }, store.templates.filter(t => t.category === "상품계").map(opt =>
-        el("option", { value: opt.id, ...(opt.id === draft.templateId ? { selected: "selected" } : {}) },
-          `✓ ${opt.name}`)
+        style: "margin-top:10px;",
+        onchange: e => switchTemplate(e.target.value)
+      }, templatesForPurpose.map(([id, info]) =>
+        el("option", { value: id, ...(id === draft.templateId ? { selected: "selected" } : {}) }, info.name)
       )),
-      t ? el("p", { class: "hint" }, "블록: " + t.blocks.join(" → ")) : null
+      t ? el("p", { class: "hint" },
+        `입력 항목 ${t.fields.filter(f => f.type !== "coupon-field" && f.type !== "product-field").length}개`
+        + (templateHasFieldType("coupon-field") ? " + 쿠폰 정보" : "")
+        + (templateHasFieldType("product-field") ? " + 상품 그리드(시리즈 코드 조회)" : "")) : null
     ]);
   }
 
-  // ④ 쿠폰 정보 (비상품계) — 쿠폰 블록 포함 템플릿에서만 표시 (CPN-01/02)
+  function switchTemplate(newId) {
+    const oldFieldValues = draft.fieldValues;
+    draft.templateId = newId;
+    const newFields = EDM_TEMPLATE_FIELDS[newId]?.fields || [];
+    const nextValues = {};
+    for (const f of newFields) {
+      if (oldFieldValues[f.key] !== undefined) nextValues[f.key] = oldFieldValues[f.key];
+    }
+    draft.fieldValues = nextValues;
+    renderForm();
+    renderPreview();
+  }
+
+  function sectionAiPrompt() {
+    return sectionWrap("②", "AI 프롬프트", "ai", [
+      el("div", { class: "field" }, [
+        el("label", {}, "AI에게 요청할 내용 (선택 · 카피와 이미지 선택 양쪽에 함께 반영됩니다)"),
+        el("textarea", {
+          placeholder: "예: 20대 여성 타겟으로 캐주얼한 톤, 여름 프로모션 느낌의 이미지",
+          oninput: e => { draft.aiPrompt = e.target.value; }
+        }, draft.aiPrompt || "")
+      ]),
+      el("button", {
+        class: "ai-btn", disabled: draft.generating ? "disabled" : null,
+        onclick: runGenerateCopy
+      }, draft.generating ? "생성 중..." : "✨ AI로 카피 자동 채우기")
+    ]);
+  }
+
+  async function runGenerateCopy() {
+    const t = resolveTemplate();
+    if (!t) return;
+    draft.generating = true;
+    renderForm();
+    log("AI 카피 생성 요청...");
+    try {
+      const textFieldKeys = t.fields.filter(f => ["text", "textarea", "button-label"].includes(f.type)).map(f => f.key);
+      const result = await generateCopy(t.purpose, textFieldKeys, draft.aiPrompt);
+      Object.assign(draft.fieldValues, result);
+      log("AI 카피 생성 완료");
+    } catch (e) {
+      log("오류: " + e.message);
+    } finally {
+      draft.generating = false;
+      renderForm();
+      renderPreview();
+    }
+  }
+
+  function sectionDynamicFields() {
+    const t = resolveTemplate();
+    if (!t) return el("div");
+    const visibleFields = t.fields.filter(f => f.type !== "coupon-field" && f.type !== "product-field" && f.key !== "preheader");
+    return sectionWrap("③", "카피 · 이미지 · 링크", "high", visibleFields.map(f => renderFieldInput(f)));
+  }
+
+  function renderFieldInput(f) {
+    const value = draft.fieldValues[f.key] || "";
+    const onChange = v => { draft.fieldValues[f.key] = v; renderPreview(); };
+
+    if (f.type === "textarea") {
+      return el("div", { class: "field" }, [
+        el("label", {}, f.label),
+        el("textarea", { oninput: e => onChange(e.target.value) }, value)
+      ]);
+    }
+    if (f.type === "image") {
+      return el("div", { class: "field" }, [
+        el("label", {}, f.label),
+        el("input", {
+          type: "text", value, placeholder: "https://... (에셋 관리에서 URL을 복사해 붙여넣으세요)",
+          oninput: e => onChange(e.target.value)
+        })
+      ]);
+    }
+    return el("div", { class: "field" }, [
+      el("label", {}, f.label),
+      el("input", { type: "text", value, oninput: e => onChange(e.target.value) })
+    ]);
+  }
+
   function sectionCoupon() {
-    const t = store.templates.find(t => t.id === draft.templateId);
-    const hasCoupon = t && t.blocks.includes("쿠폰");
-    if (!hasCoupon) return el("div");
+    const c = draft.coupon;
     return sectionWrap("④", "쿠폰 정보", "high", [
       el("div", { class: "row2" }, [
-        field("쿠폰 코드", draft.coupon.code, v => { draft.coupon.code = v; renderPreview(); }),
-        field("할인율(%)", draft.coupon.discount, v => { draft.coupon.discount = v; renderPreview(); })
+        field("할인율/금액", c.value, v => { c.value = v; renderPreview(); }),
+        field("최대 할인 금액", c.max, v => { c.max = v; renderPreview(); })
       ]),
       el("div", { class: "row2" }, [
-        field("최소주문금액", draft.coupon.minOrder, v => { draft.coupon.minOrder = v; renderPreview(); }),
-        field("최대할인금액", draft.coupon.maxDiscount, v => { draft.coupon.maxDiscount = v; renderPreview(); })
+        field("적용 대상", c.target, v => { c.target = v; renderPreview(); }),
+        field("주의 문구", c.note, v => { c.note = v; renderPreview(); })
       ]),
-      field("만료일", draft.coupon.expiry, v => { draft.coupon.expiry = v; renderPreview(); }),
-      couponPreviewBlock(),
-      el("p", { class: "hint" }, "※ 쿠폰 정보는 쿠폰 블록이 포함된 템플릿 선택 시에만 표시됩니다")
+      el("div", { class: "row2" }, [
+        field("쿠폰 코드", c.code, v => { c.code = v; renderPreview(); }),
+        field("사용 기한", c.expiry, v => { c.expiry = v; renderPreview(); })
+      ]),
+      el("p", { class: "hint" }, "※ 쿠폰 정보는 쿠폰 블록이 포함된 템플릿에서만 표시됩니다")
     ]);
   }
 
-  function couponPreviewBlock() {
-    const c = draft.coupon;
-    return el("div", { class: "coupon-preview" }, [
-      el("div", { class: "cp-discount" }, (c.discount || "0") + "%"),
-      el("div", { class: "cp-unit" }, "DISCOUNT"),
-      el("div", { class: "cp-code-box" }, el("span", { class: "cp-code" }, c.code || "COUPON")),
-      el("div", { class: "cp-note" }, `만료: ${c.expiry || "-"} · 최대 ${c.maxDiscount || "0"}원`)
-    ]);
-  }
-
-  // ③ 시리즈 코드 입력 (상품계, 최대 15개 3x5) — PRD-01/04
   function sectionSeriesCodes() {
     const slots = draft.seriesCodes;
     const grid = el("div", { class: "series-grid" }, slots.map((code, i) =>
@@ -304,23 +329,17 @@ export function renderGenerator(root, params) {
         code ? el("button", { class: "rm", onclick: () => { slots[i] = ""; renderForm(); } }, "✕") : null
       ])
     ));
-    return sectionWrap("③", "시리즈 코드 입력 (최대 15개, 3×5)", "high", [
+    return sectionWrap("★", "시리즈 코드 입력 (최대 15개, 3×5)", "high", [
       grid,
-      el("button", {
-        class: "btn series-lookup-btn",
-        onclick: lookupSeriesCodes
-      }, "전체 조회 (상품 데이터 자동 불러오기)"),
-      el("p", { class: "hint" }, "조회된 상품 데이터(상품명·이미지·가격·출하일)는 오른쪽 미리보기에 바로 반영됩니다.")
+      el("button", { class: "btn series-lookup-btn", onclick: lookupSeriesCodes }, "전체 조회 (상품 데이터 자동 불러오기)"),
+      el("p", { class: "hint" }, "조회된 상품 데이터는 오른쪽 미리보기의 상품 그리드에 바로 반영됩니다.")
     ]);
   }
 
   async function lookupSeriesCodes() {
-    const codes = draft.seriesCodes
-      .map(code => String(code || "").trim())
-      .filter(Boolean);
+    const codes = draft.seriesCodes.map(c => String(c || "").trim()).filter(Boolean);
     if (!codes.length) { toast("시리즈 코드를 1개 이상 입력하세요"); return; }
     log(`시리즈 코드 ${codes.length}건 조회 중...`);
-
     const results = await Promise.all(codes.map(async code => {
       try {
         const product = await fetchSeriesInfo(code);
@@ -331,255 +350,61 @@ export function renderGenerator(root, params) {
         return { code };
       }
     }));
-
     draft.products = results;
-    const successCount = results.filter(product => product.name).length;
-    const failedCount = results.length - successCount;
-    log(`시리즈 조회 완료 — 성공 ${successCount}건${failedCount ? ` · 실패 ${failedCount}건` : ""}`);
-    toast(`상품 데이터 ${successCount}건을 불러왔습니다${failedCount ? ` (${failedCount}건 실패)` : ""}`);
+    const successCount = results.filter(p => p.name).length;
+    log(`시리즈 조회 완료 — 성공 ${successCount}건${results.length - successCount ? ` · 실패 ${results.length - successCount}건` : ""}`);
+    toast(`상품 데이터 ${successCount}건을 불러왔습니다`);
     renderForm();
     renderPreview();
   }
 
-  // ④ 캐치카피 (상품계)
-  function sectionCatchcopy() {
-    return sectionWrap("④", "캐치카피", "ai", [
-      fieldWithRegen("캐치카피", draft.catchcopy, v => { draft.catchcopy = v; renderPreview(); },
-        async () => {
-          draft.catchcopy = await regenerateField("product", null, "catchcopy");
-          renderForm(); renderPreview();
-        })
-    ]);
-  }
-
-  // AI 카피 생성 (공통) — CMN-05~07 / CMN-19
-  function sectionAiCopy() {
-    const isProduct = draft.category === "product";
-    return sectionWrap(isProduct ? "⑤" : "⑤", "AI 카피 자동생성", "ai", [
-      el("button", {
-        class: "ai-btn", disabled: draft.generating ? "disabled" : null,
-        onclick: runGenerateCopy
-      }, draft.generating ? "생성 중..." : "✨ AI 전체 카피 자동생성"),
-
-      !isProduct ? el("div", { class: "field" }, [
-        el("label", {}, "이메일 제목"),
-        el("div", { class: "subject-tabs" }, (draft.subjects.length ? draft.subjects : ["", "", ""]).map((s, i) =>
-          el("div", {
-            class: "subject-tab" + (draft.subjectIdx === i ? " active" : ""),
-            onclick: () => { draft.subjectIdx = i; renderForm(); }
-          }, [
-            el("div", { class: "s-label" }, "안 " + (i + 1)),
-            el("div", { class: "s-text" }, s || "-")
-          ])
-        ))
-      ]) : isProduct ? fieldWithRegen("이메일 제목", draft.subjectSingle || "", v => draft.subjectSingle = v,
-          async () => { draft.subjectSingle = await regenerateField("product", null, "subject"); renderForm(); }) : null,
-
-      !isProduct ? fieldWithRegen("헤드라인 (배너 문구)", draft.headline, v => { draft.headline = v; renderPreview(); },
-        async () => { draft.headline = await regenerateField("non-product", draft.segment, "headline"); renderForm(); renderPreview(); }) : null,
-
-      !isProduct ? fieldWithRegen("본문 카피", draft.body, v => { draft.body = v; renderPreview(); },
-        async () => { draft.body = await regenerateField("non-product", draft.segment, "body"); renderForm(); renderPreview(); }, "textarea") : null,
-
-      fieldWithRegen("CTA 버튼 텍스트", draft.cta, v => { draft.cta = v; renderPreview(); },
-        async () => {
-          draft.cta = await regenerateField(isProduct ? "product" : "non-product", draft.segment, "cta");
-          renderForm(); renderPreview();
-        })
-    ]);
-  }
-
-  async function runGenerateCopy() {
-    draft.generating = true;
-    renderForm();
-    log("AI 카피 생성 요청...");
-    try {
-      const result = await generateCopy(draft.category, draft.segment);
-      if (draft.category === "product") {
-        draft.catchcopy = result.catchcopy;
-        draft.subjectSingle = result.subject;
-        draft.cta = result.cta;
-      } else {
-        draft.subjects = result.subjects;
-        draft.subjectIdx = 0;
-        draft.headline = result.headline;
-        draft.body = result.body;
-        draft.cta = result.cta;
-      }
-      log("AI 카피 생성 완료");
-    } catch (e) {
-      log("오류: " + e.message);
-    } finally {
-      draft.generating = false;
-      renderForm();
-      renderPreview();
-    }
-  }
-
-  // ⑤ / ⑥ 히어로 배너 옵션 — CMN-17
-  function sectionHero() {
-    const label = draft.category === "product" ? "⑤" : "⑤";
-    return sectionWrap(label, "히어로 배너", "opt", [
-      el("div", { class: "hero-opts" }, [
-        optBtn("기본", "hero", "기본"),
-        optBtn("선택1", "hero", "선택1"),
-        optBtn("선택2", "hero", "선택2")
-      ]),
-      el("p", { class: "hint" },
-        draft.heroOption === "기본" ? "HTML+CSS 자동 생성" :
-        draft.heroOption === "선택1" ? "S3 배경 이미지 추천 + Pillow 합성" : "담당자가 직접 업로드한 이미지 사용")
-    ]);
-  }
-
-  // ⑥ 본문 이미지 옵션 (상품계) — CMN-18
-  function sectionBodyImage() {
-    return sectionWrap("⑥", "본문 이미지", "opt", [
-      el("div", { class: "body-img-opts" }, [
-        optBtn("기본", "bodyImg", "기본"),
-        optBtn("선택1", "bodyImg", "선택1"),
-        optBtn("선택2", "bodyImg", "선택2")
-      ]),
-      el("p", { class: "hint" },
-        draft.bodyImgOption === "선택2" ? "담당자가 직접 제작한 이미지 업로드" : "Claude Vision이 이미지의 중요 영역을 자동 감지·강조 편집 (재요청 가능)")
-    ]);
-  }
-
-  function optBtn(label, group, value) {
-    const current = group === "hero" ? draft.heroOption : draft.bodyImgOption;
-    return el("button", {
-      class: "opt-btn" + (current === value ? " active" : ""),
-      onclick: () => {
-        if (group === "hero") draft.heroOption = value; else draft.bodyImgOption = value;
-        renderForm(); renderPreview();
-      }
-    }, label);
-  }
-
-  // 오퍼번호 (UTM) — CMN-08
   function sectionOffer() {
-    return sectionWrap("", "오퍼번호 (WebCAS · utm_campaign)", "opt", [
-      field("오퍼번호", draft.offerNo, v => { draft.offerNo = v; }),
-      el("p", { class: "hint" }, "캠페인 내 모든 링크(상품·CTA·배너)에 자동 적용됩니다. utm_source=misumi · utm_medium=email 고정")
+    return sectionWrap("⑤", "오퍼번호", "high", [
+      el("div", { class: "field" }, [
+        el("input", { type: "text", value: draft.offerNo, oninput: e => { draft.offerNo = e.target.value; renderPreview(); } }),
+        el("p", { class: "hint" }, `UTM에는 "${withGenSuffix(draft.offerNo || "")}"로 자동 저장됩니다 (이 생성기로 만든 캠페인임을 구분하기 위한 _GEN 접미사, 자동 부착)`)
+      ])
     ]);
   }
 
-  // ---------- 공용 섹션/필드 위젯 ----------
-  function sectionWrap(num, title, badgeType, children) {
-    const badgeClass = badgeType === "high" ? "" : badgeType === "ai" ? "ai" : "opt";
+  function field(label, value, onChange) {
+    return el("div", { class: "field" }, [
+      el("label", {}, label),
+      el("input", { type: "text", value: value || "", oninput: e => onChange(e.target.value) })
+    ]);
+  }
+
+  function sectionWrap(badge, title, kind, children) {
     return el("div", { class: "sec" }, [
-      el("div", { class: "sec-hd", onclick: e => e.currentTarget.parentElement.classList.toggle("collapsed") }, [
+      el("div", { class: "sec-hd" }, [
         el("div", { class: "sec-hd-left" }, [
-          num ? el("span", { class: "sec-badge " + badgeClass }, num) : null,
+          el("span", { class: "sec-badge" + (kind === "ai" ? " ai" : "") }, badge),
           el("span", { class: "sec-title" }, title)
-        ]),
-        el("span", { class: "sec-toggle-ico" }, "▾")
+        ])
       ]),
       el("div", { class: "sec-body" }, children)
     ]);
   }
 
-  function field(label, value, onChange, type = "text") {
-    return el("div", { class: "field" }, [
-      el("label", {}, label),
-      el("input", { type, value: value ?? "", oninput: e => onChange(e.target.value) })
-    ]);
-  }
-
-  function fieldWithRegen(label, value, onChange, onRegen, kind = "input") {
-    return el("div", { class: "field" }, [
-      el("div", { class: "field-with-regen" }, [
-        el("label", {}, label),
-        el("button", { class: "regen-btn", title: "재생성", onclick: onRegen }, "🔄")
-      ]),
-      kind === "textarea"
-        ? el("textarea", { oninput: e => onChange(e.target.value) }, value || "")
-        : el("input", { type: "text", value: value ?? "", oninput: e => onChange(e.target.value) })
-    ]);
-  }
-
-  // 현재 draft.templateId에 해당하는 템플릿 객체를 store에서 조회합니다.
-  // blocks.js의 assembleEdmHtml()은 이 객체의 blocks 배열을 "단일 출처"로 삼아 렌더링합니다.
-  function resolveTemplate() {
-    return store.templates.find(t => t.id === draft.templateId) || null;
-  }
-
-  // ---------- 미리보기 ----------
   function renderPreview() {
-    if (draft.category === "non-product") {
-      draft.headline = draft.headline || "";
-    }
-    const html = assembleEdmHtml(currentEdmModel(), resolveTemplate());
+    const html = assembleEdmHtml(draft.templateId, currentValues());
     previewFrame.innerHTML = "";
-    const iframe = el("iframe", { srcdoc: html });
-    previewFrame.appendChild(iframe);
+    previewFrame.appendChild(el("iframe", { srcdoc: html }));
 
-    // 가이드라인 검사는 폼이 바뀔 때마다 조용히 자동 실행 — 팝업 없이 배지만 갱신.
-    // (링크 확인은 네트워크 비용 때문에 자동으로 계속 돌리지 않고 버튼/내보내기 시점에만 실행)
     latestGuidelineIssues = checkGuidelines(html);
-    updateGuidelineBadge(latestGuidelineIssues);
-  }
-
-  function updateGuidelineBadge(issues) {
+    const summary = summarizeGuidelineIssues(latestGuidelineIssues);
     const badge = root.querySelector("#guideline-badge");
-    if (!badge) return;
-    const summary = summarizeGuidelineIssues(issues);
-    badge.className = "guideline-badge " + (issues.length === 0 ? "badge-pass" : summary.errors ? "badge-fail" : "badge-warn");
-    badge.textContent = issues.length === 0
+    badge.className = "guideline-badge " + (latestGuidelineIssues.length === 0 ? "badge-pass" : summary.errors ? "badge-fail" : "badge-warn");
+    badge.textContent = latestGuidelineIssues.length === 0
       ? "✅ 가이드라인 통과"
-      : `${summary.errors ? "❌" : "⚠️"} 가이드라인 위반 ${summary.errors}건 · 경고 ${summary.warnings}건 (클릭해서 보기)`;
+      : `${summary.errors ? "❌" : "⚠️"} 위반 ${summary.errors}건 · 경고 ${summary.warnings}건`;
   }
 
   function toggleGuidelineDetails() {
     const host = root.querySelector("#guideline-results");
     const isHidden = host.style.display === "none";
-    if (isHidden) {
-      renderGuidelineResults(latestGuidelineIssues, summarizeGuidelineIssues(latestGuidelineIssues));
-      host.style.display = "block";
-    } else {
-      host.style.display = "none";
-    }
-  }
-
-  function currentEdmModel() {
-    return {
-      category: draft.category,
-      templateId: draft.templateId,
-      headline: draft.headline,
-      catchcopy: draft.catchcopy,
-      body: draft.body,
-      cta: draft.cta,
-      heroOption: draft.heroOption,
-      coupon: draft.coupon,
-      products: draft.products,
-      // ⚠️ 실서비스 연동 지점: 관련상품은 시리즈 API 연동 후 자동 채워질 예정입니다.
-      // 그 전까지는 비어 있으며, blocks.js는 비어 있으면 관련상품 섹션을 자동으로 생략합니다.
-      relatedProducts: draft.relatedProducts || [],
-      relatedSectionTitle: draft.relatedSectionTitle,
-      relatedDetailUrl: draft.relatedDetailUrl,
-      utmQuery: buildUtmQuery(),
-      linkUrl: buildLink()
-    };
-  }
-
-  function buildLink() {
-    const base = draft.category === "product"
-      ? "https://kr.misumi-ec.com/vona2/detail/SERIES/"
-      : "https://kr.misumi-ec.com/";
-    return `${base}?${buildUtmQuery()}`;
-  }
-
-  // 캠페인 내 모든 링크(CTA·상품 카드·관련상품 등)가 공유하는 단일 UTM 소스.
-  // blocks.js가 draft.utmQuery를 받아서 자체적으로 조립하는 링크(상품 상세 등)에도 붙입니다.
-  function buildUtmQuery() {
-    return `utm_source=misumi&utm_medium=email&utm_campaign=${encodeURIComponent(draft.offerNo || "")}`;
-  }
-
-  // ---------- 저장 / 출력 ----------
-  function saveDraft() {
-    const campaign = draftToCampaign("초안");
-    store.upsertCampaign(campaign);
-    toast("임시저장했습니다");
-    log("임시저장 완료");
+    if (isHidden) { renderGuidelineResults(latestGuidelineIssues, summarizeGuidelineIssues(latestGuidelineIssues)); host.style.display = "block"; }
+    else host.style.display = "none";
   }
 
   function renderGuidelineResults(issues, summary) {
@@ -590,10 +415,7 @@ export function renderGenerator(root, params) {
       return;
     }
     host.appendChild(el("div", { class: "guide-result " + (summary.errors ? "guide-fail" : "guide-warn") },
-      summary.errors
-        ? `❌ 위반 ${summary.errors}건 · 경고 ${summary.warnings}건 발견`
-        : `⚠️ 경고 ${summary.warnings}건 발견 (승인 가능하지만 확인 권장)`
-    ));
+      summary.errors ? `❌ 위반 ${summary.errors}건 · 경고 ${summary.warnings}건 발견` : `⚠️ 경고 ${summary.warnings}건 발견`));
     host.appendChild(el("ul", { class: "guide-list" }, issues.map(i =>
       el("li", { class: "guide-item " + i.level }, [
         el("span", { class: "guide-badge " + i.level }, i.level === "error" ? "위반" : "경고"),
@@ -603,12 +425,8 @@ export function renderGenerator(root, params) {
   }
 
   async function runLinkCheck() {
-    const html = assembleEdmHtml(currentEdmModel(), resolveTemplate());
+    const html = assembleEdmHtml(draft.templateId, currentValues());
     log("링크/이미지 확인 중...");
-    const host = root.querySelector("#link-check-results");
-    host.innerHTML = "";
-    host.appendChild(el("div", { class: "guide-result guide-warn" }, "확인 중... (도메인에 따라 몇 초 걸릴 수 있습니다)"));
-
     const results = await checkAllLinks(html);
     const summary = summarizeLinkResults(results);
     log(`링크/이미지 확인 완료 — 정상 ${summary.ok}건, 깨짐 ${summary.broken}건, 확인불가 ${summary.unknown}건`);
@@ -618,129 +436,82 @@ export function renderGenerator(root, params) {
   function renderLinkResults(results, summary) {
     const host = root.querySelector("#link-check-results");
     host.innerHTML = "";
-
-    if (!results.length) {
-      host.appendChild(el("div", { class: "guide-result guide-pass" }, "확인할 외부 이미지/링크가 없습니다"));
-      return;
-    }
-
+    if (!results.length) { host.appendChild(el("div", { class: "guide-result guide-pass" }, "확인할 외부 이미지/링크가 없습니다")); return; }
     host.appendChild(el("div", { class: "guide-result " + (summary.broken ? "guide-fail" : "guide-pass") },
-      `정상 ${summary.ok}건 · 깨짐 ${summary.broken}건 · 확인불가(CORS) ${summary.unknown}건`
-    ));
-
-    const problems = results.filter(r => r.ok !== true);
-    if (problems.length) {
-      host.appendChild(el("ul", { class: "guide-list" }, problems.map(r =>
-        el("li", { class: "guide-item " + (r.ok === false ? "error" : "warning") }, [
-          el("span", { class: "guide-badge " + (r.ok === false ? "error" : "warning") },
-            r.ok === false ? "깨짐" : "확인불가"),
-          el("span", {}, `[${r.type === "image" ? "이미지" : "링크"}] ${r.url}${r.reason ? ` — ${r.reason}` : ""}`)
-        ])
-      )));
-    }
+      `정상 ${summary.ok}건 · 깨짐 ${summary.broken}건 · 확인불가(CORS) ${summary.unknown}건`));
   }
 
-  function draftToCampaign(status) {
+  function draftToCampaign() {
+    const t = resolveTemplate();
     return {
       id: draft.id,
-      name: draft.category === "product"
-        ? (draft.catchcopy || "상품계 캠페인").slice(0, 24)
-        : (draft.headline || "비상품계 캠페인").slice(0, 24),
-      category: draft.category === "product" ? "상품계" : "비상품계",
-      type: draft.category === "product" ? "상품 소개형" : "쿠폰형",
-      segment: draft.category === "product" ? "-" : draft.segment,
-      status,
+      name: (draft.fieldValues.copy_headline || draft.fieldValues.main_1 || t?.name || "EDM 캠페인").slice(0, 24),
+      channel: "EDM",
+      purpose: t?.purpose || "",
+      templateName: t?.name || "",
       createdAt: existing ? existing.createdAt : new Date().toISOString().slice(0, 10).replace(/-/g, "."),
-      // ⚠️ promotionName: "같은 프로모션의 여러 캠페인(예: EDM+LP)"을 느슨하게 묶기 위한 선택 필드.
-      // ID 기반 그룹핑 대신 사람이 같은 문자열을 각 캠페인에 입력하는 방식 — 캠페인 목록에서
-      // 이 값이 같은(비어있지 않은) 캠페인끼리 "연결된 캠페인" 배지로 묶어서 보여줍니다.
-      // (LP_EDM_ARCHITECTURE.md 참고. 오타로 안 묶여도 다시 고치면 그만이라 크게 문제되지 않음)
       promotionName: draft.promotionName || "",
-      // ⚠️ 실서비스 연동 지점: 캠페인 목록 화면(campaigns.js)은 위 필드들만 씁니다(표시용 메타데이터).
-      // 아래 draftData가 실제 편집 가능한 전체 입력값의 단일 스냅샷입니다 — 편집(생성기 재진입) 시
-      // buildInitialDraft()가 이 값으로 폼을 그대로 복원합니다. 이전에는 이 필드가 없어서
-      // "임시저장 후 다시 편집하면 입력값이 전부 사라지는" 버그가 있었습니다.
-      // DynamoDB로 이관할 때는 위 메타데이터 + draftData를 합쳐 캠페인 아이템 하나로 저장하면 됩니다.
       draftData: { ...draft }
     };
   }
 
-  /** 내보내기(복사/다운로드) 직전 공통 게이트.
-   *  - 가이드라인 위반(error)이 있으면 확인창으로 한 번 막습니다 (경고는 막지 않음 — 알림 피로 방지).
-   *  - 링크 확인은 자동으로 계속 돌리지 않다가, 내보내는 이 순간에만 1회 실행합니다
-   *    (네트워크 비용이 있는 작업이라 상시 자동 실행 대신 "내보내기 직전 1회"로 절충).
-   *  @returns {Promise<boolean>} true면 계속 진행, false면 사용자가 취소함
-   */
+  function saveDraft() {
+    store.upsertCampaign(draftToCampaign());
+    toast("임시저장했습니다");
+    log("임시저장 완료");
+  }
+
   async function confirmExportGuards(html) {
     const summary = summarizeGuidelineIssues(latestGuidelineIssues);
     if (summary.errors > 0) {
-      const proceed = confirm(`가이드라인 위반 ${summary.errors}건이 있습니다. 그래도 진행하시겠습니까?`);
-      if (!proceed) { log("내보내기 취소 (가이드라인 위반)"); return false; }
+      if (!confirm(`가이드라인 위반 ${summary.errors}건이 있습니다. 그래도 진행하시겠습니까?`)) { log("내보내기 취소"); return false; }
     }
-
     log("내보내기 전 링크/이미지 확인 중...");
     const results = await checkAllLinks(html);
     renderLinkResults(results, summarizeLinkResults(results));
     const broken = results.filter(r => r.ok === false);
     if (broken.length) {
-      const proceed = confirm(`깨진 링크/이미지가 ${broken.length}건 있습니다. 그래도 진행하시겠습니까?`);
-      if (!proceed) { log("내보내기 취소 (깨진 링크 발견)"); return false; }
+      if (!confirm(`깨진 링크/이미지가 ${broken.length}건 있습니다. 그래도 진행하시겠습니까?`)) { log("내보내기 취소"); return false; }
     }
     return true;
   }
 
   async function copyHtml() {
-    const html = assembleEdmHtml(currentEdmModel(), resolveTemplate());
+    const html = assembleEdmHtml(draft.templateId, currentValues());
     if (!(await confirmExportGuards(html))) return;
     navigator.clipboard?.writeText(html).then(
       () => { toast("HTML을 클립보드에 복사했습니다"); log("HTML 복사 완료"); },
-      () => toast("복사에 실패했습니다 (브라우저 권한 확인)")
+      () => toast("복사에 실패했습니다")
     );
   }
 
   async function downloadHtml() {
-    const html = assembleEdmHtml(currentEdmModel(), resolveTemplate());
+    const html = assembleEdmHtml(draft.templateId, currentValues());
     if (!(await confirmExportGuards(html))) return;
     const blob = new Blob([html], { type: "text/html" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = (draft.headline || draft.catchcopy || "edm") + ".html";
+    a.download = (draft.fieldValues.copy_headline || "edm") + ".html";
     a.click();
     log("HTML 다운로드 완료");
   }
-
 }
 
-// ---------- 초기 draft 상태 ----------
-function buildInitialDraft(category, existing) {
+function buildInitialDraft(templateId, existing) {
+  const t = EDM_TEMPLATE_FIELDS[templateId];
   const base = {
     id: existing?.id || "c" + Date.now(),
-    category,
     promotionName: "",
-    segment: existing?.segment && existing.segment !== "-" ? existing.segment : "신규",
-    templateId: category === "product" ? "t5" : segmentTemplateMap["신규"],
-    coupon: { code: "KORWELCOME10", discount: "10", minOrder: "30,000", maxDiscount: "50,000", expiry: "2026.09.30" },
+    aiPrompt: "",
+    purpose: t?.purpose || "온보딩",
+    templateId,
+    fieldValues: {},
+    coupon: { value: "10%", max: "50,000", target: "전 상품 적용", note: "3만원 이상 구매 시", code: "KORWELCOME10", expiry: "2026.09.30" },
     seriesCodes: Array.from({ length: 15 }, () => ""),
     products: [],
-    relatedProducts: [],
-    relatedSectionTitle: "관련 상품",
-    relatedDetailUrl: "",
-    catchcopy: "정밀 가공의 시작, 리니어 샤프트로",
-    subjects: [],
-    subjectIdx: 0,
-    subjectSingle: "",
-    headline: category === "non-product" ? "미스미 코리아에 오신 것을 환영합니다" : "",
-    body: category === "non-product" ? "회원가입을 축하드리며 첫 구매 혜택을 안내드립니다." : "",
-    cta: category === "product" ? "지금 구매하기" : "첫 주문 혜택 확인 →",
-    heroOption: "기본",
-    bodyImgOption: "기본",
     offerNo: "OFFER2026070",
     generating: false
   };
-
-  // ⚠️ existing.draftData가 있으면(=임시저장/승인요청 이력이 있는 캠페인 편집 진입) 그 스냅샷으로
-  // 폼을 복원합니다. base를 먼저 깔아두는 건 과거에 저장된 캠페인에 지금은 있지만 그때는 없던
-  // 필드(예: relatedProducts)가 없어도 undefined 에러 없이 기본값으로 채워지도록 하기 위함입니다.
   if (existing?.draftData) {
     return { ...base, ...existing.draftData, id: base.id };
   }
