@@ -144,7 +144,7 @@
 .guideline-badge:hover{filter:brightness(0.96);}
 
 /* ---------- 미리보기 영역 ---------- */
-.gen-preview-area{padding:20px;overflow:auto;background:#f0f2f5;min-width:0;}
+.gen-preview-area{padding:20px;overflow-y:auto;background:#f0f2f5;min-width:0;max-height:100vh;}
 .gen-preview-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
 .gen-preview-header h2{font-size:14px;font-weight:700;}
 .view-toggle{display:flex;gap:4px;}

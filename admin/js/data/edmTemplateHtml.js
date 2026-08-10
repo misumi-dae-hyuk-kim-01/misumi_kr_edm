@@ -1,8 +1,8 @@
 // 18개 실제 EDM 템플릿 원본 HTML. {{변수}} 자리만 blocks.js가 치환합니다.
 // ⚠️ 이 파일은 원본 HTML을 그대로 담은 데이터 파일이라 사람이 직접 수정하지 않습니다 —
 // 템플릿 자체를 고치려면 원본 .html 파일을 고치고 이 파일을 다시 생성하세요.
-// ⚠️ c_headline이 템플릿 안에서 여러 번(콘텐츠 섹션마다) 쓰이던 걸 c_headline_1/_2/_3으로
-// 분리했습니다 — 원래는 같은 이름이라 전부 같은 값이 들어가버리는 문제가 있었습니다.
+// ⚠️ c_headline_1/_2/_3 분리 + 콘텐츠 폭(500~560px) 테이블 148개에 class="w600" 보강
+// (모바일 미디어쿼리 반응 안 하던 문제 수정, 텍스트/디자인 변경 없음, 데스크탑/Outlook 영향 없음)
 
 export const EDM_TEMPLATE_HTML = {
   "edm-no01-onboarding": `<!DOCTYPE html>
@@ -43,7 +43,7 @@ export const EDM_TEMPLATE_HTML = {
               <tr>
                 <td width="5" bgcolor="#0F218B" style="width:5px;background-color:#0F218B;font-size:0;line-height:0;">&nbsp;</td>
                 <td width="531" align="center" style="width:531px;padding:42px 32px 46px 32px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="531" style="width:531px;border-collapse:collapse;">
+                  <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="531" style="width:531px;border-collapse:collapse;">
                     <tr><td align="center" style="padding:0 0 26px 0;">
                       <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td bgcolor="#E8EBF5" style="background-color:#E8EBF5;border-radius:14px;padding:8px 18px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:13px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.2em;color:#0F218B;">WELCOME TO MISUMI</td></tr></table>
                     </td></tr>
@@ -61,11 +61,11 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
-      </td></tr>      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
+      </td></tr>      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="176" style="width:176px;border-collapse:collapse;">
                 <tr><td width="176" style="width:176px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="176" style="width:176px;border-collapse:collapse;"><tr><td width="176" height="110" align="center" valign="middle" bgcolor="#FFFFFF" style="width:176px;height:110px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="176" height="110" alt="" style="display:block;width:176px;height:110px;border:0;" /> --></td></tr></table></td></tr>
                 <tr><td width="176" align="center" style="width:176px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:15px;line-height:21px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;">{{main_1}}</td></tr>
@@ -85,11 +85,11 @@ export const EDM_TEMPLATE_HTML = {
                 <tr><td width="176" align="center" style="width:176px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:12px;line-height:18px;mso-line-height-rule:exactly;color:#868686;">{{desc_3}}</td></tr>
               </table></td></tr></table></td></tr><tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
-      </td></tr>      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td class="col" width="132" valign="top" style="width:132px;">
+      </td></tr>      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td class="col" width="132" valign="top" style="width:132px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="132" style="width:132px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
                 <tr><td width="130" align="center" style="width:130px;padding:10px 10px 0 10px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="110" style="width:110px;border-collapse:collapse;"><tr><td width="110" height="72" align="center" valign="middle" bgcolor="#FFFFFF" style="width:110px;height:72px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="110" height="72" alt="" style="display:block;width:110px;height:72px;border:0;" /> --></td></tr></table></td></tr>
                 <tr><td width="130" align="center" valign="top" height="52" style="width:130px;height:52px;padding:11px 9px 0 9px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:12px;line-height:17px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;">{{main_1}}</td></tr>
@@ -111,11 +111,11 @@ export const EDM_TEMPLATE_HTML = {
                 <tr><td width="130" style="width:130px;padding:8px 9px 11px 9px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="112" style="width:112px;border-collapse:collapse;"><tr><td width="112" align="center" bgcolor="#0F218B" style="width:112px;background-color:#0F218B;border-radius:2px;"><a href="{{link_4}}" style="display:block;padding:11px 4px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:15px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none;letter-spacing:0.02em;">{{btn_4}}</a></td></tr></table></td></tr>
               </table></td></tr></table></td></tr><tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_3}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
-      </td></tr>      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="87" valign="top" style="width:87px;">
+      </td></tr>      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="87" valign="top" style="width:87px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="87" style="width:87px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
                 <tr><td width="85" align="center" style="width:85px;padding:7px 7px 0 7px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="71" style="width:71px;border-collapse:collapse;"><tr><td width="71" height="52" align="center" valign="middle" bgcolor="#FFFFFF" style="width:71px;height:52px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:10px;line-height:13px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="71" height="52" alt="" style="display:block;width:71px;height:52px;border:0;" /> --></td></tr></table></td></tr>
                 <tr><td width="77" align="center" valign="top" height="34" style="width:77px;height:34px;padding:8px 4px 10px 4px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:15px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;word-break:break-all;overflow-wrap:anywhere;">{{copy_1}}</td></tr>
@@ -186,7 +186,7 @@ export const EDM_TEMPLATE_HTML = {
               <tr>
                 <td width="5" bgcolor="#0F218B" style="width:5px;background-color:#0F218B;font-size:0;line-height:0;">&nbsp;</td>
                 <td width="531" align="center" style="width:531px;padding:42px 32px 46px 32px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="531" style="width:531px;border-collapse:collapse;">
+                  <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="531" style="width:531px;border-collapse:collapse;">
                     <tr><td align="center" style="padding:0 0 26px 0;">
                       <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td bgcolor="#E8EBF5" style="background-color:#E8EBF5;border-radius:14px;padding:8px 18px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:13px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.2em;color:#0F218B;">NEW MEMBER BENEFIT</td></tr></table>
                     </td></tr>
@@ -204,15 +204,15 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 14px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" align="center" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:27px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" align="center" style="width:552px;padding:8px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{c_sub}}</td></tr>
         </table>
       </td></tr>
       <tr><td style="padding:0 24px 40px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" bgcolor="#EDF1F8" style="width:552px;background-color:#EDF1F8;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" bgcolor="#EDF1F8" style="width:552px;background-color:#EDF1F8;border-collapse:collapse;">
           <tr><td width="552" align="center" style="width:552px;padding:22px 20px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="512" style="width:512px;table-layout:fixed;border-collapse:collapse;">
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="512" style="width:512px;table-layout:fixed;border-collapse:collapse;">
               <tr>
                 <td class="col" width="280" bgcolor="#FFFFFF" valign="middle" align="center" style="width:280px;box-sizing:border-box;background-color:#FFFFFF;padding:34px 16px 36px 16px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="248" style="width:248px;table-layout:fixed;border-collapse:collapse;">
@@ -237,25 +237,25 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
-      </td></tr>      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td width="552" style="width:552px;box-sizing:border-box;border:1px solid #EEEEEE;padding:20px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;">
+      </td></tr>      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td width="552" style="width:552px;box-sizing:border-box;border:1px solid #EEEEEE;padding:20px;">
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;">
               <tr><td width="510" style="width:510px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:17px;line-height:24px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;">{{main_1}}</td></tr>
               <tr><td width="510" style="width:510px;padding:7px 0 16px 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#3A3A3A;">{{sub_1}}</td></tr>
-              <tr><td width="510" style="width:510px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;"><tr><td width="510" height="220" align="center" valign="middle" bgcolor="#FFFFFF" style="width:510px;height:220px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="510" height="220" alt="" style="display:block;width:510px;height:220px;border:0;" /> --></td></tr></table></td></tr>
+              <tr><td width="510" style="width:510px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;"><tr><td width="510" height="220" align="center" valign="middle" bgcolor="#FFFFFF" style="width:510px;height:220px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="510" height="220" alt="" style="display:block;width:510px;height:220px;border:0;" /> --></td></tr></table></td></tr>
             </table></td></tr><tr><td width="552" align="center" style="width:552px;padding:10px 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:15px;line-height:15px;mso-line-height-rule:exactly;color:#868686;">&#9660;</td></tr><tr><td width="552" style="width:552px;box-sizing:border-box;border:1px solid #EEEEEE;padding:20px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;">
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;">
               <tr><td width="510" style="width:510px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:17px;line-height:24px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;">{{main_2}}</td></tr>
               <tr><td width="510" style="width:510px;padding:7px 0 16px 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#3A3A3A;">{{sub_2}}</td></tr>
-              <tr><td width="510" style="width:510px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;"><tr><td width="510" height="220" align="center" valign="middle" bgcolor="#FFFFFF" style="width:510px;height:220px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_2}}<!-- 발송 시 교체: <img src="{{image_2}}" width="510" height="220" alt="" style="display:block;width:510px;height:220px;border:0;" /> --></td></tr></table></td></tr>
+              <tr><td width="510" style="width:510px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;"><tr><td width="510" height="220" align="center" valign="middle" bgcolor="#FFFFFF" style="width:510px;height:220px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_2}}<!-- 발송 시 교체: <img src="{{image_2}}" width="510" height="220" alt="" style="display:block;width:510px;height:220px;border:0;" /> --></td></tr></table></td></tr>
             </table></td></tr><tr><td width="552" align="center" style="width:552px;padding:10px 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:15px;line-height:15px;mso-line-height-rule:exactly;color:#868686;">&#9660;</td></tr><tr><td width="552" style="width:552px;box-sizing:border-box;border:1px solid #EEEEEE;padding:20px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;">
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;">
               <tr><td width="510" style="width:510px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:17px;line-height:24px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;">{{main_3}}</td></tr>
               <tr><td width="510" style="width:510px;padding:7px 0 16px 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#3A3A3A;">{{sub_3}}</td></tr>
-              <tr><td width="510" style="width:510px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;"><tr><td width="510" height="220" align="center" valign="middle" bgcolor="#FFFFFF" style="width:510px;height:220px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_3}}<!-- 발송 시 교체: <img src="{{image_3}}" width="510" height="220" alt="" style="display:block;width:510px;height:220px;border:0;" /> --></td></tr></table></td></tr>
+              <tr><td width="510" style="width:510px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;"><tr><td width="510" height="220" align="center" valign="middle" bgcolor="#FFFFFF" style="width:510px;height:220px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_3}}<!-- 발송 시 교체: <img src="{{image_3}}" width="510" height="220" alt="" style="display:block;width:510px;height:220px;border:0;" /> --></td></tr></table></td></tr>
             </table></td></tr></table></td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>      <tr><td align="center" style="padding:0 24px 44px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="300" style="width:300px;border-collapse:collapse;"><tr><td width="300" align="center" bgcolor="#0F218B" style="width:300px;background-color:#0F218B;border-radius:2px;"><a href="{{cta_url}}" style="display:block;padding:14px 10px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:14px;line-height:18px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none;letter-spacing:0.02em;">{{cta_label}}</a></td></tr></table>
       </td></tr>
@@ -302,7 +302,7 @@ export const EDM_TEMPLATE_HTML = {
               <tr>
                 <td width="5" bgcolor="#0F218B" style="width:5px;background-color:#0F218B;font-size:0;line-height:0;">&nbsp;</td>
                 <td width="531" align="center" style="width:531px;padding:42px 32px 46px 32px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="531" style="width:531px;border-collapse:collapse;">
+                  <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="531" style="width:531px;border-collapse:collapse;">
                     <tr><td align="center" style="padding:0 0 26px 0;">
                       <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td bgcolor="#E8EBF5" style="background-color:#E8EBF5;border-radius:14px;padding:8px 18px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:13px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.2em;color:#0F218B;">QUICK &amp; EASY ORDER</td></tr></table>
                     </td></tr>
@@ -320,12 +320,12 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
-      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
+      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="176" style="width:176px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
                 <tr><td width="174" align="center" style="width:174px;padding:12px 12px 0 12px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="150" style="width:150px;border-collapse:collapse;"><tr><td width="150" height="96" align="center" valign="middle" bgcolor="#FFFFFF" style="width:150px;height:96px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="150" height="96" alt="" style="display:block;width:150px;height:96px;border:0;" /> --></td></tr></table></td></tr>
                 <tr><td width="174" align="center" valign="top" height="46" style="width:174px;height:46px;padding:13px 12px 0 12px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:14px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;">{{main_1}}</td></tr>
@@ -346,12 +346,12 @@ export const EDM_TEMPLATE_HTML = {
               </table></td></tr></table></td></tr>
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
-      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
+      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="176" style="width:176px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
                 <tr><td width="174" align="center" style="width:174px;padding:12px 12px 0 12px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="150" style="width:150px;border-collapse:collapse;"><tr><td width="150" height="96" align="center" valign="middle" bgcolor="#FFFFFF" style="width:150px;height:96px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="150" height="96" alt="" style="display:block;width:150px;height:96px;border:0;" /> --></td></tr></table></td></tr>
                 <tr><td width="174" align="center" valign="top" height="46" style="width:174px;height:46px;padding:13px 12px 0 12px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:14px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;">{{main_1}}</td></tr>
@@ -416,7 +416,7 @@ export const EDM_TEMPLATE_HTML = {
               <tr>
                 <td width="5" bgcolor="#0F218B" style="width:5px;background-color:#0F218B;font-size:0;line-height:0;">&nbsp;</td>
                 <td width="531" align="center" style="width:531px;padding:42px 32px 46px 32px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="531" style="width:531px;border-collapse:collapse;">
+                  <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="531" style="width:531px;border-collapse:collapse;">
                     <tr><td align="center" style="padding:0 0 26px 0;">
                       <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td bgcolor="#E8EBF5" style="background-color:#E8EBF5;border-radius:14px;padding:8px 18px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:13px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.2em;color:#0F218B;">BRAND LINE UP</td></tr></table>
                     </td></tr>
@@ -434,15 +434,15 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" style="width:550px;padding:16px 18px 18px 18px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;">
-              <tr><td width="514" align="center" style="width:514px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;">
+              <tr><td width="514" align="center" style="width:514px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_1}}</td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_1}}</td></tr>
             </table>
@@ -454,15 +454,15 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr>
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" style="width:550px;padding:16px 18px 18px 18px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;">
-              <tr><td width="514" align="center" style="width:514px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_2}}<!-- 발송 시 교체: <img src="{{image_2}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;">
+              <tr><td width="514" align="center" style="width:514px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_2}}<!-- 발송 시 교체: <img src="{{image_2}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_2}}</td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_2}}</td></tr>
             </table>
@@ -474,15 +474,15 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr>
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_3}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" style="width:550px;padding:16px 18px 18px 18px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;">
-              <tr><td width="514" align="center" style="width:514px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_3}}<!-- 발송 시 교체: <img src="{{image_3}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;">
+              <tr><td width="514" align="center" style="width:514px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_3}}<!-- 발송 시 교체: <img src="{{image_3}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_3}}</td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_3}}</td></tr>
             </table>
@@ -538,7 +538,7 @@ export const EDM_TEMPLATE_HTML = {
               <tr>
                 <td width="5" bgcolor="#0F218B" style="width:5px;background-color:#0F218B;font-size:0;line-height:0;">&nbsp;</td>
                 <td width="531" align="center" style="width:531px;padding:42px 32px 46px 32px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="531" style="width:531px;border-collapse:collapse;">
+                  <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="531" style="width:531px;border-collapse:collapse;">
                     <tr><td align="center" style="padding:0 0 26px 0;">
                       <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td bgcolor="#E8EBF5" style="background-color:#E8EBF5;border-radius:14px;padding:8px 18px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:13px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.2em;color:#0F218B;">CUSTOMER SUPPORT</td></tr></table>
                     </td></tr>
@@ -556,15 +556,15 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" style="width:550px;padding:16px 18px 18px 18px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;">
-              <tr><td width="514" align="center" style="width:514px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;">
+              <tr><td width="514" align="center" style="width:514px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_1}}</td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_1}}</td></tr>
             </table>
@@ -576,15 +576,15 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr>
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" style="width:550px;padding:16px 18px 18px 18px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;">
-              <tr><td width="514" align="center" style="width:514px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_2}}<!-- 발송 시 교체: <img src="{{image_2}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;">
+              <tr><td width="514" align="center" style="width:514px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_2}}<!-- 발송 시 교체: <img src="{{image_2}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_2}}</td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_2}}</td></tr>
             </table>
@@ -636,7 +636,7 @@ export const EDM_TEMPLATE_HTML = {
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;table-layout:fixed;border-collapse:collapse;">
               <tr>
                 <td width="600" align="center" style="width:600px;box-sizing:border-box;padding:44px 32px 48px 32px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
+                  <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
                     <tr><td width="536" align="center" style="width:536px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;text-indent:0.14em;color:#0F218B;word-break:break-word;overflow-wrap:break-word;">RESOURCES YOU MAY NEED &#8212; TECHNICAL INFORMATION</td></tr>
                     <tr><td align="center" style="padding:18px 0 20px 0;font-size:0;line-height:0;">
                       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="1" style="width:1px;border-collapse:collapse;"><tr><td width="1" height="26" bgcolor="#C9CDDB" style="width:1px;height:26px;background-color:#C9CDDB;font-size:0;line-height:0;">&nbsp;</td></tr></table>
@@ -652,26 +652,26 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="40" style="height:40px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
       <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" align="center" style="width:550px;padding:16px 18px 18px 18px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
-              <tr><td width="514" align="center" style="width:514px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
+              <tr><td width="514" align="center" style="width:514px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_1}}</td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_1}}</td></tr>
             </table>
           </td></tr>
         </table>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td width="552" height="10" style="width:552px;height:10px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td width="552" height="10" style="width:552px;height:10px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" align="center" style="width:550px;padding:16px 18px 18px 18px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
-              <tr><td width="514" align="center" style="width:514px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_2}}<!-- 발송 시 교체: <img src="{{image_2}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
+              <tr><td width="514" align="center" style="width:514px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_2}}<!-- 발송 시 교체: <img src="{{image_2}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_2}}</td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_2}}</td></tr>
             </table>
@@ -680,12 +680,12 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr>
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
-      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
+      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="176" style="width:176px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
                 <tr><td width="174" align="center" style="width:174px;padding:12px 12px 0 12px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="150" style="width:150px;border-collapse:collapse;"><tr><td width="150" height="96" align="center" valign="middle" bgcolor="#FFFFFF" style="width:150px;height:96px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="150" height="96" alt="" style="display:block;width:150px;height:96px;border:0;" /> --></td></tr></table></td></tr>
                 <tr><td width="174" align="center" valign="top" height="46" style="width:174px;height:46px;padding:13px 12px 0 12px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:14px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;">{{main_1}}</td></tr>
@@ -748,7 +748,7 @@ export const EDM_TEMPLATE_HTML = {
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;table-layout:fixed;border-collapse:collapse;">
               <tr>
                 <td width="600" align="center" style="width:600px;box-sizing:border-box;padding:44px 32px 48px 32px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
+                  <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
                     <tr><td width="536" align="center" style="width:536px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;text-indent:0.14em;color:#0F218B;word-break:break-word;overflow-wrap:break-word;">RESOURCES YOU MAY NEED &#8212; FREE CAD DOWNLOAD</td></tr>
                     <tr><td align="center" style="padding:18px 0 20px 0;font-size:0;line-height:0;">
                       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="1" style="width:1px;border-collapse:collapse;"><tr><td width="1" height="26" bgcolor="#C9CDDB" style="width:1px;height:26px;background-color:#C9CDDB;font-size:0;line-height:0;">&nbsp;</td></tr></table>
@@ -764,16 +764,16 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="40" style="height:40px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
       <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" align="center" style="width:550px;padding:16px 18px 18px 18px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
-              <tr><td width="514" align="center" style="width:514px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
+              <tr><td width="514" align="center" style="width:514px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_1}}</td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_1}}</td></tr>
             </table>
@@ -782,26 +782,26 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr>
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
       <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" align="center" style="width:550px;padding:16px 18px 18px 18px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
-              <tr><td width="514" align="center" style="width:514px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_2}}<!-- 발송 시 교체: <img src="{{image_2}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
+              <tr><td width="514" align="center" style="width:514px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_2}}<!-- 발송 시 교체: <img src="{{image_2}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_2}}</td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_2}}</td></tr>
             </table>
           </td></tr>
         </table>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td width="552" height="10" style="width:552px;height:10px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td width="552" height="10" style="width:552px;height:10px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" align="center" style="width:550px;padding:16px 18px 18px 18px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
-              <tr><td width="514" align="center" style="width:514px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_3}}<!-- 발송 시 교체: <img src="{{image_3}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
+              <tr><td width="514" align="center" style="width:514px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_3}}<!-- 발송 시 교체: <img src="{{image_3}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_3}}</td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_3}}</td></tr>
             </table>
@@ -852,7 +852,7 @@ export const EDM_TEMPLATE_HTML = {
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;table-layout:fixed;border-collapse:collapse;">
               <tr>
                 <td width="600" align="center" style="width:600px;box-sizing:border-box;padding:44px 32px 48px 32px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
+                  <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
                     <tr><td width="536" align="center" style="width:536px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;text-indent:0.14em;color:#0F218B;word-break:break-word;overflow-wrap:break-word;">RESOURCES YOU MAY NEED &#8212; PRODUCT Q&amp;A WITH MISUMI AI</td></tr>
                     <tr><td align="center" style="padding:18px 0 20px 0;font-size:0;line-height:0;">
                       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="1" style="width:1px;border-collapse:collapse;"><tr><td width="1" height="26" bgcolor="#C9CDDB" style="width:1px;height:26px;background-color:#C9CDDB;font-size:0;line-height:0;">&nbsp;</td></tr></table>
@@ -868,26 +868,26 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="40" style="height:40px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
       <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" align="center" style="width:550px;padding:16px 18px 18px 18px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
-              <tr><td width="514" align="center" style="width:514px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
+              <tr><td width="514" align="center" style="width:514px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_1}}</td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_1}}</td></tr>
             </table>
           </td></tr>
         </table>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td width="552" height="10" style="width:552px;height:10px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td width="552" height="10" style="width:552px;height:10px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" align="center" style="width:550px;padding:16px 18px 18px 18px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
-              <tr><td width="514" align="center" style="width:514px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_2}}<!-- 발송 시 교체: <img src="{{image_2}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
+              <tr><td width="514" align="center" style="width:514px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_2}}<!-- 발송 시 교체: <img src="{{image_2}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_2}}</td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_2}}</td></tr>
             </table>
@@ -896,12 +896,12 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr>
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
-      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
+      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="176" style="width:176px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
                 <tr><td width="174" align="center" style="width:174px;padding:12px 12px 0 12px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="150" style="width:150px;border-collapse:collapse;"><tr><td width="150" height="96" align="center" valign="middle" bgcolor="#FFFFFF" style="width:150px;height:96px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="150" height="96" alt="" style="display:block;width:150px;height:96px;border:0;" /> --></td></tr></table></td></tr>
                 <tr><td width="174" align="center" valign="top" height="46" style="width:174px;height:46px;padding:13px 12px 0 12px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:14px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;">{{main_1}}</td></tr>
@@ -964,7 +964,7 @@ export const EDM_TEMPLATE_HTML = {
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;table-layout:fixed;border-collapse:collapse;">
               <tr>
                 <td width="600" align="center" style="width:600px;box-sizing:border-box;padding:44px 32px 48px 32px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
+                  <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
                     <tr><td width="536" align="center" style="width:536px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;text-indent:0.14em;color:#0F218B;word-break:break-word;overflow-wrap:break-word;">DO YOU NEED TO QUOTE OR ORDER?</td></tr>
                     <tr><td align="center" style="padding:18px 0 20px 0;font-size:0;line-height:0;">
                       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="1" style="width:1px;border-collapse:collapse;"><tr><td width="1" height="26" bgcolor="#C9CDDB" style="width:1px;height:26px;background-color:#C9CDDB;font-size:0;line-height:0;">&nbsp;</td></tr></table>
@@ -980,26 +980,26 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="40" style="height:40px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
       <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" align="center" style="width:550px;padding:16px 18px 18px 18px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
-              <tr><td width="514" align="center" style="width:514px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
+              <tr><td width="514" align="center" style="width:514px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_1}}</td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_1}}</td></tr>
             </table>
           </td></tr>
         </table>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td width="552" height="10" style="width:552px;height:10px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td width="552" height="10" style="width:552px;height:10px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" align="center" style="width:550px;padding:16px 18px 18px 18px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
-              <tr><td width="514" align="center" style="width:514px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_2}}<!-- 발송 시 교체: <img src="{{image_2}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;table-layout:fixed;border-collapse:collapse;">
+              <tr><td width="514" align="center" style="width:514px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="514" style="width:514px;border-collapse:collapse;"><tr><td width="514" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:514px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_2}}<!-- 발송 시 교체: <img src="{{image_2}}" width="514" height="132" alt="" style="display:block;width:514px;height:132px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_2}}</td></tr>
               <tr><td width="514" align="center" style="width:514px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_2}}</td></tr>
             </table>
@@ -1050,7 +1050,7 @@ export const EDM_TEMPLATE_HTML = {
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;table-layout:fixed;border-collapse:collapse;">
               <tr>
                 <td width="600" align="center" style="width:600px;box-sizing:border-box;padding:44px 32px 48px 32px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
+                  <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
                     <tr><td width="536" align="center" style="width:536px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;text-indent:0.14em;color:#0F218B;word-break:break-word;overflow-wrap:break-word;">NEW / DISCOUNTED ITEMS</td></tr>
                     <tr><td align="center" style="padding:18px 0 20px 0;font-size:0;line-height:0;">
                       <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="1" style="width:1px;border-collapse:collapse;"><tr><td width="1" height="26" bgcolor="#C9CDDB" style="width:1px;height:26px;background-color:#C9CDDB;font-size:0;line-height:0;">&nbsp;</td></tr></table>
@@ -1066,12 +1066,12 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="40" style="height:40px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
-      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
+      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="176" style="width:176px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
                 <tr><td width="174" align="center" style="width:174px;padding:12px 12px 0 12px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="150" style="width:150px;border-collapse:collapse;"><tr><td width="150" height="96" align="center" valign="middle" bgcolor="#FFFFFF" style="width:150px;height:96px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="150" height="96" alt="" style="display:block;width:150px;height:96px;border:0;" /> --></td></tr></table></td></tr>
                 <tr><td width="174" align="center" valign="top" height="46" style="width:174px;height:46px;padding:13px 12px 0 12px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:14px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;">{{main_1}}</td></tr>
@@ -1092,12 +1092,12 @@ export const EDM_TEMPLATE_HTML = {
               </table></td></tr></table></td></tr>
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
-      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
+      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="176" style="width:176px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
                 <tr><td width="174" align="center" style="width:174px;padding:12px 12px 0 12px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="150" style="width:150px;border-collapse:collapse;"><tr><td width="150" height="96" align="center" valign="middle" bgcolor="#FFFFFF" style="width:150px;height:96px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="150" height="96" alt="" style="display:block;width:150px;height:96px;border:0;" /> --></td></tr></table></td></tr>
                 <tr><td width="174" align="center" valign="top" height="46" style="width:174px;height:46px;padding:13px 12px 0 12px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:14px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;">{{main_1}}</td></tr>
@@ -1118,7 +1118,7 @@ export const EDM_TEMPLATE_HTML = {
               </table></td></tr></table></td></tr>
       <tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td align="center" style="padding:0 24px 44px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;">
           <tr>
             <td class="col" width="270" align="center" style="width:270px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="270" style="width:270px;border-collapse:collapse;"><tr><td width="270" align="center" bgcolor="#0F218B" style="width:270px;background-color:#0F218B;border-radius:2px;"><a href="{{cta_url_1}}" style="display:block;padding:14px 10px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:14px;line-height:18px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none;letter-spacing:0.02em;">{{cta_label_1}}</a></td></tr></table></td>
             <td class="gapcol" width="12" style="width:12px;font-size:0;line-height:0;">&nbsp;</td>
@@ -1176,21 +1176,21 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="38" style="height:38px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 16px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#000000;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" height="240" align="center" valign="middle" bgcolor="#FFFFFF" style="width:552px;height:240px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:12px;line-height:16px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="552" height="240" alt="" style="display:block;width:552px;height:240px;border:0;" /> --></td></tr>
         </table>
       </td></tr><tr><td height="40" style="height:40px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 16px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#000000;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
-      </td></tr>      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;">
+      </td></tr>      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;">
           <tr><td class="col" width="176" valign="top" style="width:176px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="176" style="width:176px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
                 <tr><td width="174" align="center" style="width:174px;padding:12px 12px 0 12px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="150" style="width:150px;border-collapse:collapse;"><tr><td width="150" height="96" align="center" valign="middle" bgcolor="#FFFFFF" style="width:150px;height:96px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;"><a href="{{link_1}}" style="color:#868686;text-decoration:none;">{{image_1}}</a><!-- 발송 시 교체: <img src="{{image_1}}" width="150" height="96" alt="" style="display:block;width:150px;height:96px;border:0;" /> --></td></tr></table></td></tr>
@@ -1268,7 +1268,7 @@ export const EDM_TEMPLATE_HTML = {
       <tr><td bgcolor="#EDF1F8" style="background-color:#EDF1F8;padding:0;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;table-layout:fixed;border-collapse:collapse;">
           <tr><td width="600" valign="top" style="width:600px;box-sizing:border-box;padding:42px 32px 44px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
               <tr><td width="536" style="width:536px;padding:0 0 18px 0;">
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td style="box-sizing:border-box;border:1px solid #0F218B;padding:7px 13px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;color:#0F218B;">WE ARE HERE TO HELP</td></tr></table>
               </td></tr>
@@ -1279,23 +1279,23 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
       <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" height="240" align="center" valign="middle" bgcolor="#FFFFFF" style="width:552px;height:240px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:12px;line-height:16px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_main}}<!-- 발송 시 교체: <img src="{{image_main}}" width="552" height="240" alt="" style="display:block;width:552px;height:240px;border:0;" /> --></td></tr>
         </table>
       </td></tr><tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
-      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
+      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="176" style="width:176px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
                 <tr><td width="174" align="center" style="width:174px;padding:12px 12px 0 12px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="150" style="width:150px;border-collapse:collapse;"><tr><td width="150" height="96" align="center" valign="middle" bgcolor="#FFFFFF" style="width:150px;height:96px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="150" height="96" alt="" style="display:block;width:150px;height:96px;border:0;" /> --></td></tr></table></td></tr>
                 <tr><td width="174" align="center" valign="top" height="46" style="width:174px;height:46px;padding:13px 12px 0 12px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:14px;line-height:20px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;">{{main_1}}</td></tr>
@@ -1315,16 +1315,16 @@ export const EDM_TEMPLATE_HTML = {
                 <tr><td width="174" style="width:174px;padding:10px 12px 14px 12px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="150" style="width:150px;border-collapse:collapse;"><tr><td width="150" align="center" bgcolor="#0F218B" style="width:150px;background-color:#0F218B;border-radius:2px;"><a href="{{link_3}}" style="display:block;padding:11px 6px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:12px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;text-decoration:none;letter-spacing:0.02em;">{{btn_3}}</a></td></tr></table></td></tr>
               </table></td></tr></table></td></tr><tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_3}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
       <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" align="center" style="width:550px;padding:24px 20px 26px 20px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;table-layout:fixed;border-collapse:collapse;">
-              <tr><td width="510" align="center" style="width:510px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;"><tr><td width="510" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:510px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_4}}<!-- 발송 시 교체: <img src="{{image_4}}" width="510" height="132" alt="" style="display:block;width:510px;height:132px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;table-layout:fixed;border-collapse:collapse;">
+              <tr><td width="510" align="center" style="width:510px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;"><tr><td width="510" height="132" align="center" valign="middle" bgcolor="#FFFFFF" style="width:510px;height:132px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_4}}<!-- 발송 시 교체: <img src="{{image_4}}" width="510" height="132" alt="" style="display:block;width:510px;height:132px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="510" align="center" style="width:510px;padding:16px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_4}}</td></tr>
               <tr><td width="510" align="center" style="width:510px;padding:8px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_4}}</td></tr>
             </table>
@@ -1372,7 +1372,7 @@ export const EDM_TEMPLATE_HTML = {
       <tr><td bgcolor="#EDF1F8" style="background-color:#EDF1F8;padding:0;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;table-layout:fixed;border-collapse:collapse;">
           <tr><td width="600" valign="top" style="width:600px;box-sizing:border-box;padding:42px 32px 44px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
               <tr><td width="536" style="width:536px;padding:0 0 18px 0;">
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td style="box-sizing:border-box;border:1px solid #0F218B;padding:7px 13px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;color:#0F218B;">WELCOME BACK COUPON</td></tr></table>
               </td></tr>
@@ -1383,15 +1383,15 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
       <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" bgcolor="#EDF1F8" style="width:552px;background-color:#EDF1F8;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" bgcolor="#EDF1F8" style="width:552px;background-color:#EDF1F8;border-collapse:collapse;">
           <tr><td width="552" align="center" style="width:552px;padding:22px 20px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="512" style="width:512px;table-layout:fixed;border-collapse:collapse;">
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="512" style="width:512px;table-layout:fixed;border-collapse:collapse;">
               <tr>
                 <td class="col" width="280" bgcolor="#FFFFFF" valign="middle" align="center" style="width:280px;box-sizing:border-box;background-color:#FFFFFF;padding:34px 16px 36px 16px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="248" style="width:248px;table-layout:fixed;border-collapse:collapse;">
@@ -1416,13 +1416,13 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
       <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" height="240" align="center" valign="middle" bgcolor="#FFFFFF" style="width:552px;height:240px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:12px;line-height:16px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="552" height="240" alt="" style="display:block;width:552px;height:240px;border:0;" /> --></td></tr>
         </table>
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
@@ -1467,22 +1467,22 @@ export const EDM_TEMPLATE_HTML = {
       <tr><td bgcolor="#000000" style="background-color:#000000;padding:0;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;table-layout:fixed;border-collapse:collapse;">
           <tr><td width="600" valign="top" style="width:600px;box-sizing:border-box;padding:36px 32px 38px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
               <tr><td width="536" style="width:536px;padding:0 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td style="box-sizing:border-box;border:1px solid #FFCC00;padding:6px 12px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;color:#FFCC00;">RECOMMENDED FOR YOU</td></tr></table></td></tr>
               <tr><td width="536" style="width:536px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:27px;line-height:36px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;letter-spacing:-0.02em;">{{customer_name}} 고객님,<br />{{copy_headline}}</td></tr>
-              <tr><td width="536" style="width:536px;padding:20px 0 0 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;"><tr><td width="3" bgcolor="#FFCC00" style="width:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td><td width="533" bgcolor="#2A2A2A" style="width:533px;box-sizing:border-box;background-color:#2A2A2A;padding:11px 16px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:12px;line-height:18px;mso-line-height-rule:exactly;color:#FFFFFF;">{{copy_sub}}</td></tr></table></td></tr>
+              <tr><td width="536" style="width:536px;padding:20px 0 0 0;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;"><tr><td width="3" bgcolor="#FFCC00" style="width:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td><td width="533" bgcolor="#2A2A2A" style="width:533px;box-sizing:border-box;background-color:#2A2A2A;padding:11px 16px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:12px;line-height:18px;mso-line-height-rule:exactly;color:#FFFFFF;">{{copy_sub}}</td></tr></table></td></tr>
             </table>
           </td></tr>
           <tr><td width="600" style="width:600px;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;table-layout:fixed;border-collapse:collapse;"><tr><td width="400" height="5" bgcolor="#000000" style="width:400px;height:5px;background-color:#000000;font-size:0;line-height:0;">&nbsp;</td><td width="200" height="5" bgcolor="#FFCC00" style="width:200px;height:5px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
-      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;">
+      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;">
           <tr><td class="col" width="176" valign="top" style="width:176px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="176" style="width:176px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
                 <tr><td width="174" align="center" style="width:174px;padding:12px 12px 0 12px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="150" style="width:150px;border-collapse:collapse;"><tr><td width="150" height="96" align="center" valign="middle" bgcolor="#FFFFFF" style="width:150px;height:96px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;"><a href="{{link_1}}" style="color:#868686;text-decoration:none;">{{image_1}}</a><!-- 발송 시 교체: <img src="{{image_1}}" width="150" height="96" alt="" style="display:block;width:150px;height:96px;border:0;" /> --></td></tr></table></td></tr>
@@ -1625,21 +1625,21 @@ export const EDM_TEMPLATE_HTML = {
       <tr><td bgcolor="#0F218B" style="background-color:#0F218B;padding:0;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;table-layout:fixed;border-collapse:collapse;">
           <tr><td width="600" valign="top" style="width:600px;box-sizing:border-box;padding:40px 32px 42px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
               <tr><td width="536" style="width:536px;padding:0 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td style="box-sizing:border-box;border:1px solid #FFFFFF;padding:6px 12px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;color:#FFFFFF;">RECOMMENDED FOR YOU</td></tr></table></td></tr>
               <tr><td width="536" style="width:536px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:26px;line-height:37px;mso-line-height-rule:exactly;font-weight:bold;color:#FFFFFF;letter-spacing:-0.02em;">{{customer_name}} 고객님,<br />{{copy_headline}}</td></tr>
-              <tr><td width="536" style="width:536px;padding:18px 0 0 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;"><tr><td width="3" bgcolor="#FFFFFF" style="width:3px;background-color:#FFFFFF;font-size:0;line-height:0;">&nbsp;</td><td width="533" bgcolor="#1B2F9E" style="width:533px;box-sizing:border-box;background-color:#1B2F9E;padding:11px 16px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:12px;line-height:18px;mso-line-height-rule:exactly;color:#FFFFFF;">{{copy_sub}}</td></tr></table></td></tr>
+              <tr><td width="536" style="width:536px;padding:18px 0 0 0;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;"><tr><td width="3" bgcolor="#FFFFFF" style="width:3px;background-color:#FFFFFF;font-size:0;line-height:0;">&nbsp;</td><td width="533" bgcolor="#1B2F9E" style="width:533px;box-sizing:border-box;background-color:#1B2F9E;padding:11px 16px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:12px;line-height:18px;mso-line-height-rule:exactly;color:#FFFFFF;">{{copy_sub}}</td></tr></table></td></tr>
             </table>
           </td></tr>
         </table>
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
-      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;">
+      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;">
           <tr><td class="col" width="176" valign="top" style="width:176px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="176" style="width:176px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
                 <tr><td width="174" align="center" style="width:174px;padding:12px 12px 0 12px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="150" style="width:150px;border-collapse:collapse;"><tr><td width="150" height="96" align="center" valign="middle" bgcolor="#FFFFFF" style="width:150px;height:96px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;"><a href="{{link_1}}" style="color:#868686;text-decoration:none;">{{image_1}}</a><!-- 발송 시 교체: <img src="{{image_1}}" width="150" height="96" alt="" style="display:block;width:150px;height:96px;border:0;" /> --></td></tr></table></td></tr>
@@ -1782,22 +1782,22 @@ export const EDM_TEMPLATE_HTML = {
       <tr><td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:0;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;table-layout:fixed;border-collapse:collapse;">
           <tr><td width="600" valign="top" style="width:600px;box-sizing:border-box;padding:40px 32px 42px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
               <tr><td width="536" style="width:536px;padding:0 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td style="box-sizing:border-box;border:1px solid #0F218B;padding:6px 12px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;color:#0F218B;">RECOMMENDED FOR YOU</td></tr></table></td></tr>
               <tr><td width="536" style="width:536px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:26px;line-height:37px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.02em;">{{customer_name}} 고객님,<br />{{copy_headline}}</td></tr>
-              <tr><td width="536" style="width:536px;padding:18px 0 0 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;"><tr><td width="3" bgcolor="#0F218B" style="width:3px;background-color:#0F218B;font-size:0;line-height:0;">&nbsp;</td><td width="533" bgcolor="#EDF1F8" style="width:533px;box-sizing:border-box;background-color:#EDF1F8;padding:11px 16px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:12px;line-height:18px;mso-line-height-rule:exactly;color:#0F218B;">{{copy_sub}}</td></tr></table></td></tr>
+              <tr><td width="536" style="width:536px;padding:18px 0 0 0;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;"><tr><td width="3" bgcolor="#0F218B" style="width:3px;background-color:#0F218B;font-size:0;line-height:0;">&nbsp;</td><td width="533" bgcolor="#EDF1F8" style="width:533px;box-sizing:border-box;background-color:#EDF1F8;padding:11px 16px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:12px;line-height:18px;mso-line-height-rule:exactly;color:#0F218B;">{{copy_sub}}</td></tr></table></td></tr>
             </table>
           </td></tr>
           <tr><td width="600" style="width:600px;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;table-layout:fixed;border-collapse:collapse;"><tr><td width="240" height="4" bgcolor="#0F218B" style="width:240px;height:4px;background-color:#0F218B;font-size:0;line-height:0;">&nbsp;</td><td width="360" height="4" bgcolor="#EEEEEE" style="width:360px;height:4px;background-color:#EEEEEE;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
-      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;">
+      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;">
           <tr><td class="col" width="176" valign="top" style="width:176px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="176" style="width:176px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
                 <tr><td width="174" align="center" style="width:174px;padding:12px 12px 0 12px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="150" style="width:150px;border-collapse:collapse;"><tr><td width="150" height="96" align="center" valign="middle" bgcolor="#FFFFFF" style="width:150px;height:96px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;"><a href="{{link_1}}" style="color:#868686;text-decoration:none;">{{image_1}}</a><!-- 발송 시 교체: <img src="{{image_1}}" width="150" height="96" alt="" style="display:block;width:150px;height:96px;border:0;" /> --></td></tr></table></td></tr>
@@ -1940,10 +1940,10 @@ export const EDM_TEMPLATE_HTML = {
       <tr><td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:0;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;table-layout:fixed;border-collapse:collapse;">
           <tr><td width="600" valign="top" style="width:600px;box-sizing:border-box;padding:40px 32px 40px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
               <tr><td width="536" style="width:536px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;color:#0F218B;">COUPON FOR YOU</td></tr>
               <tr><td width="536" style="width:536px;padding:16px 0 0 0;">
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;border-collapse:collapse;">
+                <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;border-collapse:collapse;">
                   <tr>
                     <td valign="bottom" style="font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:70px;line-height:66px;mso-line-height-rule:exactly;font-weight:bold;color:#EA0000;letter-spacing:-0.05em;white-space:nowrap;">{{rate}}<span style="font-size:38px;line-height:40px;letter-spacing:-0.02em;"> 할인</span></td>
                   </tr>
@@ -1957,22 +1957,22 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" align="center" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:20px;line-height:31px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_1}}</td></tr>
           <tr><td width="552" align="center" style="width:552px;padding:12px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:14px;line-height:22px;mso-line-height-rule:exactly;color:#868686;">{{sub_1}}</td></tr>
         </table>
       </td></tr>
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
       <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" bgcolor="#EDF1F8" style="width:552px;background-color:#EDF1F8;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" bgcolor="#EDF1F8" style="width:552px;background-color:#EDF1F8;border-collapse:collapse;">
           <tr><td width="552" align="center" style="width:552px;padding:22px 20px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="512" style="width:512px;table-layout:fixed;border-collapse:collapse;">
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="512" style="width:512px;table-layout:fixed;border-collapse:collapse;">
               <tr>
                 <td class="col" width="280" bgcolor="#FFFFFF" valign="middle" align="center" style="width:280px;box-sizing:border-box;background-color:#FFFFFF;padding:34px 16px 36px 16px;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="248" style="width:248px;table-layout:fixed;border-collapse:collapse;">
@@ -2039,7 +2039,7 @@ export const EDM_TEMPLATE_HTML = {
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;table-layout:fixed;border-collapse:collapse;">
           <tr><td width="600" style="width:600px;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;table-layout:fixed;border-collapse:collapse;"><tr><td width="600" height="3" bgcolor="#0F218B" style="width:600px;height:3px;background-color:#0F218B;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
           <tr><td width="600" valign="top" style="width:600px;box-sizing:border-box;padding:40px 32px 44px 32px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
               <tr><td width="536" style="width:536px;padding:0 0 22px 0;">
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td bgcolor="#E8EBF5" style="background-color:#E8EBF5;padding:9px 16px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;color:#0F218B;">TALK TO OUR SPECIALIST</td></tr></table>
               </td></tr>
@@ -2051,12 +2051,12 @@ export const EDM_TEMPLATE_HTML = {
         </table>
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
-      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;">
+      <tr><td style="padding:0 24px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;">
           <tr><td class="col" width="270" valign="top" style="width:270px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="270" style="width:270px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
                 <tr><td width="268" align="center" style="width:268px;padding:16px 16px 0 16px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="236" style="width:236px;border-collapse:collapse;"><tr><td width="236" height="130" align="center" valign="middle" bgcolor="#FFFFFF" style="width:236px;height:130px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_1}}<!-- 발송 시 교체: <img src="{{image_1}}" width="236" height="130" alt="" style="display:block;width:236px;height:130px;border:0;" /> --></td></tr></table></td></tr>
@@ -2071,36 +2071,36 @@ export const EDM_TEMPLATE_HTML = {
         </table></td></tr>
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
           <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
       <tr><td style="padding:0 24px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" align="center" style="width:550px;padding:20px 20px 22px 20px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;table-layout:fixed;border-collapse:collapse;">
-              <tr><td width="510" align="center" style="width:510px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;"><tr><td width="510" height="180" align="center" valign="middle" bgcolor="#FFFFFF" style="width:510px;height:180px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_3}}<!-- 발송 시 교체: <img src="{{image_3}}" width="510" height="180" alt="" style="display:block;width:510px;height:180px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;table-layout:fixed;border-collapse:collapse;">
+              <tr><td width="510" align="center" style="width:510px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;"><tr><td width="510" height="180" align="center" valign="middle" bgcolor="#FFFFFF" style="width:510px;height:180px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_3}}<!-- 발송 시 교체: <img src="{{image_3}}" width="510" height="180" alt="" style="display:block;width:510px;height:180px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="510" align="center" style="width:510px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_3}}</td></tr>
               <tr><td width="510" align="center" style="width:510px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_3}}</td></tr>
             </table>
           </td></tr>
         </table>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td width="552" height="12" style="width:552px;height:12px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td width="552" height="12" style="width:552px;height:12px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" align="center" style="width:550px;padding:20px 20px 22px 20px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;table-layout:fixed;border-collapse:collapse;">
-              <tr><td width="510" align="center" style="width:510px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;"><tr><td width="510" height="180" align="center" valign="middle" bgcolor="#FFFFFF" style="width:510px;height:180px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_4}}<!-- 발송 시 교체: <img src="{{image_4}}" width="510" height="180" alt="" style="display:block;width:510px;height:180px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;table-layout:fixed;border-collapse:collapse;">
+              <tr><td width="510" align="center" style="width:510px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;"><tr><td width="510" height="180" align="center" valign="middle" bgcolor="#FFFFFF" style="width:510px;height:180px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_4}}<!-- 발송 시 교체: <img src="{{image_4}}" width="510" height="180" alt="" style="display:block;width:510px;height:180px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="510" align="center" style="width:510px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_4}}</td></tr>
               <tr><td width="510" align="center" style="width:510px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_4}}</td></tr>
             </table>
           </td></tr>
         </table>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td width="552" height="12" style="width:552px;height:12px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
-        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td width="552" height="12" style="width:552px;height:12px;font-size:0;line-height:0;">&nbsp;</td></tr></table>
+        <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;box-sizing:border-box;border-collapse:collapse;border:1px solid #EEEEEE;">
           <tr><td width="550" align="center" style="width:550px;padding:20px 20px 22px 20px;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;table-layout:fixed;border-collapse:collapse;">
-              <tr><td width="510" align="center" style="width:510px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;"><tr><td width="510" height="180" align="center" valign="middle" bgcolor="#FFFFFF" style="width:510px;height:180px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_5}}<!-- 발송 시 교체: <img src="{{image_5}}" width="510" height="180" alt="" style="display:block;width:510px;height:180px;border:0;" /> --></td></tr></table></td></tr>
+            <table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;table-layout:fixed;border-collapse:collapse;">
+              <tr><td width="510" align="center" style="width:510px;"><table class="w600" role="presentation" cellpadding="0" cellspacing="0" border="0" width="510" style="width:510px;border-collapse:collapse;"><tr><td width="510" height="180" align="center" valign="middle" bgcolor="#FFFFFF" style="width:510px;height:180px;box-sizing:border-box;background-color:#FFFFFF;border:1px solid #DFDFDF;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:14px;mso-line-height-rule:exactly;color:#868686;letter-spacing:0.02em;word-break:break-all;overflow-wrap:anywhere;">{{image_5}}<!-- 발송 시 교체: <img src="{{image_5}}" width="510" height="180" alt="" style="display:block;width:510px;height:180px;border:0;" /> --></td></tr></table></td></tr>
               <tr><td width="510" align="center" style="width:510px;padding:14px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:16px;line-height:23px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{main_5}}</td></tr>
               <tr><td width="510" align="center" style="width:510px;padding:7px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{sub_5}}</td></tr>
             </table>
