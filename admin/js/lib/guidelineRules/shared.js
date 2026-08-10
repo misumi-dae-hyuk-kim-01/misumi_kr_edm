@@ -39,10 +39,25 @@ export function checkUtf8Charset(html, issues) {
   }
 }
 
+/** 공식 브랜드 컬러는 형광색 검사에서 제외합니다 — Global Design Guideline "Color System"
+ *  페이지 기준 전체 팔레트입니다.
+ *  - 기본 3색: MISUMI BLUE #0F218B, MISUMI YELLOW #FFCC00, MISUMI BLACK #000000
+ *    (⚠️ 가이드 슬라이드에 BLACK의 헥스값이 "#0f218b"로 잘못 표기되어 있으나, 옆의 RGB
+ *    R0+G0+B0과 안 맞는 명백한 오타라 RGB 기준 #000000을 신뢰함)
+ *  - 확장 팔레트: BLUE(#004098/#025FAE/#0098D8), YELLOW(#FFCD00/#FFF5CB),
+ *    GRAY(#868686/#A7A7A7/#EEEEEE), RED(#EA0000/#750056 — "레드는 숫자·가격에만 사용") */
+const APPROVED_BRAND_COLORS = new Set([
+  "0F218B", "FFCC00", "000000",
+  "004098", "025FAE", "0098D8",
+  "FFCD00", "FFF5CB",
+  "868686", "A7A7A7", "EEEEEE",
+  "EA0000", "750056"
+]);
+
 /** 형광색(네온) 사용 감지 — 채도가 극단적으로 높은 색상. 출처: designguideline B-1/B-6 */
 export function checkFluorescentColors(html, issues) {
-  const hexColors = [...html.matchAll(/#([0-9A-Fa-f]{6})\b/g)].map(m => m[1]);
-  const fluorescent = hexColors.filter(isFluorescent);
+  const hexColors = [...html.matchAll(/#([0-9A-Fa-f]{6})\b/g)].map(m => m[1].toUpperCase());
+  const fluorescent = hexColors.filter(c => !APPROVED_BRAND_COLORS.has(c) && isFluorescent(c));
   if (fluorescent.length) {
     const uniq = [...new Set(fluorescent)].map(c => "#" + c).join(", ");
     issues.push({ level: "warning", message: `형광색으로 보이는 색상이 사용되었습니다 (회사 가이드라인상 금지): ${uniq}` });

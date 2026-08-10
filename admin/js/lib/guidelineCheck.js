@@ -88,8 +88,11 @@ export function checkGuidelines(html) {
   }
 
   // 바깥 테이블이 유동폭(반응형) 구조를 갖추고 있는지 — 모바일 대응 안전장치
-  if (!html.includes('class="email-wrap"')) {
-    issues.push({ level: "warning", message: "이메일 바깥 테이블에 반응형 클래스(email-wrap)가 없습니다 — 모바일에서 잘려 보일 수 있습니다." });
+  // ⚠️ 18개 실제 템플릿 도입 전에는 이 도구가 직접 만든 "email-wrap"이라는 클래스명을 썼는데,
+  // 실제 운영 템플릿들은 전부 "w600"을 씁니다. 옛 이름으로 검사하면 항상 경고가 뜨는
+  // 오탐이었던 걸 여기서 발견하고 고쳤습니다.
+  if (!html.includes('class="w600"')) {
+    issues.push({ level: "warning", message: "이메일 바깥 테이블에 반응형 클래스(w600)가 없습니다 — 모바일에서 잘려 보일 수 있습니다." });
   }
 
   return issues;

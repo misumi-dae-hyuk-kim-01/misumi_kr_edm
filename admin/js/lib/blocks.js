@@ -15,14 +15,21 @@ const ESP_MERGE_TAGS = new Set(["customer_name"]);
 /** {{image_N}}<!-- 발송 시 교체: <img .../> --> 패턴을 실제 <img> 태그로 교체(값 있을 때)
  *  하거나, 플레이스홀더 문구로 남깁니다(값 없을 때 — 연동 진행 상황을 화면에서 바로 확인하기 위함).
  *  ⚠️ 이미지가 클릭 가능한 링크(<a>)로 감싸인 템플릿(NO.11 링크그리드, NO.15 상품그리드)은
- *  {{image_N}}</a><!--...--> 처럼 닫는 태그가 끼어있어서, 그 경우도 인식하도록 (?:<\/a>)?를 넣었습니다. */
+ *  {{image_N}}</a><!--...--> 처럼 닫는 태그가 끼어있어서, 그 경우도 인식하도록 (?:<\/a>)?를 넣었습니다.
+ *  ⚠️ 원본 템플릿의 img 태그는 alt=""로 비어있어서 가이드라인 검사에서 "alt 없음" 경고가 뜹니다.
+ *  values에 "{key}_alt" 값이 있으면(예: 상품명) 그걸로 채우고, 없으면 일반 안내 문구로 대체합니다. */
 function substituteImages(html, values) {
   return html.replace(
     /\{\{(image_[a-zA-Z0-9_]+)\}\}(<\/a>)?<!--\s*발송 시 교체:\s*(<img[^>]*>)\s*-->/g,
     (match, key, closingTag, imgTag) => {
       const url = values[key];
       const closing = closingTag || "";
-      if (url) return imgTag.replace(`{{${key}}}`, esc(url)) + closing;
+      if (url) {
+        const altText = values[`${key}_alt`] || "상품/콘텐츠 이미지";
+        const withSrc = imgTag.replace(`{{${key}}}`, esc(url));
+        const withAlt = withSrc.replace(/alt="[^"]*"/, `alt="${esc(altText)}"`);
+        return withAlt + closing;
+      }
       return `<span style="color:#c9a227;font-style:italic;font-size:11px;">이미지 연동 예정</span>` + closing;
     }
   );

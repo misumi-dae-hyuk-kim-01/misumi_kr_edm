@@ -9,10 +9,10 @@ import { fetchSeriesInfo } from "../lib/seriesApi.js";
 import { EDM_TEMPLATE_FIELDS } from "../data/edmTemplateFields.js";
 
 // ⚠️ 아키텍처 전환: "상품계/비상품계" 이분법과 "신규/육성/이탈예측" 세그먼트를 없애고,
-// 실제 템플릿 18개가 실제로 갖는 "목적"(온보딩/육성/이탈방지/상품소개/쿠폰/내부영업) 하나로
+// 실제 템플릿 18개가 실제로 갖는 "목적"(온보딩/육성/이탈방지/상품소개/쿠폰/내근영업) 하나로
 // 통일했습니다. 이유: edm-no10(육성)에 상품그리드가 들어가는 등, "상품계냐 아니냐"와
 // "목적이 뭐냐"는 서로 무관한 축이라는 게 실제 템플릿에서 확인됐기 때문입니다.
-const PURPOSES = ["온보딩", "육성", "이탈방지", "상품소개", "쿠폰", "내부영업"];
+const PURPOSES = ["온보딩", "육성", "이탈방지", "상품소개", "쿠폰", "내근영업"];
 
 export function renderGenerator(root, params) {
   const editId = params.get("id");
@@ -153,9 +153,17 @@ export function renderGenerator(root, params) {
         values[`seriesName_${n}`] = p.name;
         values[`price_${n}`] = p.price;
         values[`image_${n}`] = p.image;
+        values[`image_${n}_alt`] = p.name || "상품 이미지";
         values[`brandName_${n}`] = p.brand || "MISUMI";
         values[`link_${n}`] = p.code ? withUtm(`https://kr.misumi-ec.com/vona2/detail/${encodeURIComponent(p.code)}/`) : "";
       });
+    }
+    // 일반 이미지 필드(상품그리드 아닌 것)는 필드 라벨을 alt로 사용 — "메인 이미지 1" 처럼
+    // 완전히 구체적이진 않아도, 빈 alt=""보다는 화면 낭독기 등에 훨씬 낫습니다.
+    for (const f of t.fields) {
+      if (f.type === "image" && !values[`${f.key}_alt`]) {
+        values[`${f.key}_alt`] = f.label;
+      }
     }
     // ⚠️ 비어있는 카피/링크/버튼 필드는 그냥 빈 칸(뭘 넣어야 할지 안 보임)이나 원본 {{변수명}}
     // (마케터에겐 의미 없는 코드로 보임) 대신, 친절한 라벨을 [ ]로 감싸서 보여줍니다 —
@@ -217,7 +225,7 @@ export function renderGenerator(root, params) {
         }, [el("div", { class: "sn" }, p)])
       )),
       el("select", {
-        style: "margin-top:10px;",
+        style: "margin-top:10px;width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;",
         onchange: e => switchTemplate(e.target.value)
       }, templatesForPurpose.map(([id, info]) =>
         el("option", { value: id, ...(id === draft.templateId ? { selected: "selected" } : {}) }, info.name)
@@ -247,7 +255,7 @@ export function renderGenerator(root, params) {
       el("div", { class: "field" }, [
         el("label", {}, "AI에게 요청할 내용 (선택 · 카피와 이미지 선택 양쪽에 함께 반영됩니다)"),
         el("textarea", {
-          placeholder: "예: 20대 여성 타겟으로 캐주얼한 톤, 여름 프로모션 느낌의 이미지",
+          placeholder: "예: 구매담당자 대상, 신뢰감 있는 톤으로 / FA·금형부품 신제품 카탈로그 강조",
           oninput: e => { draft.aiPrompt = e.target.value; }
         }, draft.aiPrompt || "")
       ]),
@@ -372,8 +380,13 @@ export function renderGenerator(root, params) {
   function sectionOffer() {
     return sectionWrap("⑤", "오퍼번호", "high", [
       el("div", { class: "field" }, [
-        el("input", { type: "text", value: draft.offerNo, oninput: e => { draft.offerNo = e.target.value; renderPreview(); } }),
-        el("p", { class: "hint" }, `UTM에는 "${withGenSuffix(draft.offerNo || "")}"로 자동 저장됩니다 (이 생성기로 만든 캠페인임을 구분하기 위한 _GEN 접미사, 자동 부착)`)
+        el("input", {
+          type: "text", value: draft.offerNo, placeholder: "예: OFFER2026070",
+          oninput: e => { draft.offerNo = e.target.value; renderPreview(); }
+        }),
+        el("p", { class: "hint" }, draft.offerNo
+          ? `UTM에는 "${withGenSuffix(draft.offerNo)}"로 자동 저장됩니다 (이 생성기로 만든 캠페인임을 구분하기 위한 _GEN 접미사, 자동 부착)`
+          : "오퍼번호를 입력하면 UTM에 자동으로 반영됩니다 (뒤에 _GEN 접미사가 자동으로 붙습니다)")
       ])
     ]);
   }
@@ -530,7 +543,7 @@ function buildInitialDraft(templateId, existing) {
     coupon: { value: "10%", max: "50,000", target: "전 상품 적용", note: "3만원 이상 구매 시", code: "KORWELCOME10", expiry: "2026.09.30" },
     seriesCodes: Array.from({ length: 15 }, () => ""),
     products: [],
-    offerNo: "OFFER2026070",
+    offerNo: "",
     generating: false
   };
   if (existing?.draftData) {

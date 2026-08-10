@@ -674,7 +674,7 @@ export const EDM_TEMPLATE_FIELDS = {
   },
   "edm-no17-inside-sales": {
     name: "내근 영업 안내",
-    purpose: "내부영업",
+    purpose: "내근영업",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
