@@ -144,7 +144,7 @@
 .guideline-badge:hover{filter:brightness(0.96);}
 
 /* ---------- 미리보기 영역 ---------- */
-.gen-preview-area{padding:20px;overflow:auto;background:#f0f2f5;}
+.gen-preview-area{padding:20px;overflow:auto;background:#f0f2f5;min-width:0;}
 .gen-preview-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
 .gen-preview-header h2{font-size:14px;font-weight:700;}
 .view-toggle{display:flex;gap:4px;}
@@ -152,7 +152,7 @@
   border:1px solid #d0d0d0;background:#fff;border-radius:6px;padding:6px 11px;font-size:11.5px;cursor:pointer;
 }
 .view-toggle button.active{background:#0F218B;color:#fff;border-color:#0F218B;}
-.preview-wrap{background:#e8eaed;padding:18px;border-radius:10px;min-height:560px;}
+.preview-wrap{background:#e8eaed;padding:18px;border-radius:10px;min-height:560px;min-width:0;}
 .preview-wrap.mobile{max-width:400px;margin:0 auto;}
-.preview-frame{background:#fff;border-radius:8px;min-height:520px;overflow:hidden;}
-.preview-frame iframe{width:100%;border:none;min-height:600px;}
+.preview-frame{background:#fff;border-radius:8px;min-height:300px;overflow:hidden;min-width:0;}
+.preview-frame iframe{width:100%;border:none;min-height:300px;display:block;}

@@ -1,6 +1,8 @@
 // 18개 실제 EDM 템플릿 원본 HTML. {{변수}} 자리만 blocks.js가 치환합니다.
 // ⚠️ 이 파일은 원본 HTML을 그대로 담은 데이터 파일이라 사람이 직접 수정하지 않습니다 —
 // 템플릿 자체를 고치려면 원본 .html 파일을 고치고 이 파일을 다시 생성하세요.
+// ⚠️ c_headline이 템플릿 안에서 여러 번(콘텐츠 섹션마다) 쓰이던 걸 c_headline_1/_2/_3으로
+// 분리했습니다 — 원래는 같은 이름이라 전부 같은 값이 들어가버리는 문제가 있었습니다.
 
 export const EDM_TEMPLATE_HTML = {
   "edm-no01-onboarding": `<!DOCTYPE html>
@@ -60,7 +62,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td class="col" width="176" valign="top" style="width:176px;">
@@ -84,7 +86,7 @@ export const EDM_TEMPLATE_HTML = {
               </table></td></tr></table></td></tr><tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td class="col" width="132" valign="top" style="width:132px;">
@@ -110,7 +112,7 @@ export const EDM_TEMPLATE_HTML = {
               </table></td></tr></table></td></tr><tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_3}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;"><tr><td class="col" width="87" valign="top" style="width:87px;">
@@ -203,7 +205,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 14px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" align="center" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:27px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" align="center" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:27px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" align="center" style="width:552px;padding:8px 0 0 0;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:13px;line-height:20px;mso-line-height-rule:exactly;color:#868686;">{{c_sub}}</td></tr>
         </table>
       </td></tr>
@@ -236,7 +238,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;"><tr><td width="552" style="width:552px;box-sizing:border-box;border:1px solid #EEEEEE;padding:20px;">
@@ -319,7 +321,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -345,7 +347,7 @@ export const EDM_TEMPLATE_HTML = {
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -433,7 +435,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;">
@@ -453,7 +455,7 @@ export const EDM_TEMPLATE_HTML = {
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;">
@@ -473,7 +475,7 @@ export const EDM_TEMPLATE_HTML = {
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_3}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;">
@@ -555,7 +557,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;">
@@ -575,7 +577,7 @@ export const EDM_TEMPLATE_HTML = {
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;">
@@ -651,7 +653,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="40" style="height:40px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -679,7 +681,7 @@ export const EDM_TEMPLATE_HTML = {
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -763,7 +765,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="40" style="height:40px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -781,7 +783,7 @@ export const EDM_TEMPLATE_HTML = {
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -867,7 +869,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="40" style="height:40px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -895,7 +897,7 @@ export const EDM_TEMPLATE_HTML = {
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -1065,7 +1067,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="40" style="height:40px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -1091,7 +1093,7 @@ export const EDM_TEMPLATE_HTML = {
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -1175,7 +1177,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="38" style="height:38px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 16px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#000000;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#000000;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;">
@@ -1185,7 +1187,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="40" style="height:40px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 16px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#000000;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#000000;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>      <tr><td style="padding:0 24px;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;table-layout:fixed;border-collapse:collapse;">
@@ -1278,7 +1280,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -1289,7 +1291,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -1314,7 +1316,7 @@ export const EDM_TEMPLATE_HTML = {
               </table></td></tr></table></td></tr><tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_3}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -1382,7 +1384,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -1415,7 +1417,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -2050,7 +2052,7 @@ export const EDM_TEMPLATE_HTML = {
       </td></tr><tr><td height="44" style="height:44px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_1}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>
@@ -2070,7 +2072,7 @@ export const EDM_TEMPLATE_HTML = {
       <tr><td height="46" style="height:46px;font-size:0;line-height:0;">&nbsp;</td></tr>
       <tr><td style="padding:0 24px 18px 24px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="552" style="width:552px;border-collapse:collapse;">
-          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline}}</td></tr>
+          <tr><td width="552" style="width:552px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:19px;line-height:26px;mso-line-height-rule:exactly;font-weight:bold;color:#0F218B;letter-spacing:-0.01em;">{{c_headline_2}}</td></tr>
           <tr><td width="552" style="width:552px;padding:10px 0 0 0;font-size:0;line-height:0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40" style="width:40px;border-collapse:collapse;"><tr><td width="40" height="3" bgcolor="#FFCC00" style="width:40px;height:3px;background-color:#FFCC00;font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
         </table>
       </td></tr>

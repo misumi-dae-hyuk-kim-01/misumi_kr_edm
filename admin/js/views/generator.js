@@ -157,8 +157,19 @@ export function renderGenerator(root, params) {
         values[`link_${n}`] = p.code ? withUtm(`https://kr.misumi-ec.com/vona2/detail/${encodeURIComponent(p.code)}/`) : "";
       });
     }
+    // ⚠️ 비어있는 카피/링크/버튼 필드는 그냥 빈 칸(뭘 넣어야 할지 안 보임)이나 원본 {{변수명}}
+    // (마케터에겐 의미 없는 코드로 보임) 대신, 친절한 라벨을 [ ]로 감싸서 보여줍니다 —
+    // "여기에 뭘 넣어야 하는지" 미리보기만 보고도 바로 알 수 있게 하기 위함입니다.
+    // 이미지/상품그리드/쿠폰 필드는 각자 자기만의 안내 문구(이미지 연동 예정 등)가 이미 있어서 제외합니다.
     for (const f of t.fields) {
-      if (f.type === "link" && values[f.key]) values[f.key] = withUtm(values[f.key]);
+      if (["text", "textarea", "link", "button-label"].includes(f.type) && !values[f.key]) {
+        values[f.key] = `[${f.label}]`;
+      }
+    }
+    for (const f of t.fields) {
+      if (f.type === "link" && values[f.key] && !values[f.key].startsWith("[")) {
+        values[f.key] = withUtm(values[f.key]);
+      }
     }
     return values;
   }
@@ -389,7 +400,17 @@ export function renderGenerator(root, params) {
   function renderPreview() {
     const html = assembleEdmHtml(draft.templateId, currentValues());
     previewFrame.innerHTML = "";
-    previewFrame.appendChild(el("iframe", { srcdoc: html }));
+    const iframe = el("iframe", { srcdoc: html });
+    // ⚠️ iframe은 기본적으로 안의 콘텐츠 길이에 맞춰 스스로 커지지 않아서, 고정 높이만
+    // 줘두면 긴 템플릿은 내부 스크롤이 생겨 답답해 보입니다. 로드 완료 후 실제 콘텐츠
+    // 높이를 측정해서 iframe 자체의 높이를 그만큼 맞춰줍니다 (짧은 템플릿은 짧게).
+    iframe.addEventListener("load", () => {
+      try {
+        const h = iframe.contentWindow.document.documentElement.scrollHeight;
+        iframe.style.height = Math.max(h, 300) + "px";
+      } catch (e) { /* 크로스오리진 등의 이유로 측정 불가하면 기존 min-height 그대로 둠 */ }
+    });
+    previewFrame.appendChild(iframe);
 
     latestGuidelineIssues = checkGuidelines(html);
     const summary = summarizeGuidelineIssues(latestGuidelineIssues);
