@@ -38,6 +38,14 @@
 .sec-body{padding:12px 13px;}
 .sec.collapsed .sec-body{display:none;}
 
+.sec.sec-deleted{opacity:0.55;}
+.sec-group-actions{display:flex; justify-content:flex-end; margin-bottom:8px;}
+.field-label-row{display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;}
+.field-label-row label{margin-bottom:0;}
+.opt-tag{color:#999; font-weight:400;}
+.req-tag{color:#cc0000; font-weight:400;}
+.use-toggle{display:flex; align-items:center; gap:5px; font-size:10.5px; color:#555; font-weight:400; cursor:pointer;}
+.use-toggle input{width:14px; height:14px; cursor:pointer;}
 .field{margin-bottom:10px;}
 .field:last-child{margin-bottom:0;}
 .field label{display:block;font-size:11px;font-weight:700;color:#555;margin-bottom:4px;}

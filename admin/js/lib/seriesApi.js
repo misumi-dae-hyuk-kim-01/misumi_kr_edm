@@ -1,6 +1,8 @@
-// EDM 상품계 생성기의 시리즈 코드 조회 모듈입니다.
-// 로컬에서는 미스미 API를 직접 호출하고, 운영에서는 CONFIG.seriesApiUrl에
-// API Gateway/Lambda 프록시 주소를 설정해 applicationId 노출과 CORS를 관리합니다.
+// ⚠️ 참고 예시 구현 — 현재 generator.js에서 이 파일을 import/호출하지 않습니다.
+// 시리즈 API 실연동은 개발팀에서 직접 진행하기로 했습니다. 이 파일은 그때 그대로 갖다 쓰거나
+// 참고하시라고 만들어둔 예시입니다 (실제 API 응답으로 파싱 로직까지 테스트 완료된 상태).
+// generator.js에 연결하려면: 상단에 `import { fetchSeriesInfo } from "../lib/seriesApi.js";` 추가 후
+// lookupSeriesCodes() 안의 주석 처리된 예시 코드를 그대로 활성화하면 됩니다.
 //
 // ⚠️ 실서비스 연동 지점 (SERIES_API_CONTRACT.md 참고)
 // 미스미 시리즈 검색 API 실제 응답을 draft.products 계약(code/name/image/price)으로 변환합니다.
@@ -38,11 +40,10 @@ const FIELD_MAP = {
   name: matched => matched.seriesName || undefined,
   image: matched => normalizeImageUrl(matched.productImageList?.[0]?.url),
   price: matched => formatPrice(matched.minStandardUnitPrice),
-  shipDate: matched => formatShipDate(matched.minStandardDaysToShip)
-
-  // 필드 추가 예시 (실제 API에 해당 필드가 있다면 그대로 추가):
-  // stock: matched => matched.stockQuantity,
-  // spec: matched => matched.catchCopy,
+  // ✅ 확인 완료: 실제 API 응답 필드명은 "brandName" (예: "미스미 (MISUMI)").
+  // 이전에는 이 매핑이 없어서 generator.js의 `p.brand || "MISUMI"` 기본값이 항상 적용되어,
+  // 실제 상품의 브랜드가 뭐든 무조건 "MISUMI"로 표시되던 버그가 있었습니다.
+  brand: matched => matched.brandName || undefined
 };
 
 function normalizeImageUrl(rawUrl) {
@@ -52,11 +53,6 @@ function normalizeImageUrl(rawUrl) {
 
 function formatPrice(rawPrice) {
   return typeof rawPrice === "number" ? rawPrice.toLocaleString() : undefined; // blocks.js 계약: 가격은 쉼표 포함 문자열
-}
-
-function formatShipDate(rawDays) {
-  if (typeof rawDays !== "number") return undefined;
-  return rawDays === 0 ? "당일" : `${rawDays}일`;
 }
 
 /**

@@ -136,6 +136,32 @@ export function renderGenerator(root, params) {
     return `${url}${url.includes("?") ? "&" : "?"}${q}`;
   }
 
+  let previewDebounceTimer = null;
+  // ⚠️ 카피를 타이핑할 때마다 renderPreview()가 즉시 실행되면 iframe이 매번 통째로
+  // 새로 로드되어 심하게 깜박입니다. 입력을 잠깐(300ms) 멈춘 후에만 실제로 갱신하도록
+  // 미룹니다 — 버튼 클릭 등 즉시 반영이 필요한 곳은 그대로 renderPreview()를 직접 씁니다.
+  function schedulePreview() {
+    clearTimeout(previewDebounceTimer);
+    previewDebounceTimer = setTimeout(renderPreview, 300);
+  }
+
+  // 서브 카피/설명처럼 "있어도 없어도 되는" 필드인지 판단 — 이 기준으로만 개별
+  // 사용/미사용 토글을 보여줍니다(모든 필드에 토글을 붙이면 화면이 복잡해짐).
+  function isOptionalField(f) {
+    return f.key.startsWith("sub_") || f.key.startsWith("desc_") || f.key === "copy_sub" || f.key === "copy_sub_strong";
+  }
+  // 필드 키의 숫자 접미사(_N)로 "섹션 N" 소속을 판단. cta_*는 CTA로, 나머지는 히어로로.
+  function fieldGroupOf(key) {
+    if (key.startsWith("cta_")) return "CTA";
+    const m = key.match(/_(\d+)$/);
+    if (m) return `섹션 ${m[1]}`;
+    return "히어로";
+  }
+  function sectionNumberOf(key) {
+    const m = key.match(/_(\d+)$/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
   function currentValues() {
     const t = resolveTemplate();
     if (!t) return {};
@@ -151,24 +177,18 @@ export function renderGenerator(root, params) {
       draft.products.forEach((p, i) => {
         const n = i + 1;
         values[`seriesName_${n}`] = p.name;
-        values[`price_${n}`] = p.price;
+        values[`price_${n}`] = p.price ? `${p.price}원~` : ""; // 가격 뒤 "원~" 자동 부착
         values[`image_${n}`] = p.image;
         values[`image_${n}_alt`] = p.name || "상품 이미지";
         values[`brandName_${n}`] = p.brand || "MISUMI";
         values[`link_${n}`] = p.code ? withUtm(`https://kr.misumi-ec.com/vona2/detail/${encodeURIComponent(p.code)}/`) : "";
       });
     }
-    // 일반 이미지 필드(상품그리드 아닌 것)는 필드 라벨을 alt로 사용 — "메인 이미지 1" 처럼
-    // 완전히 구체적이진 않아도, 빈 alt=""보다는 화면 낭독기 등에 훨씬 낫습니다.
     for (const f of t.fields) {
       if (f.type === "image" && !values[`${f.key}_alt`]) {
         values[`${f.key}_alt`] = f.label;
       }
     }
-    // ⚠️ 비어있는 카피/링크/버튼 필드는 그냥 빈 칸(뭘 넣어야 할지 안 보임)이나 원본 {{변수명}}
-    // (마케터에겐 의미 없는 코드로 보임) 대신, 친절한 라벨을 [ ]로 감싸서 보여줍니다 —
-    // "여기에 뭘 넣어야 하는지" 미리보기만 보고도 바로 알 수 있게 하기 위함입니다.
-    // 이미지/상품그리드/쿠폰 필드는 각자 자기만의 안내 문구(이미지 연동 예정 등)가 이미 있어서 제외합니다.
     for (const f of t.fields) {
       if (["text", "textarea", "link", "button-label"].includes(f.type) && !values[f.key]) {
         values[f.key] = `[${f.label}]`;
@@ -180,6 +200,37 @@ export function renderGenerator(root, params) {
       }
     }
     return values;
+  }
+
+  /** 삭제된 섹션/필드(hiddenRowKeys)와, 시리즈 코드 입력 개수를 넘는 상품 슬롯(hiddenCardKeys)을
+   *  계산합니다. blocks.js가 이 목록을 받아서 해당 영역을 미리보기에서 통째로 제외합니다. */
+  function computeHiddenUnits() {
+    const t = resolveTemplate();
+    if (!t) return { hiddenRowKeys: [], hiddenCardKeys: [] };
+    const hiddenRowKeys = [];
+    const hiddenCardKeys = [];
+
+    for (const f of t.fields) {
+      if (f.type === "coupon-field") continue;
+      const secNum = sectionNumberOf(f.key);
+      const sectionDeleted = secNum !== null && draft.hiddenSections.includes(secNum);
+      const fieldDeleted = draft.hiddenFields.includes(f.key);
+      if (f.type === "product-field") {
+        // 상품카드는 "카드 경계" 삭제 대상이라 seriesName_N 하나만 마커로 씀 (그 카드 전체가 지워짐)
+        if (f.key.startsWith("seriesName_") && (sectionDeleted || fieldDeleted)) hiddenCardKeys.push(f.key);
+        continue;
+      }
+      if (sectionDeleted || fieldDeleted) hiddenRowKeys.push(f.key);
+    }
+
+    // 상품 그리드: 시리즈 코드 조회 결과 개수(draft.products.length)를 넘는 슬롯은 자동 숨김
+    if (templateHasFieldType("product-field")) {
+      const maxSlots = t.fields.filter(f => f.key.startsWith("seriesName_")).length;
+      for (let n = draft.products.length + 1; n <= maxSlots; n++) {
+        hiddenCardKeys.push(`seriesName_${n}`);
+      }
+    }
+    return { hiddenRowKeys, hiddenCardKeys };
   }
 
   function renderForm() {
@@ -290,48 +341,87 @@ export function renderGenerator(root, params) {
     const t = resolveTemplate();
     if (!t) return el("div");
     const visibleFields = t.fields.filter(f => f.type !== "coupon-field" && f.type !== "product-field" && f.key !== "preheader");
-    return sectionWrap("③", "카피 · 이미지 · 링크", "high", visibleFields.map(f => renderFieldInput(f)));
+
+    // 순서를 유지하면서 히어로/섹션N/CTA로 묶기
+    const groups = [];
+    const groupIndex = {};
+    for (const f of visibleFields) {
+      const g = fieldGroupOf(f.key);
+      if (!(g in groupIndex)) { groupIndex[g] = groups.length; groups.push({ name: g, fields: [] }); }
+      groups[groupIndex[g]].fields.push(f);
+    }
+
+    return el("div", {}, groups.map((g, idx) => {
+      const secNum = g.name.startsWith("섹션 ") ? parseInt(g.name.slice(3), 10) : null;
+      const isDeleted = secNum !== null && draft.hiddenSections.includes(secNum);
+      return sectionWrap(`③-${idx + 1}`, g.name, "high", [
+        secNum !== null ? el("div", { class: "sec-group-actions" }, [
+          isDeleted
+            ? el("button", { class: "btn btn-sm", onclick: () => { draft.hiddenSections = draft.hiddenSections.filter(n => n !== secNum); renderForm(); renderPreview(); } }, "↩ 복원")
+            : el("button", { class: "btn btn-sm danger", onclick: () => { draft.hiddenSections = [...draft.hiddenSections, secNum]; renderForm(); renderPreview(); } }, "🗑 이 섹션 삭제")
+        ]) : null,
+        isDeleted
+          ? el("p", { class: "hint" }, "이 섹션은 미리보기에서 제외됩니다.")
+          : el("div", {}, g.fields.map(f => renderFieldInput(f)))
+      ], isDeleted ? "sec-deleted" : "");
+    }));
   }
 
   function renderFieldInput(f) {
     const value = draft.fieldValues[f.key] || "";
-    const onChange = v => { draft.fieldValues[f.key] = v; renderPreview(); };
+    const onChange = v => { draft.fieldValues[f.key] = v; schedulePreview(); };
+    const optional = isOptionalField(f);
+    const fieldDisabled = draft.hiddenFields.includes(f.key);
 
-    if (f.type === "textarea") {
+    const labelRow = optional
+      ? el("div", { class: "field-label-row" }, [
+          el("label", {}, [f.label, el("span", { class: "opt-tag" }, " · 선택")]),
+          el("label", { class: "use-toggle" }, [
+            "사용",
+            el("input", {
+              type: "checkbox", checked: fieldDisabled ? null : "checked",
+              onchange: e => {
+                if (e.target.checked) draft.hiddenFields = draft.hiddenFields.filter(k => k !== f.key);
+                else draft.hiddenFields = [...draft.hiddenFields, f.key];
+                renderForm(); renderPreview();
+              }
+            })
+          ])
+        ])
+      : el("label", {}, [f.label, !["image", "link", "button-label"].includes(f.type) ? el("span", { class: "req-tag" }, " · 필수") : null]);
+
+    if (fieldDisabled) {
       return el("div", { class: "field" }, [
-        el("label", {}, f.label),
-        el("textarea", { oninput: e => onChange(e.target.value) }, value)
+        labelRow,
+        el("input", { type: "text", disabled: "disabled", placeholder: "사용 안 함 — 미리보기에서 이 줄이 제외됩니다" })
       ]);
+    }
+    if (f.type === "textarea") {
+      return el("div", { class: "field" }, [labelRow, el("textarea", { oninput: e => onChange(e.target.value) }, value)]);
     }
     if (f.type === "image") {
       return el("div", { class: "field" }, [
-        el("label", {}, f.label),
-        el("input", {
-          type: "text", value, placeholder: "https://... (에셋 관리에서 URL을 복사해 붙여넣으세요)",
-          oninput: e => onChange(e.target.value)
-        })
+        labelRow,
+        el("input", { type: "text", value, placeholder: "https://... (에셋 관리에서 URL을 복사해 붙여넣으세요)", oninput: e => onChange(e.target.value) })
       ]);
     }
-    return el("div", { class: "field" }, [
-      el("label", {}, f.label),
-      el("input", { type: "text", value, oninput: e => onChange(e.target.value) })
-    ]);
+    return el("div", { class: "field" }, [labelRow, el("input", { type: "text", value, oninput: e => onChange(e.target.value) })]);
   }
 
   function sectionCoupon() {
     const c = draft.coupon;
     return sectionWrap("④", "쿠폰 정보", "high", [
       el("div", { class: "row2" }, [
-        field("할인율/금액", c.value, v => { c.value = v; renderPreview(); }),
-        field("최대 할인 금액", c.max, v => { c.max = v; renderPreview(); })
+        field("할인율/금액", c.value, v => { c.value = v; schedulePreview(); }),
+        field("최대 할인 금액", c.max, v => { c.max = v; schedulePreview(); })
       ]),
       el("div", { class: "row2" }, [
-        field("적용 대상", c.target, v => { c.target = v; renderPreview(); }),
-        field("주의 문구", c.note, v => { c.note = v; renderPreview(); })
+        field("적용 대상", c.target, v => { c.target = v; schedulePreview(); }),
+        field("주의 문구", c.note, v => { c.note = v; schedulePreview(); })
       ]),
       el("div", { class: "row2" }, [
-        field("쿠폰 코드", c.code, v => { c.code = v; renderPreview(); }),
-        field("사용 기한", c.expiry, v => { c.expiry = v; renderPreview(); })
+        field("쿠폰 코드", c.code, v => { c.code = v; schedulePreview(); }),
+        field("사용 기한", c.expiry, v => { c.expiry = v; schedulePreview(); })
       ]),
       el("p", { class: "hint" }, "※ 쿠폰 정보는 쿠폰 블록이 포함된 템플릿에서만 표시됩니다")
     ]);
@@ -382,7 +472,7 @@ export function renderGenerator(root, params) {
       el("div", { class: "field" }, [
         el("input", {
           type: "text", value: draft.offerNo, placeholder: "예: OFFER2026070",
-          oninput: e => { draft.offerNo = e.target.value; renderPreview(); }
+          oninput: e => { draft.offerNo = e.target.value; schedulePreview(); }
         }),
         el("p", { class: "hint" }, draft.offerNo
           ? `UTM에는 "${withGenSuffix(draft.offerNo)}"로 자동 저장됩니다 (이 생성기로 만든 캠페인임을 구분하기 위한 _GEN 접미사, 자동 부착)`
@@ -398,8 +488,8 @@ export function renderGenerator(root, params) {
     ]);
   }
 
-  function sectionWrap(badge, title, kind, children) {
-    return el("div", { class: "sec" }, [
+  function sectionWrap(badge, title, kind, children, extraClass = "") {
+    return el("div", { class: "sec" + (extraClass ? " " + extraClass : "") }, [
       el("div", { class: "sec-hd" }, [
         el("div", { class: "sec-hd-left" }, [
           el("span", { class: "sec-badge" + (kind === "ai" ? " ai" : "") }, badge),
@@ -411,7 +501,8 @@ export function renderGenerator(root, params) {
   }
 
   function renderPreview() {
-    const html = assembleEdmHtml(draft.templateId, currentValues());
+    const { hiddenRowKeys, hiddenCardKeys } = computeHiddenUnits();
+    const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys });
     previewFrame.innerHTML = "";
     const iframe = el("iframe", { srcdoc: html });
     // ⚠️ iframe은 기본적으로 안의 콘텐츠 길이에 맞춰 스스로 커지지 않아서, 고정 높이만
@@ -459,7 +550,8 @@ export function renderGenerator(root, params) {
   }
 
   async function runLinkCheck() {
-    const html = assembleEdmHtml(draft.templateId, currentValues());
+    const { hiddenRowKeys, hiddenCardKeys } = computeHiddenUnits();
+    const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys });
     log("링크/이미지 확인 중...");
     const results = await checkAllLinks(html);
     const summary = summarizeLinkResults(results);
@@ -511,7 +603,8 @@ export function renderGenerator(root, params) {
   }
 
   async function copyHtml() {
-    const html = assembleEdmHtml(draft.templateId, currentValues());
+    const { hiddenRowKeys, hiddenCardKeys } = computeHiddenUnits();
+    const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys });
     if (!(await confirmExportGuards(html))) return;
     navigator.clipboard?.writeText(html).then(
       () => { toast("HTML을 클립보드에 복사했습니다"); log("HTML 복사 완료"); },
@@ -520,7 +613,8 @@ export function renderGenerator(root, params) {
   }
 
   async function downloadHtml() {
-    const html = assembleEdmHtml(draft.templateId, currentValues());
+    const { hiddenRowKeys, hiddenCardKeys } = computeHiddenUnits();
+    const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys });
     if (!(await confirmExportGuards(html))) return;
     const blob = new Blob([html], { type: "text/html" });
     const a = document.createElement("a");
@@ -540,6 +634,8 @@ function buildInitialDraft(templateId, existing) {
     purpose: t?.purpose || "온보딩",
     templateId,
     fieldValues: {},
+    hiddenSections: [],
+    hiddenFields: [],
     coupon: { value: "10%", max: "50,000", target: "전 상품 적용", note: "3만원 이상 구매 시", code: "KORWELCOME10", expiry: "2026.09.30" },
     seriesCodes: Array.from({ length: 15 }, () => ""),
     products: [],
