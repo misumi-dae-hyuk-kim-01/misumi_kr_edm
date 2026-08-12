@@ -4,21 +4,14 @@ import { navigate } from "../router.js";
 
 const statusBadge = {
   "초안": "gray",
-  "검토중": "amber",
   "완료": "green"
-};
-const categoryBadge = {
-  "비상품계": "blue",
-  "상품계": "purple",
-  "일반형": "gray",
-  "경제형": "amber"
 };
 const channelBadge = {
   "EDM": "blue",
   "LP": "purple"
 };
 
-let filters = { channel: "전체", category: "전체", status: "전체" };
+let filters = { channel: "전체", purpose: "전체", status: "전체" };
 let page = 1;
 const PAGE_SIZE = 10;
 
@@ -45,8 +38,8 @@ export function renderCampaigns(root) {
 
   const filterBar = el("div", { class: "filter-bar" }, [
     select(["전체", "EDM", "LP"], filters.channel, v => { filters.channel = v; page = 1; renderTable(); }),
-    select(["전체", "비상품계", "상품계", "일반형", "경제형"], filters.category, v => { filters.category = v; page = 1; renderTable(); }),
-    select(["전체", "초안", "검토중", "완료"], filters.status, v => { filters.status = v; page = 1; renderTable(); })
+    select(["전체", "온보딩", "육성", "이탈방지", "상품소개", "쿠폰", "내근영업"], filters.purpose, v => { filters.purpose = v; page = 1; renderTable(); }),
+    select(["전체", "초안", "완료"], filters.status, v => { filters.status = v; page = 1; renderTable(); })
   ]);
   root.appendChild(filterBar);
 
@@ -54,33 +47,30 @@ export function renderCampaigns(root) {
   root.appendChild(tableHost);
 
   function newCampaignDropdown() {
-    const menu = el("div", { class: "new-campaign-menu" }, [
-      el("button", { class: "new-campaign-menu-item", onclick: () => navigate("generator", { type: "non-product" }) }, "📧 EDM 캠페인 만들기"),
-      el("button", { class: "new-campaign-menu-item", onclick: () => navigate("generator-lp", {}) }, "🌐 LP 캠페인 만들기")
+    const menu = el("div", { class: "export-menu", style: "display:none;position:absolute;top:100%;right:0;margin-top:4px;" }, [
+      el("button", { class: "export-menu-item", onclick: () => navigate("generator", { template: "edm-no01-onboarding" }) }, "📧 EDM 캠페인 만들기"),
+      el("button", { class: "export-menu-item", onclick: () => navigate("generator-lp", {}) }, "🌐 LP 캠페인 만들기")
     ]);
-    const wrap = el("div", { class: "new-campaign-wrap" }, [
+    const wrap = el("div", { style: "position:relative;" }, [
       el("button", {
         class: "btn primary",
-        onclick: () => menu.classList.toggle("open")
+        onclick: () => { menu.style.display = menu.style.display === "none" ? "block" : "none"; }
       }, "+ 새 캠페인 ▾"),
       menu
     ]);
-    document.addEventListener("click", e => {
-      if (!wrap.contains(e.target)) menu.classList.remove("open");
-    });
     return wrap;
   }
 
   function editRoute(c) {
     if (c.channel === "LP") return navigate("generator-lp", { id: c.id });
-    return navigate("generator", { type: c.category === "상품계" ? "product" : "non-product", id: c.id });
+    return navigate("generator", { id: c.id });
   }
 
   function renderTable() {
     tableHost.innerHTML = "";
     let rows = store.campaigns;
     if (filters.channel !== "전체") rows = rows.filter(c => (c.channel || "EDM") === filters.channel);
-    if (filters.category !== "전체") rows = rows.filter(c => c.category === filters.category);
+    if (filters.purpose !== "전체") rows = rows.filter(c => c.purpose === filters.purpose);
     if (filters.status !== "전체") rows = rows.filter(c => c.status === filters.status);
 
     if (rows.length === 0) {
@@ -106,7 +96,7 @@ export function renderCampaigns(root) {
 
     const table = el("table", { class: "tbl" }, [
       el("thead", {}, el("tr", {}, [
-        "캠페인명", "채널", "구분", "유형", "상태", "생성일", "액션"
+        "캠페인명", "채널", "목적", "상태", "생성일", "액션"
       ].map(h => el("th", {}, h)))),
       el("tbody", {}, pageRows.map(c => el("tr", {}, [
         el("td", { class: "cell-name" }, [
@@ -116,9 +106,11 @@ export function renderCampaigns(root) {
             : null
         ]),
         el("td", {}, el("span", { class: "badge " + (channelBadge[c.channel || "EDM"] || "gray") }, c.channel || "EDM")),
-        el("td", {}, el("span", { class: "badge " + (categoryBadge[c.category] || "gray") }, c.category)),
-        el("td", {}, c.type),
-        el("td", {}, c.status ? el("span", { class: "badge " + (statusBadge[c.status] || "gray") }, c.status) : "-"),
+        el("td", { style: "color:#666;" }, c.purpose || "-"),
+        el("td", {}, el("select", {
+          class: "badge-select " + (statusBadge[c.status] || "gray"),
+          onchange: e => { store.upsertCampaign({ ...c, status: e.target.value }); toast(`상태를 "${e.target.value}"로 변경했습니다`); renderTable(); }
+        }, ["초안", "완료"].map(s => el("option", { value: s, ...(c.status === s ? { selected: "selected" } : {}) }, s)))),
         el("td", {}, c.createdAt),
         el("td", {}, el("div", { class: "row-actions" }, [
           el("button", { class: "btn btn-sm", onclick: () => editRoute(c) }, "편집"),

@@ -1,5 +1,10 @@
 /* ---------- 생성기 화면 레이아웃 (02 비상품계 / 03 상품계 공용) ---------- */
+/* ⚠️ 생성기(.gen-app)는 자체적으로 좌우 2단 각각 스크롤을 관리하는데, 공용 래퍼 #content도
+   자기만의 패딩(26px 32px)+스크롤(max-height:100vh)을 갖고 있어서 이중으로 겹쳐 스크롤이
+   4개(좌우 각 2개)로 보이는 문제가 있었습니다. .gen-app을 담고 있을 때만 래퍼의 패딩/스크롤을
+   풀어서 생성기 자체 레이아웃이 화면 전체를 그대로 쓰게 합니다. */
 .gen-app{display:grid;grid-template-columns:480px 1fr;min-height:100vh;}
+.content:has(.gen-app){padding:0;overflow:hidden;max-height:100vh;}
 .gen-form-area{background:#fff;border-right:1px solid #e0e0e0;display:flex;flex-direction:column;max-height:100vh;}
 .gen-topbar{padding:14px 22px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:10px;flex-shrink:0;}
 .gen-back{font-size:12px;color:#888;}
@@ -46,6 +51,8 @@
 .req-tag{color:#cc0000; font-weight:400;}
 .use-toggle{display:flex; align-items:center; gap:5px; font-size:10.5px; color:#555; font-weight:400; cursor:pointer;}
 .use-toggle input{width:14px; height:14px; cursor:pointer;}
+.form-group-header{font-size:10.5px;font-weight:700;color:#999;letter-spacing:0.02em;margin:16px 0 8px;padding-left:2px;border-top:1px solid #e0e0e0;padding-top:16px;}
+.form-group-header:first-child{border-top:none;margin-top:0;padding-top:0;}
 .field{margin-bottom:10px;}
 .field:last-child{margin-bottom:0;}
 .field label{display:block;font-size:11px;font-weight:700;color:#555;margin-bottom:4px;}

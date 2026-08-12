@@ -4,19 +4,16 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>미스미 코리아 EDM 자동화 시스템</title>
-<link rel="stylesheet" href="css/app.css"/>
-<link rel="stylesheet" href="css/generator.css"/>
+<link rel="stylesheet" href="css/app.css?v=3"/>
+<link rel="stylesheet" href="css/generator.css?v=3"/>
 </head>
 <body>
 <div class="shell" id="shell">
 
   <nav class="sidebar" id="sidebar">
     <div class="sb-logo">
-      <div class="sb-logo-mark">M</div>
-      <div>
-        <div class="sb-logo-title">EDM 자동화</div>
-        <div class="sb-logo-sub">RISE PJ · Phase 1</div>
-      </div>
+      <img src="assets/misumi-logo.png" alt="MISUMI" class="sb-logo-img">
+      <div class="sb-logo-title">콘텐츠 생성 시스템</div>
     </div>
     <div class="sb-nav">
       <a href="#/campaigns" class="sb-item" data-route="campaigns">
@@ -33,7 +30,7 @@
       <div class="sb-new-wrap">
         <button class="sb-new-btn" id="sb-new-btn" type="button">+ 새 캠페인 ▾</button>
         <div class="sb-new-menu" id="sb-new-menu">
-          <a href="#/generator?type=non-product">📧 EDM 캠페인 만들기</a>
+          <a href="#/generator?template=edm-no01-onboarding">📧 EDM 캠페인 만들기</a>
           <a href="#/generator-lp">🌐 LP 캠페인 만들기</a>
         </div>
       </div>
@@ -44,6 +41,6 @@
 
 </div>
 
-<script type="module" src="js/app.js"></script>
+<script type="module" src="js/app.js?v=3"></script>
 </body>
 </html>

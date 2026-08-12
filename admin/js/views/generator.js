@@ -16,7 +16,7 @@ const PURPOSES = ["온보딩", "육성", "이탈방지", "상품소개", "쿠폰
 
 export function renderGenerator(root, params) {
   const editId = params.get("id");
-  const existing = editId ? store.getCampaign(editId) : null;
+  let existing = editId ? store.getCampaign(editId) : null;
   const initialTemplateId = existing?.draftData?.templateId || params.get("template") || Object.keys(EDM_TEMPLATE_FIELDS)[0];
 
   const draft = buildInitialDraft(initialTemplateId, existing);
@@ -150,16 +150,29 @@ export function renderGenerator(root, params) {
   function isOptionalField(f) {
     return f.key.startsWith("sub_") || f.key.startsWith("desc_") || f.key === "copy_sub" || f.key === "copy_sub_strong";
   }
-  // 필드 키의 숫자 접미사(_N)로 "섹션 N" 소속을 판단. cta_*는 CTA로, 나머지는 히어로로.
-  function fieldGroupOf(key) {
-    if (key.startsWith("cta_")) return "CTA";
-    const m = key.match(/_(\d+)$/);
-    if (m) return `섹션 ${m[1]}`;
-    return "히어로";
-  }
-  function sectionNumberOf(key) {
-    const m = key.match(/_(\d+)$/);
-    return m ? parseInt(m[1], 10) : null;
+  // ⚠️ 그룹화 기준 전환: 처음엔 "필드 키의 숫자 접미사(_N)가 같으면 같은 섹션"으로 묶었는데,
+  // NO.1처럼 "섹션 제목 1" 아래 이미지/카피가 1,2,3으로 3개 있고, 그 다음 "섹션 제목 2" 아래도
+  // 다시 1,2,3,4로 번호가 재사용되는 템플릿에서는 완전히 틀리게 묶였습니다(이미지2,3이 엉뚱한
+  // 섹션으로 흩어짐, 섹션 삭제가 일부만 지워짐). 대신 "문서 순서상 어떤 섹션 제목(c_headline_N)
+  // 뒤에 나오는가"를 기준으로 묶습니다 — 섹션 제목이 나오면 새 그룹 시작, 다음 섹션 제목 전까지
+  // 나오는 모든 필드(번호가 몇이든)가 그 그룹에 속합니다.
+  function groupFieldsBySection(fields) {
+    const groups = [{ name: "히어로", fields: [] }];
+    let ctaGroup = null;
+    for (const f of fields) {
+      if (f.key.startsWith("cta_")) {
+        if (!ctaGroup) { ctaGroup = { name: "CTA", fields: [] }; groups.push(ctaGroup); }
+        ctaGroup.fields.push(f);
+        continue;
+      }
+      const headingMatch = f.key.match(/^c_headline_(\d+)$/);
+      if (headingMatch) {
+        groups.push({ name: `섹션 ${headingMatch[1]}`, sectionNum: parseInt(headingMatch[1], 10), fields: [f] });
+        continue;
+      }
+      groups[groups.length - 1].fields.push(f);
+    }
+    return groups.filter(g => g.fields.length);
   }
 
   function currentValues() {
@@ -203,27 +216,36 @@ export function renderGenerator(root, params) {
   }
 
   /** 삭제된 섹션/필드(hiddenRowKeys)와, 시리즈 코드 입력 개수를 넘는 상품 슬롯(hiddenCardKeys)을
-   *  계산합니다. blocks.js가 이 목록을 받아서 해당 영역을 미리보기에서 통째로 제외합니다. */
+   *  계산합니다. blocks.js가 이 목록을 받아서 해당 영역을 미리보기에서 통째로 제외합니다.
+   *  ⚠️ "이 필드가 어느 섹션에 속하는가"는 필드 자신의 번호가 아니라, groupFieldsBySection()과
+   *  똑같은 기준(문서 순서상 바로 앞의 c_headline_N)으로 판단해야 폼에서 보이는 그룹과
+   *  실제로 숨겨지는 범위가 일치합니다 — 번호가 재사용되는 템플릿(NO.1 등)에서 특히 중요합니다. */
   function computeHiddenUnits() {
     const t = resolveTemplate();
     if (!t) return { hiddenRowKeys: [], hiddenCardKeys: [] };
     const hiddenRowKeys = [];
     const hiddenCardKeys = [];
 
+    const nonProductFields = t.fields.filter(f => f.type !== "coupon-field" && f.type !== "product-field");
+    const groups = groupFieldsBySection(nonProductFields);
+    const sectionNumByKey = {};
+    for (const g of groups) {
+      if (g.sectionNum === undefined) continue;
+      for (const f of g.fields) sectionNumByKey[f.key] = g.sectionNum;
+    }
+
     for (const f of t.fields) {
       if (f.type === "coupon-field") continue;
-      const secNum = sectionNumberOf(f.key);
-      const sectionDeleted = secNum !== null && draft.hiddenSections.includes(secNum);
+      const secNum = sectionNumByKey[f.key];
+      const sectionDeleted = secNum !== undefined && draft.hiddenSections.includes(secNum);
       const fieldDeleted = draft.hiddenFields.includes(f.key);
       if (f.type === "product-field") {
-        // 상품카드는 "카드 경계" 삭제 대상이라 seriesName_N 하나만 마커로 씀 (그 카드 전체가 지워짐)
         if (f.key.startsWith("seriesName_") && (sectionDeleted || fieldDeleted)) hiddenCardKeys.push(f.key);
         continue;
       }
       if (sectionDeleted || fieldDeleted) hiddenRowKeys.push(f.key);
     }
 
-    // 상품 그리드: 시리즈 코드 조회 결과 개수(draft.products.length)를 넘는 슬롯은 자동 숨김
     if (templateHasFieldType("product-field")) {
       const maxSlots = t.fields.filter(f => f.key.startsWith("seriesName_")).length;
       for (let n = draft.products.length + 1; n <= maxSlots; n++) {
@@ -233,19 +255,42 @@ export function renderGenerator(root, params) {
     return { hiddenRowKeys, hiddenCardKeys };
   }
 
+  function groupHeader(label) {
+    return el("div", { class: "form-group-header" }, label);
+  }
+
   function renderForm() {
     formBody.innerHTML = "";
     const subtitle = root.querySelector("#gen-form-subtitle");
     const t = resolveTemplate();
     if (subtitle) subtitle.textContent = t ? `${t.purpose} · ${t.name}` : "";
 
+    // 캠페인 설정: 한 번 정하면 되는 값들 (이 캠페인이 "뭔지" 정의)
+    formBody.appendChild(groupHeader("캠페인 설정"));
+    formBody.appendChild(sectionCampaignName());
     formBody.appendChild(sectionPromotionLink());
     formBody.appendChild(sectionPurposeAndTemplate());
+    formBody.appendChild(sectionOffer());
+
+    // 이메일 콘텐츠: 실제로 이메일 본문에 들어가는 것들. AI 프롬프트는 "설정값"이 아니라
+    // 카피/이미지를 만들어내는 콘텐츠 제작 보조 도구라 여기 속합니다.
+    formBody.appendChild(groupHeader("이메일 콘텐츠"));
     if (templateHasFieldType("product-field")) formBody.appendChild(sectionSeriesCodes());
     if (templateHasFieldType("coupon-field")) formBody.appendChild(sectionCoupon());
     formBody.appendChild(sectionAiPrompt());
     formBody.appendChild(sectionDynamicFields());
-    formBody.appendChild(sectionOffer());
+  }
+
+  function sectionCampaignName() {
+    return el("div", { class: "field", style: "margin-bottom:14px;" }, [
+      el("label", {}, ["캠페인명 ", el("span", { class: "req-tag" }, "· 필수")]),
+      el("input", {
+        type: "text", value: draft.campaignName || "",
+        placeholder: "예: 7월 웰컴 쿠폰 안내",
+        oninput: e => { draft.campaignName = e.target.value; }
+      }),
+      el("p", { class: "hint" }, "캠페인 목록에서 이 이름으로 표시됩니다.")
+    ]);
   }
 
   function sectionPromotionLink() {
@@ -263,7 +308,7 @@ export function renderGenerator(root, params) {
   function sectionPurposeAndTemplate() {
     const t = resolveTemplate();
     const templatesForPurpose = Object.entries(EDM_TEMPLATE_FIELDS).filter(([, info]) => info.purpose === draft.purpose);
-    return sectionWrap("①", "캠페인 목적 · 템플릿", "high", [
+    return sectionWrap(null, "캠페인 목적 · 템플릿", "high", [
       el("div", { class: "seg-tabs" }, PURPOSES.map(p =>
         el("div", {
           class: "seg-tab" + (draft.purpose === p ? " active" : ""),
@@ -302,7 +347,7 @@ export function renderGenerator(root, params) {
   }
 
   function sectionAiPrompt() {
-    return sectionWrap("②", "AI 프롬프트", "ai", [
+    return sectionWrap(null, "AI 프롬프트", "ai", [
       el("div", { class: "field" }, [
         el("label", {}, "AI에게 요청할 내용 (선택 · 카피와 이미지 선택 양쪽에 함께 반영됩니다)"),
         el("textarea", {
@@ -341,24 +386,15 @@ export function renderGenerator(root, params) {
     const t = resolveTemplate();
     if (!t) return el("div");
     const visibleFields = t.fields.filter(f => f.type !== "coupon-field" && f.type !== "product-field" && f.key !== "preheader");
-
-    // 순서를 유지하면서 히어로/섹션N/CTA로 묶기
-    const groups = [];
-    const groupIndex = {};
-    for (const f of visibleFields) {
-      const g = fieldGroupOf(f.key);
-      if (!(g in groupIndex)) { groupIndex[g] = groups.length; groups.push({ name: g, fields: [] }); }
-      groups[groupIndex[g]].fields.push(f);
-    }
+    const groups = groupFieldsBySection(visibleFields);
 
     return el("div", {}, groups.map((g, idx) => {
-      const secNum = g.name.startsWith("섹션 ") ? parseInt(g.name.slice(3), 10) : null;
-      const isDeleted = secNum !== null && draft.hiddenSections.includes(secNum);
-      return sectionWrap(`③-${idx + 1}`, g.name, "high", [
-        secNum !== null ? el("div", { class: "sec-group-actions" }, [
+      const isDeleted = g.sectionNum !== undefined && draft.hiddenSections.includes(g.sectionNum);
+      return sectionWrap(null, g.name, "high", [
+        g.sectionNum !== undefined ? el("div", { class: "sec-group-actions" }, [
           isDeleted
-            ? el("button", { class: "btn btn-sm", onclick: () => { draft.hiddenSections = draft.hiddenSections.filter(n => n !== secNum); renderForm(); renderPreview(); } }, "↩ 복원")
-            : el("button", { class: "btn btn-sm danger", onclick: () => { draft.hiddenSections = [...draft.hiddenSections, secNum]; renderForm(); renderPreview(); } }, "🗑 이 섹션 삭제")
+            ? el("button", { class: "btn btn-sm", onclick: () => { draft.hiddenSections = draft.hiddenSections.filter(n => n !== g.sectionNum); renderForm(); renderPreview(); } }, "↩ 복원")
+            : el("button", { class: "btn btn-sm danger", onclick: () => { draft.hiddenSections = [...draft.hiddenSections, g.sectionNum]; renderForm(); renderPreview(); } }, "🗑 이 섹션 삭제")
         ]) : null,
         isDeleted
           ? el("p", { class: "hint" }, "이 섹션은 미리보기에서 제외됩니다.")
@@ -410,7 +446,7 @@ export function renderGenerator(root, params) {
 
   function sectionCoupon() {
     const c = draft.coupon;
-    return sectionWrap("④", "쿠폰 정보", "high", [
+    return sectionWrap(null, "쿠폰 정보", "high", [
       el("div", { class: "row2" }, [
         field("할인율/금액", c.value, v => { c.value = v; schedulePreview(); }),
         field("최대 할인 금액", c.max, v => { c.max = v; schedulePreview(); })
@@ -438,7 +474,7 @@ export function renderGenerator(root, params) {
         code ? el("button", { class: "rm", onclick: () => { slots[i] = ""; renderForm(); } }, "✕") : null
       ])
     ));
-    return sectionWrap("★", "시리즈 코드 입력 (최대 15개, 3×5)", "high", [
+    return sectionWrap(null, "시리즈 코드 입력 (최대 15개, 3×5)", "high", [
       grid,
       el("button", { class: "btn series-lookup-btn", onclick: lookupSeriesCodes }, "전체 조회 (상품 데이터 자동 불러오기)"),
       el("p", { class: "hint" }, "조회된 상품 데이터는 오른쪽 미리보기의 상품 그리드에 바로 반영됩니다.")
@@ -468,7 +504,7 @@ export function renderGenerator(root, params) {
   }
 
   function sectionOffer() {
-    return sectionWrap("⑤", "오퍼번호", "high", [
+    return sectionWrap(null, "오퍼번호", "high", [
       el("div", { class: "field" }, [
         el("input", {
           type: "text", value: draft.offerNo, placeholder: "예: OFFER2026070",
@@ -492,7 +528,7 @@ export function renderGenerator(root, params) {
     return el("div", { class: "sec" + (extraClass ? " " + extraClass : "") }, [
       el("div", { class: "sec-hd" }, [
         el("div", { class: "sec-hd-left" }, [
-          el("span", { class: "sec-badge" + (kind === "ai" ? " ai" : "") }, badge),
+          badge ? el("span", { class: "sec-badge" + (kind === "ai" ? " ai" : "") }, badge) : null,
           el("span", { class: "sec-title" }, title)
         ])
       ]),
@@ -567,22 +603,33 @@ export function renderGenerator(root, params) {
       `정상 ${summary.ok}건 · 깨짐 ${summary.broken}건 · 확인불가(CORS) ${summary.unknown}건`));
   }
 
-  function draftToCampaign() {
+  function draftToCampaign(statusOverride) {
     const t = resolveTemplate();
     return {
       id: draft.id,
-      name: (draft.fieldValues.copy_headline || draft.fieldValues.main_1 || t?.name || "EDM 캠페인").slice(0, 24),
+      name: (draft.campaignName || "").trim() || "(캠페인명 미입력)",
       channel: "EDM",
       purpose: t?.purpose || "",
-      templateName: t?.name || "",
+      templateName: t?.name || "", // 목록엔 안 보이지만, 다른 용도로 쓸 수 있어 데이터는 유지
+      status: statusOverride || existing?.status || "초안",
       createdAt: existing ? existing.createdAt : new Date().toISOString().slice(0, 10).replace(/-/g, "."),
       promotionName: draft.promotionName || "",
       draftData: { ...draft }
     };
   }
 
+  function persistCampaign(statusOverride) {
+    const campaign = draftToCampaign(statusOverride);
+    store.upsertCampaign(campaign);
+    existing = campaign; // ⚠️ existing이 최초 진입 시점 값으로 고정돼 있으면, 내보내기로 "완료"
+    // 상태를 저장한 뒤 다시 임시저장할 때 draftToCampaign()이 옛 existing.status(초안 등)를
+    // 참조해서 "완료"가 "초안"으로 되돌아가는 버그가 생깁니다. 매번 저장할 때마다 최신값으로
+    // 갱신해서 이 문제를 막습니다.
+    return campaign;
+  }
+
   function saveDraft() {
-    store.upsertCampaign(draftToCampaign());
+    persistCampaign();
     toast("임시저장했습니다");
     log("임시저장 완료");
   }
@@ -607,7 +654,11 @@ export function renderGenerator(root, params) {
     const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys });
     if (!(await confirmExportGuards(html))) return;
     navigator.clipboard?.writeText(html).then(
-      () => { toast("HTML을 클립보드에 복사했습니다"); log("HTML 복사 완료"); },
+      () => {
+        persistCampaign("완료");
+        toast("HTML을 클립보드에 복사했습니다"); log("HTML 복사 완료 · 상태: 완료");
+        renderForm();
+      },
       () => toast("복사에 실패했습니다")
     );
   }
@@ -621,7 +672,9 @@ export function renderGenerator(root, params) {
     a.href = URL.createObjectURL(blob);
     a.download = (draft.fieldValues.copy_headline || "edm") + ".html";
     a.click();
-    log("HTML 다운로드 완료");
+    persistCampaign("완료");
+    log("HTML 다운로드 완료 · 상태: 완료");
+    renderForm();
   }
 }
 
@@ -629,6 +682,7 @@ function buildInitialDraft(templateId, existing) {
   const t = EDM_TEMPLATE_FIELDS[templateId];
   const base = {
     id: existing?.id || "c" + Date.now(),
+    campaignName: "",
     promotionName: "",
     aiPrompt: "",
     purpose: t?.purpose || "온보딩",
@@ -643,7 +697,10 @@ function buildInitialDraft(templateId, existing) {
     generating: false
   };
   if (existing?.draftData) {
-    return { ...base, ...existing.draftData, id: base.id };
+    return { ...base, ...existing.draftData, id: base.id, campaignName: existing.draftData.campaignName || existing.name || "" };
+  }
+  if (existing?.name) {
+    return { ...base, campaignName: existing.name };
   }
   return base;
 }
