@@ -451,7 +451,7 @@ export function renderGenerator(root, params) {
 
     const labelRow = optional
       ? el("label", { class: "field-label-row" }, [
-          f.label, el("span", { class: "opt-tag" }, " · 선택"),
+          el("span", {}, [f.label, el("span", { class: "opt-tag" }, " · 선택")]),
           toggleSwitch(!fieldDisabled, on => {
             if (on) draft.hiddenFields = draft.hiddenFields.filter(k => k !== f.key);
             else draft.hiddenFields = [...draft.hiddenFields, f.key];

@@ -89,14 +89,80 @@ function findMatchingClose(html, start, tokenRe) {
  *  제거합니다. 일반 치환보다 먼저 실행해야 {{변수명}}이 아직 살아있어서 위치를 찾을 수 있습니다. */
 function stripHiddenUnits(html, hiddenRowKeys = [], hiddenCardKeys = []) {
   let result = html;
+  const hiddenSet = new Set(hiddenRowKeys);
   for (const key of hiddenCardKeys) {
     result = removeEnclosingTag(result, `{{${key}}}`, "td", true);
   }
+  const blankOnly = [];
   for (const key of hiddenRowKeys) {
+    // ⚠️ copy_sub/copy_sub_strong처럼 <br/> 하나로만 나뉘어 같은 <td> 안에 같이 있는
+    // 필드가 있습니다. 이런 경우 행을 통째로 지우면 옆에 있는(숨기려 하지 않은) 필드까지
+    // 같이 사라집니다. 지우기 전에 "이 행 안에 다른 살려야 할 변수가 있는지" 먼저
+    // 확인하고, 있으면 행 삭제를 포기하고 이 값만 빈 문자열로 대체합니다.
+    if (rowContainsOtherLiveField(result, key, hiddenSet)) {
+      blankOnly.push(key);
+      // ⚠️ 값만 비우면 원래 있던 {{key}}<br/> 의 <br/>이 그대로 남아서 빈 줄이 생깁니다.
+      // {{key}} 바로 앞이나 뒤에 붙어있는 <br/>을 같이 제거해서 빈 줄 없이 자연스럽게
+      // 다음 줄로 이어지게 합니다.
+      result = removeAdjacentBr(result, key);
+      continue;
+    }
     const isHeading = key.startsWith("c_headline");
     result = removeEnclosingTag(result, `{{${key}}}`, "tr", false, isHeading);
   }
-  return result;
+  return { html: result, blankOnly };
+}
+
+/** {{key}} 바로 앞 또는 뒤에 공백 없이 붙어있는 <br/> 하나를 제거합니다(값을 비운 자리에
+ *  줄바꿈만 남아 빈 줄처럼 보이는 것을 방지). */
+function removeAdjacentBr(html, key) {
+  const marker = `{{${key}}}`;
+  const brRe = /<br\s*\/?>/i;
+  // 뒤에 붙은 경우: {{key}}<br/>
+  const afterIdx = html.indexOf(marker);
+  if (afterIdx !== -1) {
+    const after = html.slice(afterIdx + marker.length);
+    const m = after.match(brRe);
+    if (m && m.index === 0) {
+      return html.slice(0, afterIdx + marker.length) + after.slice(m[0].length);
+    }
+  }
+  // 앞에 붙은 경우: <br/>{{key}}
+  const idx = html.indexOf(marker);
+  if (idx !== -1) {
+    const before = html.slice(0, idx);
+    const m = before.match(new RegExp(brRe.source + "$", "i"));
+    if (m) {
+      return html.slice(0, idx - m[0].length) + html.slice(idx);
+    }
+  }
+  return html;
+}
+
+/** key의 {{}}를 감싸는 <tr>을 실제로 찾아서, 그 안에 hiddenSet에 없는(=살려야 하는)
+ *  다른 {{다른변수}}가 있는지 확인합니다. */
+function rowContainsOtherLiveField(html, key, hiddenSet) {
+  const marker = `{{${key}}}`;
+  const markerIdx = html.indexOf(marker);
+  if (markerIdx === -1) return false;
+
+  const openTagFullRe = /<tr(?=[\s>])[^>]*>/gi;
+  let opens = [];
+  let om;
+  while ((om = openTagFullRe.exec(html)) && om.index < markerIdx) opens.push(om.index);
+  if (!opens.length) return false;
+
+  const tokenRe = /<tr(?=[\s>])[^>]*>|<\/tr>/gi;
+  for (let k = opens.length - 1; k >= 0; k--) {
+    const start = opens[k];
+    const end = findMatchingClose(html, start, tokenRe);
+    if (end !== -1 && end > markerIdx) {
+      const rowContent = html.slice(start, end);
+      const otherVars = [...rowContent.matchAll(/\{\{([a-zA-Z_0-9]+)\}\}/g)].map(m => m[1]);
+      return otherVars.some(v => v !== key && !hiddenSet.has(v));
+    }
+  }
+  return false;
 }
 /** {{image_N}}<!-- 발송 시 교체: <img .../> --> 패턴을 실제 <img> 태그로 교체(값 있을 때)
  *  ⚠️ 이미지가 클릭 가능한 링크(<a>)로 감싸인 템플릿(NO.11 링크그리드, NO.15 상품그리드)은
@@ -142,8 +208,14 @@ export function assembleEdmHtml(templateId, values = {}, options = {}) {
   if (!raw) {
     return `<p style="font-family:sans-serif;color:#c62828;">템플릿을 찾을 수 없습니다: ${esc(templateId)}</p>`;
   }
-  let html = stripHiddenUnits(raw, options.hiddenRowKeys, options.hiddenCardKeys);
-  html = substituteImages(html, values);
-  html = substituteRest(html, values);
+  const stripped = stripHiddenUnits(raw, options.hiddenRowKeys, options.hiddenCardKeys);
+  let html = stripped.html;
+  // 행 전체 삭제가 아니라 값만 비우는 쪽으로 전환된 필드(같은 줄에 다른 살아있는 필드가
+  // 있던 경우)는, values에 남아있을 수 있는 원래 텍스트나 [라벨] 안내문구를 덮어써서
+  // 확실히 빈 값으로 만듭니다.
+  const finalValues = { ...values };
+  for (const key of stripped.blankOnly) finalValues[key] = "";
+  html = substituteImages(html, finalValues);
+  html = substituteRest(html, finalValues);
   return html;
 }
