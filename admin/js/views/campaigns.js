@@ -1,4 +1,4 @@
-import { store, resetDemoData } from "../state.js";
+import { store } from "../state.js";
 import { el, toast } from "../lib/dom.js";
 import { navigate } from "../router.js";
 
@@ -23,15 +23,7 @@ export function renderCampaigns(root) {
         el("p", {}, "메인 대시보드 · 전체 캠페인 조회 · 편집 · 복제 · 삭제")
       ]),
       el("div", { class: "page-actions" }, [
-        newCampaignDropdown(),
-        el("button", {
-          class: "btn ghost",
-          title: "템플릿 목록이 최신 코드와 다르게 보이거나 캠페인 화면이 이상할 때 사용하세요. 저장된 캠페인/에셋은 초기 데모 값으로 리셋되고, 템플릿은 항상 최신 코드 기준이라 영향 없습니다.",
-          onclick: () => {
-            if (!confirm("데모 데이터를 초기화할까요? 지금까지 만든 캠페인/업로드한 에셋이 초기값으로 리셋됩니다.")) return;
-            resetDemoData();
-          }
-        }, "⟲ 데모 데이터 초기화")
+        newCampaignDropdown()
       ])
     ])
   );
@@ -47,11 +39,11 @@ export function renderCampaigns(root) {
   root.appendChild(tableHost);
 
   function newCampaignDropdown() {
-    const menu = el("div", { class: "export-menu", style: "display:none;position:absolute;top:100%;right:0;margin-top:4px;" }, [
-      el("button", { class: "export-menu-item", onclick: () => navigate("generator", { template: "edm-no01-onboarding" }) }, "📧 EDM 캠페인 만들기"),
-      el("button", { class: "export-menu-item", onclick: () => navigate("generator-lp", {}) }, "🌐 LP 캠페인 만들기")
+    const menu = el("div", { class: "new-campaign-menu", style: "display:none;" }, [
+      el("button", { class: "new-campaign-menu-item", onclick: () => navigate("generator", { purpose: "온보딩" }) }, "📧 EDM 캠페인 만들기"),
+      el("button", { class: "new-campaign-menu-item", onclick: () => navigate("generator-lp", {}) }, "🌐 LP 캠페인 만들기")
     ]);
-    const wrap = el("div", { style: "position:relative;" }, [
+    const wrap = el("div", { class: "new-campaign-wrap" }, [
       el("button", {
         class: "btn primary",
         onclick: () => { menu.style.display = menu.style.display === "none" ? "block" : "none"; }

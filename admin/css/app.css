@@ -16,10 +16,8 @@ button{font-family:inherit;}
   background:#0F218B;color:#fff;display:flex;flex-direction:column;
   padding:18px 14px;
 }
-.sb-logo{display:flex;align-items:center;gap:10px;padding:10px 6px 20px;border-bottom:1px solid rgba(255,255,255,.15);margin-bottom:14px;}
-.sb-logo-img{height:26px;width:auto;flex-shrink:0;}
-.sb-logo-title{font-size:13px;font-weight:700;}
-.sb-logo-sub{font-size:10px;color:rgba(255,255,255,.6);margin-top:1px;}
+.sb-logo{display:flex;align-items:center;padding:14px 6px 20px;border-bottom:1px solid rgba(255,255,255,.15);margin-bottom:14px;}
+.sb-logo-img{height:34px;width:auto;flex-shrink:0;}
 .sb-nav{display:flex;flex-direction:column;gap:3px;flex:1;}
 .sb-item{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:8px;font-size:13px;font-weight:500;color:rgba(255,255,255,.8);}
 .sb-item .sb-ico{width:16px;text-align:center;font-size:13px;}
@@ -173,6 +171,24 @@ table.tbl-assets td:nth-child(8){width:16%;}
 .modal-close{position:absolute;top:16px;right:16px;cursor:pointer;font-size:16px;color:#999;background:none;border:none;}
 
 /* ---------- Toast ---------- */
+/* ---------- 새 캠페인 드롭다운 (캠페인 목록 페이지 헤더) ----------
+   ⚠️ 이 SPA는 index.html 하나에서 app.css/generator.css를 항상 같이 로드합니다.
+   generator.css의 .export-menu는 위쪽으로 펼치는 position:absolute;bottom:...을
+   갖고 있어서, 같은 클래스명을 여기서 또 쓰면 이 화면의 인라인 top:100%와 겹쳐
+   top+bottom이 동시에 걸리는 충돌이 생깁니다. 그래서 클래스명 자체를 완전히
+   분리했습니다(new-campaign-*). */
+.new-campaign-wrap{position:relative;display:inline-block;}
+.new-campaign-menu{
+  position:absolute;top:100%;right:0;margin-top:4px;background:#fff;border:1px solid #e0e0e0;
+  border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);overflow:hidden;z-index:20;min-width:180px;
+}
+.new-campaign-menu-item{
+  display:block;width:100%;text-align:left;padding:10px 14px;font-size:12.5px;background:#fff;border:none;
+  border-bottom:1px solid #f0f0f0;cursor:pointer;color:#333;
+}
+.new-campaign-menu-item:last-child{border-bottom:none;}
+.new-campaign-menu-item:hover{background:#f5f5f5;}
+
 .toast{
   position:fixed;bottom:22px;right:22px;background:#1a1a1a;color:#fff;padding:11px 16px;border-radius:8px;
   font-size:12.5px;box-shadow:0 4px 16px rgba(0,0,0,.2);z-index:100;opacity:0;transform:translateY(8px);

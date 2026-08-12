@@ -17,7 +17,11 @@ const PURPOSES = ["온보딩", "육성", "이탈방지", "상품소개", "쿠폰
 export function renderGenerator(root, params) {
   const editId = params.get("id");
   let existing = editId ? store.getCampaign(editId) : null;
-  const initialTemplateId = existing?.draftData?.templateId || params.get("template") || Object.keys(EDM_TEMPLATE_FIELDS)[0];
+  const purposeParam = params.get("purpose");
+  const firstTemplateOfPurpose = purposeParam
+    ? Object.entries(EDM_TEMPLATE_FIELDS).find(([, info]) => info.purpose === purposeParam)?.[0]
+    : null;
+  const initialTemplateId = existing?.draftData?.templateId || params.get("template") || firstTemplateOfPurpose || Object.keys(EDM_TEMPLATE_FIELDS)[0];
 
   const draft = buildInitialDraft(initialTemplateId, existing);
 
@@ -161,13 +165,13 @@ export function renderGenerator(root, params) {
     let ctaGroup = null;
     for (const f of fields) {
       if (f.key.startsWith("cta_")) {
-        if (!ctaGroup) { ctaGroup = { name: "CTA", fields: [] }; groups.push(ctaGroup); }
+        if (!ctaGroup) { ctaGroup = { name: "CTA", sectionKey: "CTA", fields: [] }; groups.push(ctaGroup); }
         ctaGroup.fields.push(f);
         continue;
       }
       const headingMatch = f.key.match(/^c_headline_(\d+)$/);
       if (headingMatch) {
-        groups.push({ name: `섹션 ${headingMatch[1]}`, sectionNum: parseInt(headingMatch[1], 10), fields: [f] });
+        groups.push({ name: `섹션 ${headingMatch[1]}`, sectionKey: parseInt(headingMatch[1], 10), fields: [f] });
         continue;
       }
       groups[groups.length - 1].fields.push(f);
@@ -203,13 +207,17 @@ export function renderGenerator(root, params) {
       }
     }
     for (const f of t.fields) {
-      if (["text", "textarea", "link", "button-label"].includes(f.type) && !values[f.key]) {
+      if (["text", "textarea", "button-label"].includes(f.type) && !values[f.key]) {
         values[f.key] = `[${f.label}]`;
       }
     }
+    // ⚠️ 링크는 다른 텍스트 필드와 다르게 처리합니다 — [링크 1] 같은 안내 문구를 href에
+    // 그대로 넣으면, hover 시 브라우저가 "127.0.0.1:5500/[링크 1]"처럼 실제 URL인 척하는
+    // 깨진 링크로 보여줘서 혼란스럽습니다. 빈 링크는 안전하게 href="#"만 넣고, "여기 링크가
+    // 비어있다"는 안내는 같이 붙는 버튼 문구([버튼 문구 1] 등)가 이미 보여주고 있어 충분합니다.
     for (const f of t.fields) {
-      if (f.type === "link" && values[f.key] && !values[f.key].startsWith("[")) {
-        values[f.key] = withUtm(values[f.key]);
+      if (f.type === "link") {
+        values[f.key] = values[f.key] ? withUtm(values[f.key]) : "#";
       }
     }
     return values;
@@ -228,16 +236,16 @@ export function renderGenerator(root, params) {
 
     const nonProductFields = t.fields.filter(f => f.type !== "coupon-field" && f.type !== "product-field");
     const groups = groupFieldsBySection(nonProductFields);
-    const sectionNumByKey = {};
+    const sectionKeyByField = {};
     for (const g of groups) {
-      if (g.sectionNum === undefined) continue;
-      for (const f of g.fields) sectionNumByKey[f.key] = g.sectionNum;
+      if (g.sectionKey === undefined) continue;
+      for (const f of g.fields) sectionKeyByField[f.key] = g.sectionKey;
     }
 
     for (const f of t.fields) {
       if (f.type === "coupon-field") continue;
-      const secNum = sectionNumByKey[f.key];
-      const sectionDeleted = secNum !== undefined && draft.hiddenSections.includes(secNum);
+      const secKey = sectionKeyByField[f.key];
+      const sectionDeleted = secKey !== undefined && draft.hiddenSections.includes(secKey);
       const fieldDeleted = draft.hiddenFields.includes(f.key);
       if (f.type === "product-field") {
         if (f.key.startsWith("seriesName_") && (sectionDeleted || fieldDeleted)) hiddenCardKeys.push(f.key);
@@ -342,6 +350,16 @@ export function renderGenerator(root, params) {
       if (oldFieldValues[f.key] !== undefined) nextValues[f.key] = oldFieldValues[f.key];
     }
     draft.fieldValues = nextValues;
+    // ⚠️ URL이 처음 들어왔을 때의 값에 계속 고정되어 있던 문제 때문에 template=edm-no06-nurture
+    // 처럼 내부 코드명을 URL에 그대로 반영했었는데, 이 "no06" 같은 내부 코드명이 주소창에
+    // 보이는 게 어색하다는 피드백을 받았습니다. 저장된 캠페인(id 있음)은 id만 있으면 어느
+    // 템플릿인지 draftData에서 복원 가능하니 id만 남기고, 새 캠페인(id 없음)은 내부 코드
+    // 대신 사람이 읽기 편한 "목적" 이름으로 표시합니다.
+    const t = EDM_TEMPLATE_FIELDS[newId];
+    const hash = editId
+      ? `#/generator?id=${encodeURIComponent(editId)}`
+      : `#/generator?purpose=${encodeURIComponent(t?.purpose || "온보딩")}`;
+    history.replaceState(null, "", hash);
     renderForm();
     renderPreview();
   }
@@ -396,13 +414,13 @@ export function renderGenerator(root, params) {
     const groups = groupFieldsBySection(visibleFields);
 
     return el("div", {}, groups.map((g, idx) => {
-      const isDeleted = g.sectionNum !== undefined && draft.hiddenSections.includes(g.sectionNum);
-      const headerExtra = g.sectionNum !== undefined
+      const isDeleted = g.sectionKey !== undefined && draft.hiddenSections.includes(g.sectionKey);
+      const headerExtra = g.sectionKey !== undefined
         ? el("div", { class: "sec-toggle-wrap" }, [
-            el("span", { class: "sec-toggle-label" }, "섹션 사용"),
+            el("span", { class: "sec-toggle-label" }, g.name === "CTA" ? "CTA 사용" : "섹션 사용"),
             toggleSwitch(!isDeleted, on => {
-              if (on) draft.hiddenSections = draft.hiddenSections.filter(n => n !== g.sectionNum);
-              else draft.hiddenSections = [...draft.hiddenSections, g.sectionNum];
+              if (on) draft.hiddenSections = draft.hiddenSections.filter(k => k !== g.sectionKey);
+              else draft.hiddenSections = [...draft.hiddenSections, g.sectionKey];
               renderForm(); renderPreview();
             })
           ])
