@@ -290,14 +290,24 @@ export function renderGenerator(root, params) {
   }
 
   function sectionCampaignName() {
-    return el("div", { class: "field", style: "margin-bottom:14px;" }, [
-      el("label", {}, ["캠페인명 ", el("span", { class: "req-tag" }, "· 필수")]),
-      el("input", {
-        type: "text", value: draft.campaignName || "",
-        placeholder: "예: 7월 웰컴 쿠폰 안내",
-        oninput: e => { draft.campaignName = e.target.value; }
-      }),
-      el("p", { class: "hint" }, "캠페인 목록에서 이 이름으로 표시됩니다.")
+    return el("div", {}, [
+      el("div", { class: "field", style: "margin-bottom:14px;" }, [
+        el("label", {}, ["캠페인명 ", el("span", { class: "req-tag" }, "· 필수")]),
+        el("input", {
+          type: "text", value: draft.campaignName || "",
+          placeholder: "예: 7월 웰컴 쿠폰 안내",
+          oninput: e => { draft.campaignName = e.target.value; }
+        }),
+        el("p", { class: "hint" }, "캠페인 목록에서 이 이름으로 표시됩니다.")
+      ]),
+      el("div", { class: "field", style: "margin-bottom:14px;" }, [
+        el("label", {}, ["작성자 ", el("span", { class: "req-tag" }, "· 필수")]),
+        el("input", {
+          type: "text", value: draft.author || "",
+          placeholder: "예: 홍길동",
+          oninput: e => { draft.author = e.target.value; }
+        })
+      ])
     ]);
   }
 
@@ -630,14 +640,17 @@ export function renderGenerator(root, params) {
 
   function draftToCampaign(statusOverride) {
     const t = resolveTemplate();
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, ".");
     return {
       id: draft.id,
       name: (draft.campaignName || "").trim() || "(캠페인명 미입력)",
+      author: (draft.author || "").trim() || "(작성자 미입력)",
       channel: "EDM",
       purpose: t?.purpose || "",
       templateName: t?.name || "", // 목록엔 안 보이지만, 다른 용도로 쓸 수 있어 데이터는 유지
       status: statusOverride || existing?.status || "초안",
-      createdAt: existing ? existing.createdAt : new Date().toISOString().slice(0, 10).replace(/-/g, "."),
+      createdAt: existing ? existing.createdAt : today, // 작성일: 최초 생성 시점, 이후 안 바뀜
+      updatedAt: today, // 최종 수정일: 저장/내보내기마다 갱신
       promotionName: draft.promotionName || "",
       draftData: { ...draft }
     };
@@ -708,6 +721,7 @@ function buildInitialDraft(templateId, existing) {
   const base = {
     id: existing?.id || "c" + Date.now(),
     campaignName: "",
+    author: "",
     promotionName: "",
     aiPrompt: "",
     purpose: t?.purpose || "온보딩",
@@ -722,10 +736,14 @@ function buildInitialDraft(templateId, existing) {
     generating: false
   };
   if (existing?.draftData) {
-    return { ...base, ...existing.draftData, id: base.id, campaignName: existing.draftData.campaignName || existing.name || "" };
+    return {
+      ...base, ...existing.draftData, id: base.id,
+      campaignName: existing.draftData.campaignName || existing.name || "",
+      author: existing.draftData.author || existing.author || ""
+    };
   }
   if (existing?.name) {
-    return { ...base, campaignName: existing.name };
+    return { ...base, campaignName: existing.name, author: existing.author || "" };
   }
   return base;
 }

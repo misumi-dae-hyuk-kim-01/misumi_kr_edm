@@ -6,43 +6,51 @@ import { EDM_TEMPLATE_FIELDS } from "./edmTemplateFields.js";
 export const seedCampaigns = () => [
   {
     id: "c1",
-    name: "KOR 웰컴 쿠폰 2026-07",
+    name: "7월 웰컴 쿠폰 안내",
+    author: "김민지",
     channel: "EDM",
-    category: "비상품계",
-    type: "쿠폰형",
-    segment: "신규",
-    status: "검토중",
-    createdAt: "2026.07.07"
+    purpose: "온보딩",
+    templateName: "미스미 이해도 업 1",
+    promotionName: "2026년 7월 경제형 프로모션",
+    status: "완료",
+    createdAt: "2026.07.07",
+    updatedAt: "2026.07.08"
   },
   {
     id: "c2",
     name: "이코노미 시리즈 소개",
+    author: "박준혁",
     channel: "EDM",
-    category: "상품계",
-    type: "상품 소개형",
-    segment: "-",
+    purpose: "상품소개",
+    templateName: "E품",
+    promotionName: "2026년 7월 경제형 프로모션",
     status: "완료",
-    createdAt: "2026.07.05"
+    createdAt: "2026.07.05",
+    updatedAt: "2026.07.05"
   },
   {
     id: "c3",
-    name: "THA 재참여 쿠폰",
+    name: "휴면고객 재참여 쿠폰",
+    author: "김민지",
     channel: "EDM",
-    category: "비상품계",
-    type: "쿠폰형",
-    segment: "이탈 예측",
+    purpose: "이탈방지",
+    templateName: "웰컴백 쿠폰혜택 안내",
+    promotionName: "",
     status: "초안",
-    createdAt: "2026.07.03"
+    createdAt: "2026.07.03",
+    updatedAt: "2026.07.03"
   },
   {
     id: "c4",
-    name: "KOR VIP 감사 쿠폰",
+    name: "VIP 감사 쿠폰",
+    author: "이서연",
     channel: "EDM",
-    category: "비상품계",
-    type: "쿠폰형",
-    segment: "육성",
+    purpose: "쿠폰",
+    templateName: "쿠폰 안내",
+    promotionName: "",
     status: "완료",
-    createdAt: "2026.06.30"
+    createdAt: "2026.06.30",
+    updatedAt: "2026.07.01"
   }
 ];
 

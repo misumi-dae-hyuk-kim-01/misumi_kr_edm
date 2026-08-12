@@ -11,7 +11,7 @@ const channelBadge = {
   "LP": "purple"
 };
 
-let filters = { channel: "전체", purpose: "전체", status: "전체" };
+let filters = { channel: "전체", purpose: "전체", status: "전체", searchScope: "전체", searchText: "" };
 let page = 1;
 const PAGE_SIZE = 10;
 
@@ -28,10 +28,26 @@ export function renderCampaigns(root) {
     ])
   );
 
-  const filterBar = el("div", { class: "filter-bar" }, [
-    select(["전체", "EDM", "LP"], filters.channel, v => { filters.channel = v; page = 1; renderTable(); }),
-    select(["전체", "온보딩", "육성", "이탈방지", "상품소개", "쿠폰", "내근영업"], filters.purpose, v => { filters.purpose = v; page = 1; renderTable(); }),
-    select(["전체", "초안", "완료"], filters.status, v => { filters.status = v; page = 1; renderTable(); })
+  const filterBar = el("div", { class: "filter-bar", style: "justify-content:space-between;" }, [
+    el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;" }, [
+      select(["전체", "EDM", "LP"], filters.channel, v => { filters.channel = v; page = 1; renderTable(); }),
+      select(["전체", "온보딩", "육성", "이탈방지", "상품소개", "쿠폰", "내근영업"], filters.purpose, v => { filters.purpose = v; page = 1; renderTable(); }),
+      select(["전체", "초안", "완료"], filters.status, v => { filters.status = v; page = 1; renderTable(); })
+    ]),
+    el("div", { style: "display:flex;gap:0;" }, [
+      // ⚠️ 작성자는 원래 드롭다운 필터도 따로 있었는데, 작성자가 많아지면 드롭다운이
+      // 스크롤해야 하는 긴 목록이 되어버려서 오히려 안 좋습니다. 검색(부분일치, 타이핑으로
+      // 좁히기)이 인원수와 무관하게 항상 편하므로, 작성자는 검색 하나로 통일했습니다.
+      el("select", {
+        class: "search-scope-select",
+        onchange: e => { filters.searchScope = e.target.value; page = 1; renderTable(); }
+      }, ["전체", "캠페인명", "프로모션명", "작성자"].map(o => el("option", { value: o, ...(o === filters.searchScope ? { selected: "selected" } : {}) }, o))),
+      el("input", {
+        type: "text", class: "search-text-input", placeholder: "검색어 입력...",
+        value: filters.searchText,
+        oninput: e => { filters.searchText = e.target.value; page = 1; renderTable(); }
+      })
+    ])
   ]);
   root.appendChild(filterBar);
 
@@ -64,6 +80,15 @@ export function renderCampaigns(root) {
     if (filters.channel !== "전체") rows = rows.filter(c => (c.channel || "EDM") === filters.channel);
     if (filters.purpose !== "전체") rows = rows.filter(c => c.purpose === filters.purpose);
     if (filters.status !== "전체") rows = rows.filter(c => c.status === filters.status);
+    if (filters.searchText.trim()) {
+      const q = filters.searchText.trim().toLowerCase();
+      rows = rows.filter(c => {
+        if (filters.searchScope === "캠페인명") return (c.name || "").toLowerCase().includes(q);
+        if (filters.searchScope === "작성자") return (c.author || "").toLowerCase().includes(q);
+        if (filters.searchScope === "프로모션명") return (c.promotionName || "").toLowerCase().includes(q);
+        return (c.name || "").toLowerCase().includes(q) || (c.author || "").toLowerCase().includes(q) || (c.promotionName || "").toLowerCase().includes(q);
+      });
+    }
 
     if (rows.length === 0) {
       tableHost.appendChild(
@@ -88,22 +113,22 @@ export function renderCampaigns(root) {
 
     const table = el("table", { class: "tbl" }, [
       el("thead", {}, el("tr", {}, [
-        "캠페인명", "채널", "목적", "상태", "생성일", "액션"
+        "캠페인명", "프로모션명", "작성자", "채널", "목적", "상태", "작성일", "최종수정일", "액션"
       ].map(h => el("th", {}, h)))),
       el("tbody", {}, pageRows.map(c => el("tr", {}, [
-        el("td", { class: "cell-name" }, [
-          el("div", {}, c.name),
+        el("td", { class: "cell-name cell-truncate", title: c.name }, [
+          el("div", { class: "cell-truncate-text" }, c.name),
           c.promotionName && promoCounts[c.promotionName] >= 2
-            ? el("div", { class: "promo-link-badge" }, `🔗 연결된 캠페인 (${c.promotionName})`)
+            ? el("div", { class: "promo-link-badge" }, "🔗 연결된 캠페인")
             : null
         ]),
+        el("td", { class: "cell-truncate", style: "color:#666;", title: c.promotionName || "" }, c.promotionName || "-"),
+        el("td", { class: "cell-truncate", style: "color:#666;", title: c.author || "" }, c.author || "-"),
         el("td", {}, el("span", { class: "badge " + (channelBadge[c.channel || "EDM"] || "gray") }, c.channel || "EDM")),
         el("td", { style: "color:#666;" }, c.purpose || "-"),
-        el("td", {}, el("select", {
-          class: "badge-select " + (statusBadge[c.status] || "gray"),
-          onchange: e => { store.upsertCampaign({ ...c, status: e.target.value }); toast(`상태를 "${e.target.value}"로 변경했습니다`); renderTable(); }
-        }, ["초안", "완료"].map(s => el("option", { value: s, ...(c.status === s ? { selected: "selected" } : {}) }, s)))),
-        el("td", {}, c.createdAt),
+        el("td", {}, c.status ? el("span", { class: "badge " + (statusBadge[c.status] || "gray") }, c.status) : "-"),
+        el("td", { style: "color:#666;" }, c.createdAt),
+        el("td", { style: "color:#666;" }, c.updatedAt || c.createdAt || "-"),
         el("td", {}, el("div", { class: "row-actions" }, [
           el("button", { class: "btn btn-sm", onclick: () => editRoute(c) }, "편집"),
           el("button", {
