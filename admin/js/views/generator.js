@@ -382,6 +382,13 @@ export function renderGenerator(root, params) {
     }
   }
 
+  function toggleSwitch(checked, onChange) {
+    return el("label", { class: "toggle-switch" }, [
+      el("input", { type: "checkbox", checked: checked ? "checked" : null, onchange: e => onChange(e.target.checked) }),
+      el("span", { class: "toggle-track" })
+    ]);
+  }
+
   function sectionDynamicFields() {
     const t = resolveTemplate();
     if (!t) return el("div");
@@ -390,16 +397,21 @@ export function renderGenerator(root, params) {
 
     return el("div", {}, groups.map((g, idx) => {
       const isDeleted = g.sectionNum !== undefined && draft.hiddenSections.includes(g.sectionNum);
+      const headerExtra = g.sectionNum !== undefined
+        ? el("div", { class: "sec-toggle-wrap" }, [
+            el("span", { class: "sec-toggle-label" }, "섹션 사용"),
+            toggleSwitch(!isDeleted, on => {
+              if (on) draft.hiddenSections = draft.hiddenSections.filter(n => n !== g.sectionNum);
+              else draft.hiddenSections = [...draft.hiddenSections, g.sectionNum];
+              renderForm(); renderPreview();
+            })
+          ])
+        : null;
       return sectionWrap(null, g.name, "high", [
-        g.sectionNum !== undefined ? el("div", { class: "sec-group-actions" }, [
-          isDeleted
-            ? el("button", { class: "btn btn-sm", onclick: () => { draft.hiddenSections = draft.hiddenSections.filter(n => n !== g.sectionNum); renderForm(); renderPreview(); } }, "↩ 복원")
-            : el("button", { class: "btn btn-sm danger", onclick: () => { draft.hiddenSections = [...draft.hiddenSections, g.sectionNum]; renderForm(); renderPreview(); } }, "🗑 이 섹션 삭제")
-        ]) : null,
         isDeleted
           ? el("p", { class: "hint" }, "이 섹션은 미리보기에서 제외됩니다.")
           : el("div", {}, g.fields.map(f => renderFieldInput(f)))
-      ], isDeleted ? "sec-deleted" : "");
+      ], isDeleted ? "sec-deleted" : "", headerExtra);
     }));
   }
 
@@ -410,19 +422,13 @@ export function renderGenerator(root, params) {
     const fieldDisabled = draft.hiddenFields.includes(f.key);
 
     const labelRow = optional
-      ? el("div", { class: "field-label-row" }, [
-          el("label", {}, [f.label, el("span", { class: "opt-tag" }, " · 선택")]),
-          el("label", { class: "use-toggle" }, [
-            "사용",
-            el("input", {
-              type: "checkbox", checked: fieldDisabled ? null : "checked",
-              onchange: e => {
-                if (e.target.checked) draft.hiddenFields = draft.hiddenFields.filter(k => k !== f.key);
-                else draft.hiddenFields = [...draft.hiddenFields, f.key];
-                renderForm(); renderPreview();
-              }
-            })
-          ])
+      ? el("label", { class: "field-label-row" }, [
+          f.label, el("span", { class: "opt-tag" }, " · 선택"),
+          toggleSwitch(!fieldDisabled, on => {
+            if (on) draft.hiddenFields = draft.hiddenFields.filter(k => k !== f.key);
+            else draft.hiddenFields = [...draft.hiddenFields, f.key];
+            renderForm(); renderPreview();
+          })
         ])
       : el("label", {}, [f.label, !["image", "link", "button-label"].includes(f.type) ? el("span", { class: "req-tag" }, " · 필수") : null]);
 
@@ -524,13 +530,14 @@ export function renderGenerator(root, params) {
     ]);
   }
 
-  function sectionWrap(badge, title, kind, children, extraClass = "") {
+  function sectionWrap(badge, title, kind, children, extraClass = "", headerExtra = null) {
     return el("div", { class: "sec" + (extraClass ? " " + extraClass : "") }, [
       el("div", { class: "sec-hd" }, [
         el("div", { class: "sec-hd-left" }, [
           badge ? el("span", { class: "sec-badge" + (kind === "ai" ? " ai" : "") }, badge) : null,
           el("span", { class: "sec-title" }, title)
-        ])
+        ]),
+        headerExtra
       ]),
       el("div", { class: "sec-body" }, children)
     ]);

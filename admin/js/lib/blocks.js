@@ -32,7 +32,7 @@ function filterCardSizedOpens(html, opens) {
  *  정확히 짝이 맞는 닫는 태그를 찾습니다 (필드/섹션 삭제, 상품카드 개수 제한에 사용).
  *  @param {boolean} preferOutermost true면 가장 바깥쪽 겹(상품카드처럼 여러 겹 중첩된 td의
  *    "카드 경계"를 찾을 때)을, false면 가장 안쪽(해당 필드 하나의 행만 지울 때)을 찾습니다. */
-function removeEnclosingTag(html, marker, tagName, preferOutermost = false) {
+function removeEnclosingTag(html, marker, tagName, preferOutermost = false, alsoRemoveNextSibling = false) {
   const markerIdx = html.indexOf(marker);
   if (markerIdx === -1) return html;
 
@@ -49,22 +49,40 @@ function removeEnclosingTag(html, marker, tagName, preferOutermost = false) {
     : opens.map((_, i) => opens.length - 1 - i); // 안쪽부터
   for (const k of order) {
     const start = opens[k];
-    const scanText = html.slice(start);
-    let depth = 0, matchEnd = -1, tk;
-    tokenRe.lastIndex = 0;
-    while ((tk = tokenRe.exec(scanText))) {
-      if (tk[0].startsWith("</")) {
-        depth--;
-        if (depth === 0) { matchEnd = start + tk.index + tk[0].length; break; }
-      } else {
-        depth++;
-      }
-    }
+    const matchEnd = findMatchingClose(html, start, tokenRe);
     if (matchEnd !== -1 && matchEnd > markerIdx) {
-      return html.slice(0, start) + html.slice(matchEnd);
+      let removeUpTo = matchEnd;
+      // ⚠️ 섹션 제목(c_headline_N) 바로 뒤엔 {{}} 변수가 아예 없는 순수 장식용 밑줄 행이
+      // 붙어있어서, 그 행만 따로는 찾을 방법이 없습니다. 지금 지운 행 바로 뒤에 공백만 두고
+      // 곧바로 같은 태그가 이어지면(=바로 다음 형제), 그것도 같이 지웁니다.
+      if (alsoRemoveNextSibling) {
+        const afterGap = html.slice(matchEnd).match(/^\s*/)[0].length;
+        const nextStart = matchEnd + afterGap;
+        if (html.slice(nextStart, nextStart + tagName.length + 1).toLowerCase() === `<${tagName}`.toLowerCase()) {
+          const nextEnd = findMatchingClose(html, nextStart, tokenRe);
+          if (nextEnd !== -1) removeUpTo = nextEnd;
+        }
+      }
+      return html.slice(0, start) + html.slice(removeUpTo);
     }
   }
   return html;
+}
+
+/** start 위치의 여는 태그부터 depth를 추적해서, 정확히 짝이 맞는 닫는 태그의 끝 위치를 찾습니다. */
+function findMatchingClose(html, start, tokenRe) {
+  const scanText = html.slice(start);
+  let depth = 0, matchEnd = -1, tk;
+  tokenRe.lastIndex = 0;
+  while ((tk = tokenRe.exec(scanText))) {
+    if (tk[0].startsWith("</")) {
+      depth--;
+      if (depth === 0) { matchEnd = start + tk.index + tk[0].length; break; }
+    } else {
+      depth++;
+    }
+  }
+  return matchEnd;
 }
 
 /** 숨김 처리할 필드/섹션(<tr> 단위, 해당 필드만)과 상품카드(가장 바깥쪽 <td> 카드 경계 단위)를
@@ -75,7 +93,8 @@ function stripHiddenUnits(html, hiddenRowKeys = [], hiddenCardKeys = []) {
     result = removeEnclosingTag(result, `{{${key}}}`, "td", true);
   }
   for (const key of hiddenRowKeys) {
-    result = removeEnclosingTag(result, `{{${key}}}`, "tr", false);
+    const isHeading = key.startsWith("c_headline");
+    result = removeEnclosingTag(result, `{{${key}}}`, "tr", false, isHeading);
   }
   return result;
 }

@@ -26,14 +26,22 @@ button{font-family:inherit;}
 .sb-item:hover{background:rgba(255,255,255,.08);color:#fff;}
 .sb-item.active{background:rgba(255,255,255,.16);color:#fff;}
 .sb-footer{padding-top:14px;border-top:1px solid rgba(255,255,255,.15);}
-.sb-new-btn{display:block;text-align:center;background:#fff;color:#0F218B;font-weight:700;font-size:13px;padding:10px;border-radius:8px;}
+.sb-new-wrap{position:relative;}
+.sb-new-btn{display:block;width:100%;text-align:center;background:#fff;color:#0F218B;font-weight:700;font-size:13px;padding:10px;border-radius:8px;border:none;cursor:pointer;font-family:inherit;}
 .sb-new-btn:hover{background:#eef2fb;}
+.sb-new-menu{
+  display:none;position:absolute;bottom:calc(100% + 6px);left:0;right:0;background:#fff;
+  border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.18);overflow:hidden;z-index:20;
+}
+.sb-new-menu.open{display:block;}
+.sb-new-menu a{display:block;padding:10px 14px;font-size:12.5px;color:#333;text-decoration:none;}
+.sb-new-menu a:hover{background:#f5f5f5;}
 
 /* ---------- Content area ---------- */
 .content{padding:26px 32px;overflow-y:auto;max-height:100vh;}
-.page-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;gap:16px;flex-wrap:wrap;}
+.page-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px;gap:16px;flex-wrap:wrap;}
 .page-head h1{font-size:19px;font-weight:700;color:#1a1a1a;}
-.page-head p{font-size:12px;color:#888;margin-top:3px;}
+.page-head p{font-size:12px;color:#888;margin-top:5px;line-height:1.6;}
 .page-actions{display:flex;gap:8px;flex-wrap:wrap;}
 
 /* ---------- Buttons ---------- */
@@ -64,15 +72,67 @@ table.tbl th{
 table.tbl td{padding:12px 14px;font-size:12.5px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
 table.tbl tr:last-child td{border-bottom:none;}
 table.tbl tr:hover td{background:#fafbfd;}
+
+/* 에셋 관리 테이블 — 컬럼 폭을 안 정해두면 파일명 칸이 필요 이상으로 넓어져서
+   나머지 컬럼(종류/크기/업로드일시/액션)이 오른쪽에 몰려 보이는 문제가 있어 명시적으로 지정 */
+table.tbl-assets{table-layout:fixed;}
+table.tbl-assets th:nth-child(1),
+table.tbl-assets td:nth-child(1){width:32px;}
+table.tbl-assets th:nth-child(2),
+table.tbl-assets td:nth-child(2){width:50px;}
+table.tbl-assets th:nth-child(3),
+table.tbl-assets td:nth-child(3){width:20%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+table.tbl-assets th:nth-child(4),
+table.tbl-assets td:nth-child(4){width:20%;}
+table.tbl-assets th:nth-child(5),
+table.tbl-assets td:nth-child(5){width:11%;}
+table.tbl-assets th:nth-child(6),
+table.tbl-assets td:nth-child(6){width:11%;}
+table.tbl-assets th:nth-child(7),
+table.tbl-assets td:nth-child(7){width:13%;}
+table.tbl-assets th:nth-child(8),
+table.tbl-assets td:nth-child(8){width:16%;}
 .cell-name{font-weight:700;color:#1a1a1a;}
+.asset-thumb{width:40px;height:40px;object-fit:cover;border-radius:6px;display:block;background:#f0f0f0;}
+.size-target-picker{display:flex;gap:14px;flex-wrap:wrap;padding:10px 12px;background:#f7f8fa;border-radius:8px;margin-top:6px;}
+.size-target-item{display:flex;align-items:center;gap:6px;font-size:12px;color:#444;cursor:pointer;}
+.size-target-item input{width:14px;height:14px;}
+.variant-chips{display:flex;gap:4px;flex-wrap:wrap;}
+.link-detail-list{display:flex;flex-direction:column;gap:6px;}
+.link-detail-row{display:flex;align-items:center;gap:8px;}
+.link-detail-row input{flex:1;padding:6px 9px;border:1px solid #d8d8d8;border-radius:6px;font-size:11px;color:#555;background:#fff;font-family:monospace;}
+
+.bulk-action-bar{display:flex;align-items:center;justify-content:space-between;background:#0F218B;color:#fff;padding:10px 16px;border-radius:8px;margin-top:10px;font-size:12.5px;}
+.bulk-action-bar .btn{background:#fff;color:#0F218B;border:none;}
+
+.asset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;}
+.asset-grid-card{position:relative;border:1px solid #e8e8e8;border-radius:10px;overflow:hidden;background:#fff;padding-bottom:8px;}
+.asset-grid-check{position:absolute;top:8px;left:8px;width:16px;height:16px;z-index:2;}
+.asset-grid-thumb{width:100%;height:100px;object-fit:cover;display:block;background:#f5f5f5;}
+.asset-grid-thumb--empty{display:flex;align-items:center;justify-content:center;color:#aaa;font-size:11px;}
+.asset-grid-name{font-size:11px;font-weight:700;color:#1a1a1a;padding:6px 8px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.asset-grid-card > div:last-child{padding:0 8px;}
 .promo-link-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:600;color:#0F218B;background:#e6efff;padding:1px 7px;border-radius:10px;margin-top:3px;}
+
+/* ---------- 새 캠페인 드롭다운 (캠페인 목록 페이지 헤더) ---------- */
+.new-campaign-wrap{position:relative;display:inline-block;}
+.new-campaign-menu{
+  display:none;position:absolute;top:100%;right:0;margin-top:4px;background:#fff;border:1px solid #e0e0e0;
+  border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);overflow:hidden;z-index:20;min-width:180px;
+}
+.new-campaign-menu.open{display:block;}
+.new-campaign-menu-item{
+  display:block;width:100%;text-align:left;padding:10px 14px;font-size:12.5px;background:#fff;border:none;
+  border-bottom:1px solid #f0f0f0;cursor:pointer;color:#333;
+}
+.new-campaign-menu-item:last-child{border-bottom:none;}
+.new-campaign-menu-item:hover{background:#f5f5f5;}
 .row-actions{display:flex;gap:4px;}
 
 /* ---------- Badges ---------- */
 .badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;white-space:nowrap;}
 .badge-select{border:none;border-radius:20px;font-size:11px;font-weight:700;padding:3px 22px 3px 9px;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 6px center;background-size:9px;}
 .badge-select.gray{background-color:#eee;color:#666;}
-.badge-select.amber{background-color:#fff4e0;color:#a9660a;}
 .badge-select.green{background-color:#e5f7ec;color:#0a8a3e;}
 .badge.gray{background:#eee;color:#666;}
 .badge.blue{background:#e6efff;color:#0F218B;}
@@ -122,6 +182,7 @@ table.tbl tr:hover td{background:#fafbfd;}
 
 /* ---------- Upload dropzone ---------- */
 .dropzone{
+  display:block;box-sizing:border-box;width:100%;
   border:2px dashed #cfd6e6;border-radius:10px;background:#fafbfe;padding:26px;text-align:center;
   color:#7a8199;font-size:12.5px;cursor:pointer;margin-bottom:16px;
 }
