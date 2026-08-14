@@ -40,10 +40,7 @@ const FIELD_MAP = {
   name: matched => matched.seriesName || undefined,
   image: matched => normalizeImageUrl(matched.productImageList?.[0]?.url),
   price: matched => formatPrice(matched.minStandardUnitPrice),
-  // ✅ 확인 완료: 실제 API 응답 필드명은 "brandName" (예: "미스미 (MISUMI)").
-  // 이전에는 이 매핑이 없어서 generator.js의 `p.brand || "MISUMI"` 기본값이 항상 적용되어,
-  // 실제 상품의 브랜드가 뭐든 무조건 "MISUMI"로 표시되던 버그가 있었습니다.
-  brand: matched => matched.brandName || undefined
+  shipDate: matched => formatDaysToShip(matched.minStandardDaysToShip)
 };
 
 function normalizeImageUrl(rawUrl) {
@@ -53,6 +50,20 @@ function normalizeImageUrl(rawUrl) {
 
 function formatPrice(rawPrice) {
   return typeof rawPrice === "number" ? rawPrice.toLocaleString() : undefined; // blocks.js 계약: 가격은 쉼표 포함 문자열
+}
+
+/**
+ * minStandardDaysToShip(숫자) → blocks.js가 그대로 출력할 수 있는 문자열.
+ *
+ * ⚠️ 숫자를 그대로 넘기면 안 됩니다. blocks.js의 productListBlock은
+ * `p.shipDate ? esc(p.shipDate) + " 출하" : 플레이스홀더` 로 분기하는데,
+ *   - 0(당일출하)은 falsy라서 "출하일 연동 예정" 플레이스홀더로 잘못 표시되고
+ *   - esc()도 `String(s || "")` 이라 0을 빈 문자열로 만들어 버립니다.
+ * 그래서 여기서 반드시 비어있지 않은 문자열로 변환합니다.
+ */
+function formatDaysToShip(rawDays) {
+  if (typeof rawDays !== "number") return undefined;
+  return rawDays === 0 ? "당일" : `${rawDays}일`;
 }
 
 /**
