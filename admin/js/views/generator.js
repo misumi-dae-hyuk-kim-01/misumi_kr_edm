@@ -13,6 +13,10 @@ import { EDM_TEMPLATE_FIELDS } from "../data/edmTemplateFields.js";
 // 통일했습니다. 이유: edm-no10(육성)에 상품그리드가 들어가는 등, "상품계냐 아니냐"와
 // "목적이 뭐냐"는 서로 무관한 축이라는 게 실제 템플릿에서 확인됐기 때문입니다.
 const PURPOSES = ["온보딩", "육성", "이탈방지", "상품소개", "쿠폰", "내근영업"];
+// "히어로 필드"로 보는 키 목록 — 이 목록에 없는 필드가 아직 제목(c_headline)도 나오기
+// 전에 등장하면, 그건 히어로가 아니라 "제목 없는 콘텐츠 블록"(NO.16의 main_1/sub_1 같은
+// [B08] 텍스트 블록)일 가능성이 높습니다. groupFieldsBySection()에서 사용합니다.
+const HERO_FIELD_KEYS = new Set(["preheader", "copy_headline", "copy_sub", "copy_sub_strong", "customer_name", "rate"]);
 
 export function renderGenerator(root, params) {
   const editId = params.get("id");
@@ -160,9 +164,13 @@ export function renderGenerator(root, params) {
   // 섹션으로 흩어짐, 섹션 삭제가 일부만 지워짐). 대신 "문서 순서상 어떤 섹션 제목(c_headline_N)
   // 뒤에 나오는가"를 기준으로 묶습니다 — 섹션 제목이 나오면 새 그룹 시작, 다음 섹션 제목 전까지
   // 나오는 모든 필드(번호가 몇이든)가 그 그룹에 속합니다.
+  // ⚠️ "히어로 필드"로 보는 키 목록은 모듈 상단(HERO_FIELD_KEYS)에서 가져와 씁니다.
+
   function groupFieldsBySection(fields) {
     const groups = [{ name: "히어로", fields: [] }];
     let ctaGroup = null;
+    let sectionCounter = 0;
+    let leftPureHero = false; // 히어로 필드가 아닌 것이 한 번이라도 히어로 그룹에 들어갔는지
     for (const f of fields) {
       if (f.key.startsWith("cta_")) {
         if (!ctaGroup) { ctaGroup = { name: "CTA", sectionKey: "CTA", fields: [] }; groups.push(ctaGroup); }
@@ -171,7 +179,26 @@ export function renderGenerator(root, params) {
       }
       const headingMatch = f.key.match(/^c_headline_(\d+)$/);
       if (headingMatch) {
-        groups.push({ name: `섹션 ${headingMatch[1]}`, sectionKey: parseInt(headingMatch[1], 10), fields: [f] });
+        sectionCounter++;
+        groups.push({ name: `섹션 ${sectionCounter}`, sectionKey: sectionCounter, fields: [f] });
+        continue;
+      }
+      if (f.key === "c_headline") {
+        // ⚠️ 번호 없는 단일 제목이라도, 다른 템플릿과 똑같이 순번을 매겨 "섹션 N"으로 이름
+        // 붙이고 토글도 달아줍니다 — 예전엔 "섹션이 하나뿐이면 토글 없음"이었는데, 굳이
+        // 다르게 취급할 이유가 없고 오히려 템플릿마다 규칙이 달라 보여 혼란스러웠습니다.
+        sectionCounter++;
+        groups.push({ name: `섹션 ${sectionCounter}`, sectionKey: sectionCounter, fields: [f] });
+        continue;
+      }
+      if (groups.length === 1 && !leftPureHero && !HERO_FIELD_KEYS.has(f.key)) {
+        // ⚠️ 제목(c_headline) 없이 히어로 다음에 바로 오는 콘텐츠 블록(예: NO.16의
+        // main_1/sub_1, [B08] 텍스트 블록)도 다른 섹션과 똑같이 "섹션 N" + 토글을 갖게
+        // 합니다. removeSectionSpan 쪽은 제목 필드가 없으면 이 그룹의 첫 필드(main_1)를
+        // 시작점으로 쓰도록 이미 되어 있어서(CTA와 동일한 방식), 별도 처리가 필요 없습니다.
+        leftPureHero = true;
+        sectionCounter++;
+        groups.push({ name: `섹션 ${sectionCounter}`, sectionKey: sectionCounter, fields: [f] });
         continue;
       }
       groups[groups.length - 1].fields.push(f);
@@ -230,9 +257,10 @@ export function renderGenerator(root, params) {
    *  실제로 숨겨지는 범위가 일치합니다 — 번호가 재사용되는 템플릿(NO.1 등)에서 특히 중요합니다. */
   function computeHiddenUnits() {
     const t = resolveTemplate();
-    if (!t) return { hiddenRowKeys: [], hiddenCardKeys: [] };
+    if (!t) return { hiddenRowKeys: [], hiddenCardKeys: [], hiddenSectionSpans: [] };
     const hiddenRowKeys = [];
     const hiddenCardKeys = [];
+    const hiddenSectionSpans = [];
 
     const nonProductFields = t.fields.filter(f => f.type !== "coupon-field" && f.type !== "product-field");
     const groups = groupFieldsBySection(nonProductFields);
@@ -240,6 +268,30 @@ export function renderGenerator(root, params) {
     for (const g of groups) {
       if (g.sectionKey === undefined) continue;
       for (const f of g.fields) sectionKeyByField[f.key] = g.sectionKey;
+    }
+
+    // ⚠️ 쿠폰 필드(coupon-field)는 별도의 "쿠폰 정보 입력" UI로 그리기 때문에 개별 필드
+    // 토글/카드 삭제 대상에서는 제외하지만(아래 루프), 문서 안에서는 특정 섹션(c_headline_N)
+    // 바로 아래에 물리적으로 위치합니다. 구간(span)의 "끝 지점"을 계산할 때 coupon-field를
+    // 빼버리면 그 섹션의 span이 쿠폰 블록 앞에서 끊겨서, 섹션을 꺼도 쿠폰 블록만 덩그러니
+    // 남는 문제가 있었습니다. 그래서 span 계산용 그룹핑에는 coupon-field를 포함시킵니다
+    // (product-field만 제외 — 상품그리드는 항상 별도 템플릿이라 c_headline 섹션과 안 겹침).
+    const fieldsForSpan = t.fields.filter(f => f.type !== "product-field");
+    const spanGroups = groupFieldsBySection(fieldsForSpan);
+
+    // ⚠️ 섹션 전체를 지울 때는 "제목(c_headline_N)부터 그 섹션의 마지막 필드까지"를
+    // 구간(span)으로 통째로 잘라냅니다. 예전에는 필드/카드를 하나씩 따로 지웠는데,
+    // 그 사이에 낀 여백/장식 행을 놓치면 빈 공간이 남는 문제가 있었습니다 — 구간을
+    // 통째로 지우면 중간에 뭐가 있든 다 같이 사라져서 이 문제 자체가 생기지 않습니다.
+    // CTA는 c_headline이 없지만, 이번 재설계에서 CTA 행도 다른 섹션과 똑같이 자기 여백을
+    // 포함한 <tr><td class="pad"> 구조이므로, "제목" 대신 그룹의 첫 필드를 시작점으로 써서
+    // 똑같이 구간 삭제합니다 — 안 그러면 버튼만 지워지고 위아래 여백 상자가 남습니다.
+    const spanBySectionKey = {};
+    for (const g of spanGroups) {
+      if (g.sectionKey === undefined || !g.fields.length) continue;
+      const headingField = g.fields.find(f => f.key.startsWith("c_headline")) || g.fields[0];
+      const lastField = g.fields[g.fields.length - 1];
+      spanBySectionKey[g.sectionKey] = { start: headingField.key, end: lastField.key, allKeys: g.fields.map(f => f.key) };
     }
 
     for (const f of t.fields) {
@@ -251,7 +303,13 @@ export function renderGenerator(root, params) {
         if (f.key.startsWith("seriesName_") && (sectionDeleted || fieldDeleted)) hiddenCardKeys.push(f.key);
         continue;
       }
-      if (sectionDeleted || fieldDeleted) hiddenRowKeys.push(f.key);
+      if (!(sectionDeleted || fieldDeleted)) continue;
+      if (sectionDeleted && spanBySectionKey[secKey]) continue; // 구간(span) 처리로 통째로 커버됨 (CTA 포함)
+      hiddenRowKeys.push(f.key);
+    }
+
+    for (const secKey of draft.hiddenSections) {
+      if (spanBySectionKey[secKey]) hiddenSectionSpans.push(spanBySectionKey[secKey]);
     }
 
     if (templateHasFieldType("product-field")) {
@@ -260,7 +318,7 @@ export function renderGenerator(root, params) {
         hiddenCardKeys.push(`seriesName_${n}`);
       }
     }
-    return { hiddenRowKeys, hiddenCardKeys };
+    return { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans };
   }
 
   function groupHeader(label) {
@@ -420,7 +478,10 @@ export function renderGenerator(root, params) {
   function sectionDynamicFields() {
     const t = resolveTemplate();
     if (!t) return el("div");
-    const visibleFields = t.fields.filter(f => f.type !== "coupon-field" && f.type !== "product-field" && f.key !== "preheader");
+    // ⚠️ customer_name은 마케터가 입력하는 값이 아니라 발송 시스템(ESP)이 수신자별로 채우는
+    // 병합 태그입니다(blocks.js가 절대 치환하지 않고 {{customer_name}}을 그대로 남김). 폼에
+    // 편집 가능한 입력창으로 노출하면 값을 입력해도 실제로는 반영되지 않아 혼란만 줍니다.
+    const visibleFields = t.fields.filter(f => f.type !== "coupon-field" && f.type !== "product-field" && f.key !== "preheader" && f.key !== "customer_name");
     const groups = groupFieldsBySection(visibleFields);
 
     return el("div", {}, groups.map((g, idx) => {
@@ -483,14 +544,14 @@ export function renderGenerator(root, params) {
     return sectionWrap(null, "쿠폰 정보", "high", [
       el("div", { class: "row2" }, [
         field("할인율/금액", c.value, v => { c.value = v; schedulePreview(); }),
-        field("최대 할인 금액", c.max, v => { c.max = v; schedulePreview(); })
+        field("최대 할인 금액 (단위 포함, 예: 50,000원)", c.max, v => { c.max = v; schedulePreview(); })
       ]),
       el("div", { class: "row2" }, [
         field("적용 대상", c.target, v => { c.target = v; schedulePreview(); }),
         field("주의 문구", c.note, v => { c.note = v; schedulePreview(); })
       ]),
       el("div", { class: "row2" }, [
-        field("쿠폰 코드", c.code, v => { c.code = v; schedulePreview(); }),
+        field("쿠폰 코드 (최대 9자)", c.code, v => { c.code = v.slice(0, 9); schedulePreview(); }, { maxlength: 9 }),
         field("사용 기한", c.expiry, v => { c.expiry = v; schedulePreview(); })
       ]),
       el("p", { class: "hint" }, "※ 쿠폰 정보는 쿠폰 블록이 포함된 템플릿에서만 표시됩니다")
@@ -551,10 +612,10 @@ export function renderGenerator(root, params) {
     ]);
   }
 
-  function field(label, value, onChange) {
+  function field(label, value, onChange, extraAttrs = {}) {
     return el("div", { class: "field" }, [
       el("label", {}, label),
-      el("input", { type: "text", value: value || "", oninput: e => onChange(e.target.value) })
+      el("input", { type: "text", value: value || "", oninput: e => onChange(e.target.value), ...extraAttrs })
     ]);
   }
 
@@ -572,8 +633,8 @@ export function renderGenerator(root, params) {
   }
 
   function renderPreview() {
-    const { hiddenRowKeys, hiddenCardKeys } = computeHiddenUnits();
-    const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys });
+    const { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans } = computeHiddenUnits();
+    const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans });
     previewFrame.innerHTML = "";
     const iframe = el("iframe", { srcdoc: html });
     // ⚠️ iframe은 기본적으로 안의 콘텐츠 길이에 맞춰 스스로 커지지 않아서, 고정 높이만
@@ -621,8 +682,8 @@ export function renderGenerator(root, params) {
   }
 
   async function runLinkCheck() {
-    const { hiddenRowKeys, hiddenCardKeys } = computeHiddenUnits();
-    const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys });
+    const { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans } = computeHiddenUnits();
+    const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans });
     log("링크/이미지 확인 중...");
     const results = await checkAllLinks(html);
     const summary = summarizeLinkResults(results);
@@ -688,8 +749,8 @@ export function renderGenerator(root, params) {
   }
 
   async function copyHtml() {
-    const { hiddenRowKeys, hiddenCardKeys } = computeHiddenUnits();
-    const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys });
+    const { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans } = computeHiddenUnits();
+    const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans });
     if (!(await confirmExportGuards(html))) return;
     navigator.clipboard?.writeText(html).then(
       () => {
@@ -702,8 +763,8 @@ export function renderGenerator(root, params) {
   }
 
   async function downloadHtml() {
-    const { hiddenRowKeys, hiddenCardKeys } = computeHiddenUnits();
-    const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys });
+    const { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans } = computeHiddenUnits();
+    const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans });
     if (!(await confirmExportGuards(html))) return;
     const blob = new Blob([html], { type: "text/html" });
     const a = document.createElement("a");
@@ -729,7 +790,7 @@ function buildInitialDraft(templateId, existing) {
     fieldValues: {},
     hiddenSections: [],
     hiddenFields: [],
-    coupon: { value: "10%", max: "50,000", target: "전 상품 적용", note: "3만원 이상 구매 시", code: "KORWELCOME10", expiry: "2026.09.30" },
+    coupon: { value: "10%", max: "50,000원", target: "전 상품 적용", note: "3만원 이상 구매 시", code: "WELCOME10", expiry: "2026.09.30" },
     seriesCodes: Array.from({ length: 15 }, () => ""),
     products: [],
     offerNo: "",
