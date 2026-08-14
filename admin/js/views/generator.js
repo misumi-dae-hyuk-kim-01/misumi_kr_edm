@@ -717,20 +717,31 @@ export function renderGenerator(root, params) {
     };
   }
 
-  function persistCampaign(statusOverride) {
+  async function persistCampaign(statusOverride) {
     const campaign = draftToCampaign(statusOverride);
-    store.upsertCampaign(campaign);
-    existing = campaign; // ⚠️ existing이 최초 진입 시점 값으로 고정돼 있으면, 내보내기로 "완료"
+    const savedCampaign = await store.upsertCampaign(campaign);
+    draft.id = savedCampaign.id;
+    existing = savedCampaign; // ⚠️ existing이 최초 진입 시점 값으로 고정돼 있으면, 내보내기로 "완료"
     // 상태를 저장한 뒤 다시 임시저장할 때 draftToCampaign()이 옛 existing.status(초안 등)를
     // 참조해서 "완료"가 "초안"으로 되돌아가는 버그가 생깁니다. 매번 저장할 때마다 최신값으로
     // 갱신해서 이 문제를 막습니다.
-    return campaign;
+    return savedCampaign;
   }
 
-  function saveDraft() {
-    persistCampaign();
-    toast("임시저장했습니다");
-    log("임시저장 완료");
+  async function saveDraft(e) {
+    const button = e?.currentTarget;
+    if (button) button.disabled = true;
+    try {
+      await persistCampaign();
+      toast("임시저장했습니다");
+      log("임시저장 완료");
+    } catch (error) {
+      console.error("캠페인 저장 실패", error);
+      toast(`임시저장에 실패했습니다: ${error.message}`);
+      log(`임시저장 실패 — ${error.message}`);
+    } finally {
+      if (button) button.disabled = false;
+    }
   }
 
   async function confirmExportGuards(html) {
@@ -752,14 +763,27 @@ export function renderGenerator(root, params) {
     const { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans } = computeHiddenUnits();
     const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans });
     if (!(await confirmExportGuards(html))) return;
-    navigator.clipboard?.writeText(html).then(
-      () => {
-        persistCampaign("완료");
-        toast("HTML을 클립보드에 복사했습니다"); log("HTML 복사 완료 · 상태: 완료");
-        renderForm();
-      },
-      () => toast("복사에 실패했습니다")
-    );
+    if (!navigator.clipboard) {
+      toast("복사에 실패했습니다 (브라우저 권한 확인)");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(html);
+    } catch (error) {
+      console.error("HTML 복사 실패", error);
+      toast("복사에 실패했습니다");
+      return;
+    }
+    try {
+      await persistCampaign("완료");
+      toast("HTML을 클립보드에 복사했습니다");
+      log("HTML 복사 완료 · 상태: 완료");
+      renderForm();
+    } catch (error) {
+      console.error("캠페인 완료 상태 저장 실패", error);
+      toast(`HTML은 복사했지만 캠페인 저장에 실패했습니다: ${error.message}`);
+      log(`HTML 복사 완료 · 캠페인 저장 실패 — ${error.message}`);
+    }
   }
 
   async function downloadHtml() {
@@ -771,9 +795,15 @@ export function renderGenerator(root, params) {
     a.href = URL.createObjectURL(blob);
     a.download = (draft.fieldValues.copy_headline || "edm") + ".html";
     a.click();
-    persistCampaign("완료");
-    log("HTML 다운로드 완료 · 상태: 완료");
-    renderForm();
+    try {
+      await persistCampaign("완료");
+      log("HTML 다운로드 완료 · 상태: 완료");
+      renderForm();
+    } catch (error) {
+      console.error("캠페인 완료 상태 저장 실패", error);
+      toast(`파일은 다운로드했지만 캠페인 저장에 실패했습니다: ${error.message}`);
+      log(`HTML 다운로드 완료 · 캠페인 저장 실패 — ${error.message}`);
+    }
   }
 }
 

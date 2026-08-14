@@ -133,19 +133,36 @@ export function renderCampaigns(root) {
           el("button", { class: "btn btn-sm", onclick: () => editRoute(c) }, "편집"),
           el("button", {
             class: "btn btn-sm",
-            onclick: () => {
-              store.duplicateCampaign(c.id);
-              toast("캠페인을 복제했습니다");
-              renderTable();
+            onclick: async e => {
+              const button = e.currentTarget;
+              button.disabled = true;
+              try {
+                const copy = await store.duplicateCampaign(c.id);
+                if (!copy) throw new Error("복제할 캠페인을 찾을 수 없습니다");
+                toast("캠페인을 복제했습니다");
+                renderTable();
+              } catch (error) {
+                console.error("캠페인 복제 실패", error);
+                toast(`캠페인 복제에 실패했습니다: ${error.message}`);
+                button.disabled = false;
+              }
             }
           }, "복제"),
           el("button", {
             class: "btn btn-sm danger",
-            onclick: () => {
+            onclick: async e => {
               if (!confirm(`"${c.name}" 캠페인을 삭제할까요?`)) return;
-              store.deleteCampaign(c.id);
-              toast("캠페인을 삭제했습니다");
-              renderTable();
+              const button = e.currentTarget;
+              button.disabled = true;
+              try {
+                await store.deleteCampaign(c.id);
+                toast("캠페인을 삭제했습니다");
+                renderTable();
+              } catch (error) {
+                console.error("캠페인 삭제 실패", error);
+                toast(`캠페인 삭제에 실패했습니다: ${error.message}`);
+                button.disabled = false;
+              }
             }
           }, "삭제")
         ]))
