@@ -10,6 +10,7 @@ import { checkGuidelines, summarizeGuidelineIssues } from "../lib/guidelineCheck
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
 import { fetchSeriesInfo } from "../lib/seriesApi.js";
 import { EDM_TEMPLATE_FIELDS } from "../data/edmTemplateFields.js";
+import { EDM_TEMPLATE_HTML } from "../data/edmTemplateHtml.js";
 
 // ⚠️ 아키텍처 전환: "상품계/비상품계" 이분법과 "신규/육성/이탈예측" 세그먼트를 없애고,
 // 실제 템플릿 18개가 실제로 갖는 "목적"(온보딩/육성/이탈방지/상품소개/쿠폰/내근영업) 하나로
@@ -227,7 +228,7 @@ export function renderGenerator(root, params) {
         values[`price_${n}`] = p.price ? `${p.price}원~` : ""; // 가격 뒤 "원~" 자동 부착
         values[`image_${n}`] = p.image;
         values[`image_${n}_alt`] = p.name || "상품 이미지";
-        values[`brandName_${n}`] = p.brand || "MISUMI";
+        values[`brandName_${n}`] = p.brandName || p.brand || "MISUMI";
         values[`link_${n}`] = p.code ? withUtm(`https://kr.misumi-ec.com/vona2/detail/${encodeURIComponent(p.code)}/`) : "";
       });
     }
@@ -499,15 +500,31 @@ export function renderGenerator(root, params) {
     return id;
   }
 
+  // ⚠️ 이미지 슬롯 폭은 템플릿/위치마다 다릅니다(71px 짜리 6열 그리드부터 552px 짜리 단독
+  // 이미지까지). 전부 600px(EDM 전체 폭)로 리사이징하면 좁은 슬롯엔 필요 이상으로 큰
+  // 파일을 만들게 됩니다. raw HTML에서 그 필드 바로 앞에 나오는 width="N"을 읽어와서
+  // 실제 슬롯 폭에 맞춰 리사이징합니다. 못 찾으면(상품그리드 등) EDM 표준폭으로 대신합니다.
+  function inferImageMaxWidth(key) {
+    const html = EDM_TEMPLATE_HTML[draft.templateId];
+    if (!html) return EDM_IMAGE_MAX_DIM;
+    const idx = html.indexOf(`{{${key}}}`);
+    if (idx === -1) return EDM_IMAGE_MAX_DIM;
+    const before = html.slice(Math.max(0, idx - 400), idx);
+    const matches = [...before.matchAll(/width="(\d+)"/g)];
+    if (!matches.length) return EDM_IMAGE_MAX_DIM;
+    const w = parseInt(matches[matches.length - 1][1], 10);
+    return w > 0 ? w : EDM_IMAGE_MAX_DIM;
+  }
+
   async function handleImageUpload(key, file) {
     draft.imageUploading = key;
     renderForm();
     const t = resolveTemplate();
     const instruction = (draft.imageMeta[key] || {}).instruction || "";
     try {
-      // EDM은 600px 고정폭이라, 업로드/가공 전에 먼저 표준 크기로 축소합니다
-      // (원본을 그대로 보내면 이메일 용량만 커지고 화질 이득은 없음).
-      const resized = await resizeImage(file, EDM_IMAGE_MAX_DIM);
+      // 이 필드가 실제로 들어가는 슬롯의 폭에 맞춰 리사이징합니다 (원본을 그대로 보내면
+      // 이메일 용량만 커지고, 좁은 슬롯엔 화질 이득도 없음).
+      const resized = await resizeImage(file, inferImageMaxWidth(key));
       let url, aiProcessed;
       if (instruction.trim()) {
         log(`이미지 업로드 · AI 가공 요청 중... (${file.name})`);
@@ -723,9 +740,65 @@ export function renderGenerator(root, params) {
     ));
     return sectionWrap(null, "시리즈 코드 입력 (최대 15개, 3×5)", "high", [
       grid,
-      el("button", { class: "btn series-lookup-btn", onclick: lookupSeriesCodes }, "전체 조회 (상품 데이터 자동 불러오기)"),
-      el("p", { class: "hint" }, "조회된 상품 데이터는 오른쪽 미리보기의 상품 그리드에 바로 반영됩니다.")
+      el("div", { class: "row2" }, [
+        el("button", { class: "btn series-lookup-btn", onclick: lookupSeriesCodes }, "전체 조회"),
+        el("label", { class: "btn ghost upload-label" }, [
+          "엑셀 업로드",
+          el("input", {
+            type: "file", accept: ".xlsx,.xls,.csv", style: "display:none;",
+            onchange: e => { if (e.target.files[0]) handleSeriesExcelUpload(e.target.files[0]); }
+          })
+        ])
+      ]),
+      el("p", { class: "hint" }, "상품 데이터 자동 조회 · 엑셀은 1열 시리즈코드, 2열(선택) 가격(조회 결과에 가격 없을 때만 사용) · 조회 결과는 미리보기에 바로 반영됩니다.")
     ]);
+  }
+
+  /** 엑셀/CSV 첫 번째 열에서 시리즈 코드를 읽어와 15칸에 채우고, 곧바로 전체 조회를 실행합니다. */
+  // ⚠️ API로 조회된 가격은 seriesApi.js의 formatPrice()가 toLocaleString()으로 천단위
+  // 쉼표를 넣어줍니다. 엑셀로 직접 입력한 가격도 같은 형식으로 맞춰야 나란히 봤을 때
+  // 표기가 안 어긋납니다 — 사용자가 "15000"이든 "15,000"이든 숫자만 뽑아 다시 포맷합니다.
+  function formatPriceComma(rawPrice) {
+    const num = parseInt(String(rawPrice).replace(/[^\d]/g, ""), 10);
+    return Number.isFinite(num) ? num.toLocaleString() : rawPrice;
+  }
+
+  async function handleSeriesExcelUpload(file) {
+    if (typeof window === "undefined" || !window.XLSX) {
+      toast("엑셀 업로드 기능을 불러오지 못했습니다");
+      log("오류: XLSX 라이브러리가 로드되지 않았습니다 (index.html의 <script> 태그 확인 필요)");
+      return;
+    }
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = window.XLSX.read(buf, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      // 첫 번째 열에서 값을 뽑고, 숫자가 하나도 없는 행(헤더 텍스트 등)은 걸러냅니다 —
+      // 시리즈 코드는 항상 숫자를 포함하는 형식이라 이 정도 필터로 충분합니다.
+      // 두 번째 열이 있으면 "이 코드는 조회 결과에 가격이 없을 때 쓸 수동 가격"으로 보관합니다.
+      const priceByCode = {};
+      const codes = [];
+      for (const r of rows) {
+        const code = String(r[0] ?? "").trim();
+        if (!code || !/\d/.test(code)) continue;
+        codes.push(code);
+        const price = String(r[1] ?? "").trim();
+        if (price) priceByCode[code] = formatPriceComma(price);
+      }
+      if (!codes.length) { toast("엑셀에서 시리즈 코드를 찾지 못했습니다"); return; }
+      const trimmed = codes.slice(0, 15);
+      if (codes.length > 15) log(`⚠ 엑셀에 ${codes.length}개가 있어 처음 15개만 반영했습니다 (3×5 한도)`);
+      draft.seriesCodes = Array.from({ length: 15 }, (_, i) => trimmed[i] || "");
+      draft.seriesPriceOverrides = priceByCode;
+      const priceCount = Object.keys(priceByCode).length;
+      log(`엑셀에서 시리즈 코드 ${trimmed.length}건을 불러왔습니다${priceCount ? ` (수동 가격 ${priceCount}건 포함)` : ""}`);
+      renderForm();
+      await lookupSeriesCodes();
+    } catch (e) {
+      toast("엑셀 파일을 읽는 중 오류가 발생했습니다");
+      log("오류: " + e.message);
+    }
   }
 
   async function lookupSeriesCodes() {
@@ -735,6 +808,11 @@ export function renderGenerator(root, params) {
     const results = await Promise.all(codes.map(async code => {
       try {
         const product = await fetchSeriesInfo(code);
+        // API 조회 결과에 가격이 없으면, 엑셀 업로드 때 미리 넣어둔 수동 가격으로 대신합니다.
+        if (!product.price && draft.seriesPriceOverrides?.[code]) {
+          product.price = draft.seriesPriceOverrides[code];
+          log(`시리즈 코드 "${code}" — 조회된 가격이 없어 엑셀에 입력한 수동 가격을 사용했습니다.`);
+        }
         if (!product.name) log(`⚠ 시리즈 코드 "${code}"의 상품을 찾지 못했습니다.`);
         return product;
       } catch (e) {
@@ -946,6 +1024,7 @@ function buildInitialDraft(templateId, existing) {
     hiddenFields: [],
     coupon: { value: "10%", max: "50,000원", target: "전 상품 적용", note: "3만원 이상 구매 시", code: "WELCOME10", expiry: "2026.09.30" },
     seriesCodes: Array.from({ length: 15 }, () => ""),
+    seriesPriceOverrides: {},
     products: [],
     offerNo: "",
     generating: false

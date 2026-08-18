@@ -17,10 +17,10 @@ export const CONFIG = {
 };
 
 const SIZE_TARGETS = [
-  { key: "EDM", label: "EDM (600px)", channel: "EDM", dim: 600 },
-  { key: "LP1200", label: "LP 1200px", channel: "LP", dim: 1200 },
-  { key: "LP950", label: "LP 950px", channel: "LP", dim: 950 },
-  { key: "LP920", label: `LP 920px (${LP_WIDTH_PATTERNS[920].scope})`, channel: "LP", dim: 920 }
+  { key: "EDM", label: "EDM (최대 600px)", channel: "EDM", dim: 600 },
+  { key: "LP1200", label: "LP 최대 1200px", channel: "LP", dim: 1200 },
+  { key: "LP950", label: "LP 최대 950px", channel: "LP", dim: 950 },
+  { key: "LP920", label: `LP 최대 920px (${LP_WIDTH_PATTERNS[920].scope})`, channel: "LP", dim: 920 }
 ];
 const CATEGORY_PRESETS = ["히어로 배경", "본문 이미지"];
 
@@ -67,7 +67,7 @@ export function renderAssets(root) {
   ]));
 
   const drop = el("label", { class: "dropzone" }, [
-    "이미지를 드래그하거나 클릭하여 업로드 — 선택한 사이즈로 각각 자동 리사이징",
+    "이미지를 드래그하거나 클릭하여 업로드 — 선택한 사이즈보다 원본이 크면 자동으로 축소합니다 (원본이 더 작으면 그대로 저장)",
     el("input", {
       type: "file", accept: "image/*", multiple: "multiple",
       onchange: e => handleUpload(e.target.files)

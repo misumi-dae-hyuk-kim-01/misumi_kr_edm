@@ -40,7 +40,8 @@ const FIELD_MAP = {
   name: matched => matched.seriesName || undefined,
   image: matched => normalizeImageUrl(matched.productImageList?.[0]?.url),
   price: matched => formatPrice(matched.minStandardUnitPrice),
-  shipDate: matched => formatDaysToShip(matched.minStandardDaysToShip)
+  shipDate: matched => formatDaysToShip(matched.minStandardDaysToShip),
+  brandName: matched => matched.brandName || undefined
 };
 
 function normalizeImageUrl(rawUrl) {
