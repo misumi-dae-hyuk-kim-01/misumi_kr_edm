@@ -55,11 +55,11 @@ export const seedCampaigns = () => [
 ];
 
 export const seedAssets = () => [
-  { id: "a1", filename: "coupon_use.jpg", category: "쿠폰 사용법", sizeKB: 48, uploadedAt: "2026.07.07" },
-  { id: "a2", filename: "hero_bg_navy.jpg", category: "히어로 배경", sizeKB: 120, uploadedAt: "2026.07.06" },
-  { id: "a3", filename: "hero_bg_green.jpg", category: "히어로 배경", sizeKB: 115, uploadedAt: "2026.07.06" },
-  { id: "a4", filename: "product_shaft.jpg", category: "상품 이미지", sizeKB: 62, uploadedAt: "2026.07.05" },
-  { id: "a5", filename: "product_bush.jpg", category: "상품 이미지", sizeKB: 55, uploadedAt: "2026.07.05" }
+  { id: "a1", filename: "coupon_use.jpg", category: "쿠폰 사용법", sizeKB: 48, uploadedAt: "2026.07.07", source: "assets-page", aiProcessed: false },
+  { id: "a2", filename: "hero_bg_navy.jpg", category: "히어로 배경", sizeKB: 120, uploadedAt: "2026.07.06", source: "assets-page", aiProcessed: false },
+  { id: "a3", filename: "hero_bg_green.jpg", category: "히어로 배경", sizeKB: 115, uploadedAt: "2026.07.06", source: "assets-page", aiProcessed: false },
+  { id: "a4", filename: "product_shaft.jpg", category: "상품 이미지", sizeKB: 62, uploadedAt: "2026.07.05", source: "assets-page", aiProcessed: false },
+  { id: "a5", filename: "product_bush.jpg", category: "상품 이미지", sizeKB: 55, uploadedAt: "2026.07.05", source: "assets-page", aiProcessed: false }
 ];
 
 // ⚠️ 아키텍처 전환: 예전엔 blocks.js의 블록 레지스트리 이름 배열("히어로","쿠폰" 등)이었는데,

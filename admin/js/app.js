@@ -10,7 +10,6 @@ registerRoute("campaigns", renderCampaigns);         // 화면 01
 registerRoute("generator", renderGenerator);         // EDM 생성기
 registerRoute("generator-lp", renderGeneratorLP);    // LP 생성기
 registerRoute("assets", renderAssets);               // 화면 04
-registerRoute("templates", renderTemplates);         // 화면 05
 
 try {
   await loadCampaignsFromApi();

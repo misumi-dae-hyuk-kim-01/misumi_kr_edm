@@ -645,6 +645,7 @@ export const EDM_TEMPLATE_HTML = {
   table{border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;}
   img{border:0;outline:none;-ms-interpolation-mode:bicubic;}
   a{color:#025FAE;}
+  .badge-break{display:none;}
   @media only screen and (max-width:599px){
     .w600{width:100%!important;max-width:100%!important;}
     .fw{width:100%!important;max-width:100%!important;}
@@ -656,6 +657,7 @@ export const EDM_TEMPLATE_HTML = {
     .pad{padding-left:16px!important;padding-right:16px!important;}
     .hpad{padding:30px 18px 32px 18px!important;}
     .fluidimg{width:100%!important;height:auto!important;}
+    .badge-break{display:block!important;}
     img{max-width:100%;}
   }
 </style>
@@ -672,7 +674,7 @@ export const EDM_TEMPLATE_HTML = {
               <tr>
                 <td class="fwc hpad" width="600" align="center" style="width:600px;box-sizing:border-box;padding:44px 32px 48px 32px;">
                   <table class="fw" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
-                    <tr><td class="fwc" width="536" align="center" style="width:536px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;text-indent:0.14em;color:#0F218B;word-break:break-word;overflow-wrap:break-word;">RESOURCES YOU MAY NEED &#8212; TECHNICAL INFORMATION</td></tr>
+                    <tr><td class="fwc" width="536" align="center" style="width:536px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;text-indent:0.14em;color:#0F218B;word-break:break-word;overflow-wrap:break-word;">RESOURCES YOU MAY NEED <br class="badge-break" />&#8212; TECHNICAL INFORMATION</td></tr>
                     <tr><td align="center" style="padding:18px 0 20px 0;font-size:0;line-height:0;">
                       <table  role="presentation" cellpadding="0" cellspacing="0" border="0" width="1" style="width:1px;border-collapse:collapse;"><tr><td width="1" height="26" bgcolor="#C9CDDB" style="width:1px;height:26px;background-color:#C9CDDB;font-size:0;line-height:0;">&nbsp;</td></tr></table>
                     </td></tr>
@@ -762,6 +764,7 @@ export const EDM_TEMPLATE_HTML = {
   table{border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;}
   img{border:0;outline:none;-ms-interpolation-mode:bicubic;}
   a{color:#025FAE;}
+  .badge-break{display:none;}
   @media only screen and (max-width:599px){
     .w600{width:100%!important;max-width:100%!important;}
     .fw{width:100%!important;max-width:100%!important;}
@@ -773,6 +776,7 @@ export const EDM_TEMPLATE_HTML = {
     .pad{padding-left:16px!important;padding-right:16px!important;}
     .hpad{padding:30px 18px 32px 18px!important;}
     .fluidimg{width:100%!important;height:auto!important;}
+    .badge-break{display:block!important;}
     img{max-width:100%;}
   }
 </style>
@@ -789,7 +793,7 @@ export const EDM_TEMPLATE_HTML = {
               <tr>
                 <td class="fwc hpad" width="600" align="center" style="width:600px;box-sizing:border-box;padding:44px 32px 48px 32px;">
                   <table class="fw" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
-                    <tr><td class="fwc" width="536" align="center" style="width:536px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;text-indent:0.14em;color:#0F218B;word-break:break-word;overflow-wrap:break-word;">RESOURCES YOU MAY NEED &#8212; FREE CAD DOWNLOAD</td></tr>
+                    <tr><td class="fwc" width="536" align="center" style="width:536px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;text-indent:0.14em;color:#0F218B;word-break:break-word;overflow-wrap:break-word;">RESOURCES YOU MAY NEED <br class="badge-break" />&#8212; FREE CAD DOWNLOAD</td></tr>
                     <tr><td align="center" style="padding:18px 0 20px 0;font-size:0;line-height:0;">
                       <table  role="presentation" cellpadding="0" cellspacing="0" border="0" width="1" style="width:1px;border-collapse:collapse;"><tr><td width="1" height="26" bgcolor="#C9CDDB" style="width:1px;height:26px;background-color:#C9CDDB;font-size:0;line-height:0;">&nbsp;</td></tr></table>
                     </td></tr>
@@ -871,6 +875,7 @@ export const EDM_TEMPLATE_HTML = {
   table{border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;}
   img{border:0;outline:none;-ms-interpolation-mode:bicubic;}
   a{color:#025FAE;}
+  .badge-break{display:none;}
   @media only screen and (max-width:599px){
     .w600{width:100%!important;max-width:100%!important;}
     .fw{width:100%!important;max-width:100%!important;}
@@ -882,6 +887,7 @@ export const EDM_TEMPLATE_HTML = {
     .pad{padding-left:16px!important;padding-right:16px!important;}
     .hpad{padding:30px 18px 32px 18px!important;}
     .fluidimg{width:100%!important;height:auto!important;}
+    .badge-break{display:block!important;}
     img{max-width:100%;}
   }
 </style>
@@ -898,7 +904,7 @@ export const EDM_TEMPLATE_HTML = {
               <tr>
                 <td class="fwc hpad" width="600" align="center" style="width:600px;box-sizing:border-box;padding:44px 32px 48px 32px;">
                   <table class="fw" role="presentation" cellpadding="0" cellspacing="0" border="0" width="536" style="width:536px;table-layout:fixed;border-collapse:collapse;">
-                    <tr><td class="fwc" width="536" align="center" style="width:536px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;text-indent:0.14em;color:#0F218B;word-break:break-word;overflow-wrap:break-word;">RESOURCES YOU MAY NEED &#8212; PRODUCT Q&amp;A WITH MISUMI AI</td></tr>
+                    <tr><td class="fwc" width="536" align="center" style="width:536px;font-family:Arial,'Malgun Gothic','맑은 고딕',Helvetica,sans-serif;font-size:11px;line-height:16px;mso-line-height-rule:exactly;font-weight:bold;letter-spacing:0.14em;text-indent:0.14em;color:#0F218B;word-break:break-word;overflow-wrap:break-word;">RESOURCES YOU MAY NEED <br class="badge-break" />&#8212; PRODUCT Q&amp;A WITH MISUMI AI</td></tr>
                     <tr><td align="center" style="padding:18px 0 20px 0;font-size:0;line-height:0;">
                       <table  role="presentation" cellpadding="0" cellspacing="0" border="0" width="1" style="width:1px;border-collapse:collapse;"><tr><td width="1" height="26" bgcolor="#C9CDDB" style="width:1px;height:26px;background-color:#C9CDDB;font-size:0;line-height:0;">&nbsp;</td></tr></table>
                     </td></tr>
