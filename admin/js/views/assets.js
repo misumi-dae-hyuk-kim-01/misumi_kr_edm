@@ -1,6 +1,7 @@
 import { store } from "../state.js";
 import { el, toast } from "../lib/dom.js";
 import { LP_WIDTH_PATTERNS } from "../lib/guidelineCheckLP.js";
+import { resizeImage } from "../lib/imageResize.js";
 
 // ⚠️ 실서비스 연동 지점 (copyGenerator.js/seriesApi.js와 동일한 패턴)
 // CONFIG.uploadApiUrl이 비어있으면 데모 모드로 동작합니다: 실제 S3에 올라가지 않고
@@ -100,23 +101,7 @@ export function renderAssets(root) {
   const tableHost = el("div", { id: "asset-table-host", style: "margin-top:8px;" });
   root.appendChild(tableHost);
 
-  function resizeImage(file, maxDim) {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-        if (scale === 1) { resolve(file); return; }
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(blob => resolve(blob || file), file.type || "image/jpeg", 0.9);
-      };
-      img.onerror = () => resolve(file);
-      img.src = URL.createObjectURL(file);
-    });
-  }
+  // resizeImage는 이제 ../lib/imageResize.js에서 가져와 씁니다 (generator.js와 공유).
 
   async function uploadAsset(blob, filename, channel) {
     if (CONFIG.uploadApiUrl) {
@@ -173,7 +158,9 @@ export function renderAssets(root) {
           filename: f.name,
           category,
           uploadedAt: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
-          variants
+          variants,
+          source: "assets-page",
+          aiProcessed: false
         });
       } catch (e) {
         toast(`${f.name} 업로드 실패: ${e.message}`);
@@ -303,7 +290,13 @@ export function renderAssets(root) {
           el("td", {}, firstUrl
             ? el("img", { src: firstUrl, alt: a.filename, class: "asset-thumb" })
             : el("span", { class: "badge gray" }, "IMG")),
-          el("td", { class: "cell-name" }, a.filename),
+          el("td", { class: "cell-name" }, [
+            el("div", {}, a.filename),
+            el("div", { style: "margin-top:3px;" }, [
+              sourceBadge(a.source),
+              a.aiProcessed ? el("span", { class: "badge green", style: "margin-left:4px;" }, "AI 보정") : null
+            ])
+          ]),
           el("td", {}, el("div", { class: "variant-chips" }, SIZE_TARGETS.map(t => {
             const v = variants[t.key];
             if (!v) return null;
@@ -375,6 +368,10 @@ export function renderAssets(root) {
           ? el("img", { src: firstUrl, alt: a.filename, class: "asset-grid-thumb" })
           : el("div", { class: "asset-grid-thumb asset-grid-thumb--empty" }, "IMG"),
         el("div", { class: "asset-grid-name" }, a.filename),
+        el("div", { style: "margin:2px 0;" }, [
+          sourceBadge(a.source),
+          a.aiProcessed ? el("span", { class: "badge green", style: "margin-left:4px;" }, "AI 보정") : null
+        ]),
         el("div", {}, usedIn.length
           ? el("span", { class: "badge green" }, `사용 중 (${usedIn.length})`)
           : el("span", { class: "badge amber" }, "미사용"))
@@ -384,6 +381,15 @@ export function renderAssets(root) {
   }
 
   renderTable();
+}
+
+/** 에셋이 어디서 업로드됐는지 배지로 표시합니다. 생성기에서 직접 업로드하는 기능이 생기고,
+ *  CLI 업로드 파이프라인도 같은 자산 목록에 등록될 예정이라 — 이 화면이 "업로드 창구"에서
+ *  "여러 경로로 들어온 이미지를 한곳에서 찾아 재사용하는 라이브러리"로 역할이 바뀌었습니다. */
+function sourceBadge(source) {
+  if (source === "generator") return el("span", { class: "badge blue" }, "생성기 업로드");
+  if (source === "cli") return el("span", { class: "badge purple" }, "CLI 업로드");
+  return el("span", { class: "badge gray" }, "에셋관리 업로드");
 }
 
 function legacyToVariants(a) {

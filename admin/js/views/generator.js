@@ -2,6 +2,9 @@ import { store } from "../state.js";
 import { el, toast, esc } from "../lib/dom.js";
 import { navigate } from "../router.js";
 import { generateCopy, regenerateField } from "../lib/copyGenerator.js";
+import { processImage } from "../lib/imageProcessApi.js";
+import { resizeImage, EDM_IMAGE_MAX_DIM } from "../lib/imageResize.js";
+import { uploadToS3 } from "../lib/s3Upload.js";
 import { assembleEdmHtml } from "../lib/blocks.js";
 import { checkGuidelines, summarizeGuidelineIssues } from "../lib/guidelineCheck.js";
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
@@ -334,7 +337,6 @@ export function renderGenerator(root, params) {
     // 캠페인 설정: 한 번 정하면 되는 값들 (이 캠페인이 "뭔지" 정의)
     formBody.appendChild(groupHeader("캠페인 설정"));
     formBody.appendChild(sectionCampaignName());
-    formBody.appendChild(sectionPromotionLink());
     formBody.appendChild(sectionPurposeAndTemplate());
     formBody.appendChild(sectionOffer());
 
@@ -359,6 +361,15 @@ export function renderGenerator(root, params) {
         el("p", { class: "hint" }, "캠페인 목록에서 이 이름으로 표시됩니다.")
       ]),
       el("div", { class: "field", style: "margin-bottom:14px;" }, [
+        el("label", {}, ["프로모션명 ", el("span", { class: "req-tag" }, "· 필수")]),
+        el("input", {
+          type: "text", value: draft.promotionName || "",
+          placeholder: "예: 2026년 7월 경제형 프로모션",
+          oninput: e => { draft.promotionName = e.target.value; }
+        }),
+        el("p", { class: "hint" }, "같은 프로모션의 EDM/LP를 나중에 묶어보고 싶으면, 양쪽에 똑같은 이름을 입력하세요.")
+      ]),
+      el("div", { class: "field", style: "margin-bottom:14px;" }, [
         el("label", {}, ["작성자 ", el("span", { class: "req-tag" }, "· 필수")]),
         el("input", {
           type: "text", value: draft.author || "",
@@ -366,18 +377,6 @@ export function renderGenerator(root, params) {
           oninput: e => { draft.author = e.target.value; }
         })
       ])
-    ]);
-  }
-
-  function sectionPromotionLink() {
-    return el("div", { class: "field", style: "margin-bottom:14px;" }, [
-      el("label", {}, "프로모션명 (선택)"),
-      el("input", {
-        type: "text", value: draft.promotionName || "",
-        placeholder: "예: 2026년 7월 경제형 프로모션",
-        oninput: e => { draft.promotionName = e.target.value; }
-      }),
-      el("p", { class: "hint" }, "같은 프로모션의 EDM/LP를 나중에 묶어보고 싶으면, 양쪽에 똑같은 이름을 입력하세요.")
     ]);
   }
 
@@ -435,7 +434,7 @@ export function renderGenerator(root, params) {
   function sectionAiPrompt() {
     return sectionWrap(null, "AI 프롬프트", "ai", [
       el("div", { class: "field" }, [
-        el("label", {}, "AI에게 요청할 내용 (선택 · 카피와 이미지 선택 양쪽에 함께 반영됩니다)"),
+        el("label", {}, "AI에게 요청할 내용 (선택 · 카피 생성에 반영됩니다)"),
         el("textarea", {
           placeholder: "예: 구매담당자 대상, 신뢰감 있는 톤으로 / FA·금형부품 신제품 카탈로그 강조",
           oninput: e => { draft.aiPrompt = e.target.value; }
@@ -463,6 +462,101 @@ export function renderGenerator(root, params) {
       log("오류: " + e.message);
     } finally {
       draft.generating = false;
+      renderForm();
+      renderPreview();
+    }
+  }
+
+  // ⚠️ 에셋 관리가 재사용 라이브러리가 되면서 "종류"(히어로 배경/본문 이미지) 필터로
+  // 찾는 게 중요해졌는데, 생성기 업로드를 전부 "생성기 업로드"로 뭉뚱그리면 필터가
+  // 안 먹힙니다. 판단 기준은 오직 "이 필드가 히어로 그룹 소속이냐"입니다 — 이미지 개수
+  // 같은 건 무관합니다. (현재 18개 템플릿 중 히어로 그룹에 image 타입 필드를 둔 템플릿은
+  // 없어서 지금은 항상 "본문 이미지"로 나오지만, 나중에 히어로에 이미지가 들어가는
+  // 템플릿이 생기면 자동으로 "히어로 배경"으로 분류됩니다.)
+  function inferImageCategory(key) {
+    const t = resolveTemplate();
+    if (!t) return "본문 이미지";
+    const nonProduct = t.fields.filter(f => f.type !== "coupon-field" && f.type !== "product-field");
+    const groups = groupFieldsBySection(nonProduct);
+    const g = groups.find(grp => grp.fields.some(f => f.key === key));
+    return g === groups[0] ? "히어로 배경" : "본문 이미지";
+  }
+
+  // ⚠️ 에셋 관리가 "재사용 라이브러리"로 바뀌면서, 생성기에서 업로드한 이미지도 여기서
+  // 바로 찾아 다른 캠페인에 재사용할 수 있어야 합니다. 그래서 에셋 목록에도 같이 등록합니다.
+  function registerAsset(key, filename, url, blob, instruction, aiProcessed) {
+    const id = "a" + Date.now() + Math.random().toString(16).slice(2);
+    store.addAsset({
+      id,
+      filename,
+      category: inferImageCategory(key),
+      uploadedAt: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
+      variants: { EDM: { url, sizeKB: Math.round((blob?.size || 0) / 1024), isDemoUrl: !url.startsWith("http") } },
+      source: "generator",
+      aiProcessed,
+      instruction
+    });
+    return id;
+  }
+
+  async function handleImageUpload(key, file) {
+    draft.imageUploading = key;
+    renderForm();
+    const t = resolveTemplate();
+    const instruction = (draft.imageMeta[key] || {}).instruction || "";
+    try {
+      // EDM은 600px 고정폭이라, 업로드/가공 전에 먼저 표준 크기로 축소합니다
+      // (원본을 그대로 보내면 이메일 용량만 커지고 화질 이득은 없음).
+      const resized = await resizeImage(file, EDM_IMAGE_MAX_DIM);
+      let url, aiProcessed;
+      if (instruction.trim()) {
+        log(`이미지 업로드 · AI 가공 요청 중... (${file.name})`);
+        url = await processImage(resized, instruction, t?.purpose);
+        aiProcessed = true;
+      } else {
+        // 보정 요청이 비어있으면 AI 가공 자체를 건너뛰고 리사이징 후 그냥 업로드만 합니다.
+        log(`이미지 업로드 중... (${file.name})`);
+        url = await uploadToS3(resized, file.name, "EDM");
+        aiProcessed = false;
+      }
+      draft.fieldValues[key] = url;
+      // fileBlob을 남겨두면, 지금 이미지를 다시 선택할 필요 없이 "나중에 보정 요청"이
+      // 가능해집니다. Blob은 JSON으로 저장되지 않으니 새로고침하면 사라지고, 그땐
+      // "다시 업로드"로 원본을 다시 선택해야 합니다 — 세션 중 편의 기능입니다.
+      draft.imageMeta[key] = { filename: file.name, processed: true, instruction, aiProcessed, fileBlob: resized };
+      draft.imageMeta[key].assetId = registerAsset(key, file.name, url, resized, instruction, aiProcessed);
+      log(aiProcessed ? `이미지 가공 완료: ${file.name}` : `이미지 업로드 완료: ${file.name}`);
+    } catch (e) {
+      log("오류: " + e.message);
+    } finally {
+      draft.imageUploading = null;
+      renderForm();
+      renderPreview();
+    }
+  }
+
+  /** 이미 업로드된 이미지에 보정을 요청(또는 재요청)합니다. 원본을 다시 선택할 필요 없이,
+   *  업로드 때 남겨둔 fileBlob으로 다시 AI 가공을 겁니다. */
+  async function handleRecorrect(key) {
+    const meta = draft.imageMeta[key] || {};
+    if (!meta.fileBlob || !meta.newInstruction?.trim()) return;
+    draft.imageUploading = key;
+    renderForm();
+    const t = resolveTemplate();
+    log(`보정 재요청 중... (${meta.filename})`);
+    try {
+      const url = await processImage(meta.fileBlob, meta.newInstruction, t?.purpose);
+      draft.fieldValues[key] = url;
+      // 재보정한 새 버전만 남기고, 이 필드의 예전 버전 에셋은 지웁니다 — 안 그러면 보정을
+      // 시도할 때마다 안 쓰는 예전 이미지가 에셋 목록에 계속 쌓입니다.
+      if (meta.assetId) store.deleteAsset(meta.assetId);
+      const newAssetId = registerAsset(key, meta.filename, url, meta.fileBlob, meta.newInstruction, true);
+      draft.imageMeta[key] = { ...meta, instruction: meta.newInstruction, newInstruction: "", aiProcessed: true, processed: true, assetId: newAssetId };
+      log(`보정 완료: ${meta.filename}`);
+    } catch (e) {
+      log("오류: " + e.message);
+    } finally {
+      draft.imageUploading = null;
       renderForm();
       renderPreview();
     }
@@ -531,9 +625,67 @@ export function renderGenerator(root, params) {
       return el("div", { class: "field" }, [labelRow, el("textarea", { oninput: e => onChange(e.target.value) }, value)]);
     }
     if (f.type === "image") {
+      const meta = draft.imageMeta[f.key] || {};
+      const uploading = draft.imageUploading === f.key;
+
+      // 완료 상태 — 썸네일 + 배지 + 다시 업로드/URL 전환 + (가능하면) 추가 보정 요청
+      if (value && meta.processed) {
+        return el("div", { class: "field" }, [
+          labelRow,
+          el("div", { class: "image-field-filled" }, [
+            el("img", { src: value, alt: "", class: "image-field-thumb" }),
+            el("div", { class: "image-field-info" }, [
+              el("p", { class: "image-field-name" }, meta.filename || "이미지"),
+              el("span", { class: "badge " + (meta.aiProcessed ? "green" : "blue") }, meta.aiProcessed ? "AI 보정 완료" : "업로드 완료"),
+              el("span", { class: "badge blue" }, "S3 저장됨")
+            ])
+          ]),
+          meta.instruction ? el("p", { class: "hint" }, `요청한 보정: "${meta.instruction}"`) : null,
+          meta.fileBlob ? el("div", { class: "field-with-regen", style: "margin:6px 0;" }, [
+            el("input", {
+              type: "text", value: meta.newInstruction || "", style: "flex:1;min-width:0;",
+              placeholder: "보정 요청 추가 · 예: 배경을 더 어둡게",
+              oninput: e => { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], newInstruction: e.target.value }; }
+            }),
+            el("button", {
+              class: "btn btn-sm", style: "flex-shrink:0;white-space:nowrap;", disabled: uploading ? "disabled" : null,
+              onclick: () => handleRecorrect(f.key)
+            }, uploading ? "처리 중..." : "보정 요청")
+          ]) : null,
+          el("div", { class: "row2" }, [
+            el("button", { class: "btn btn-sm", onclick: () => { draft.imageMeta[f.key] = {}; onChange(""); renderForm(); } }, "다시 업로드"),
+            el("button", { class: "btn btn-sm ghost", onclick: () => { draft.imageMeta[f.key] = { urlMode: true }; renderForm(); } }, "URL 직접 입력")
+          ])
+        ]);
+      }
+
+      // URL 직접 입력 상태 — CLI로 만든 링크 등을 그대로 붙여넣는 기존 경로
+      if (meta.urlMode || (value && !meta.processed)) {
+        return el("div", { class: "field" }, [
+          labelRow,
+          el("input", { type: "text", value, placeholder: "https://... (CLI로 만든 링크 등 붙여넣기)", oninput: e => onChange(e.target.value) }),
+          el("button", { class: "btn btn-sm ghost", onclick: () => { draft.imageMeta[f.key] = {}; renderForm(); } }, "업로드로 전환")
+        ]);
+      }
+
+      // 비어있음 — 업로드 유도 (보정 요청은 선택 사항, 한 줄로 압축)
       return el("div", { class: "field" }, [
         labelRow,
-        el("input", { type: "text", value, placeholder: "https://... (에셋 관리에서 URL을 복사해 붙여넣으세요)", oninput: e => onChange(e.target.value) })
+        el("input", {
+          type: "text", value: meta.instruction || "",
+          placeholder: "보정 요청 (선택) · 예: 배경 제거, 제품 중앙 정렬",
+          oninput: e => { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], instruction: e.target.value }; }
+        }),
+        el("div", { class: "image-upload-row" }, [
+          el("label", { class: "btn btn-sm upload-label" }, [
+            uploading ? "AI로 이미지 가공 중..." : "이미지 업로드",
+            el("input", {
+              type: "file", accept: "image/*", style: "display:none;", disabled: uploading ? "disabled" : null,
+              onchange: e => { if (e.target.files[0]) handleImageUpload(f.key, e.target.files[0]); }
+            })
+          ]),
+          el("button", { class: "btn btn-sm ghost", onclick: () => { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], urlMode: true }; renderForm(); } }, "URL 직접 입력")
+        ])
       ]);
     }
     return el("div", { class: "field" }, [labelRow, el("input", { type: "text", value, oninput: e => onChange(e.target.value) })]);
@@ -788,6 +940,8 @@ function buildInitialDraft(templateId, existing) {
     purpose: t?.purpose || "온보딩",
     templateId,
     fieldValues: {},
+    imageMeta: {}, // key별 { filename, processed, instruction, urlMode } — 업로드 UI 상태
+    imageUploading: null, // 지금 "AI로 가공 중"인 필드 key (동시에 하나만)
     hiddenSections: [],
     hiddenFields: [],
     coupon: { value: "10%", max: "50,000원", target: "전 상품 적용", note: "3만원 이상 구매 시", code: "WELCOME10", expiry: "2026.09.30" },
