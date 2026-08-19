@@ -16,7 +16,7 @@ const PAGE_TYPES = [
 
 export function renderGeneratorLP(root, params) {
   const editId = params.get("id");
-  const existing = editId ? store.getCampaign(editId) : null;
+  let existing = editId ? store.getCampaign(editId) : null;
   const draft = buildInitialDraftLP(existing);
 
   root.appendChild(el("div", { class: "gen-app" }, [
@@ -539,11 +539,23 @@ export function renderGeneratorLP(root, params) {
     log("HTML 다운로드 완료");
   }
 
-  function saveDraft() {
+  async function saveDraft(e) {
+    const button = e?.currentTarget;
+    if (button) button.disabled = true;
     const campaign = draftToCampaignLP();
-    store.upsertCampaign(campaign);
-    toast("임시저장했습니다");
-    log("임시저장 완료");
+    try {
+      const savedCampaign = await store.upsertCampaign(campaign);
+      draft.id = savedCampaign.id;
+      existing = savedCampaign;
+      toast("임시저장했습니다");
+      log("임시저장 완료");
+    } catch (error) {
+      console.error("LP 캠페인 저장 실패", error);
+      toast(`임시저장에 실패했습니다: ${error.message}`);
+      log(`임시저장 실패 — ${error.message}`);
+    } finally {
+      if (button) button.disabled = false;
+    }
   }
 
   function draftToCampaignLP() {

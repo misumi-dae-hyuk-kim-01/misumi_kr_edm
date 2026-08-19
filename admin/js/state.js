@@ -1,23 +1,29 @@
-import { seedCampaigns, seedAssets, seedTemplates } from "./data/mockData.js";
+import { seedAssets, seedTemplates } from "./data/mockData.js";
+import {
+  listCampaigns,
+  createCampaign,
+  updateCampaign,
+  cloneCampaign,
+  deleteCampaign as deleteCampaignFromApi
+} from "./lib/api.js";
 
 const STORAGE_KEY = "edm_app_state_v1";
 
 function load() {
-  let savedCampaigns = null;
   let savedAssets = null;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      savedCampaigns = parsed.campaigns || null;
       savedAssets = parsed.assets || null;
     }
   } catch (e) {
     console.warn("상태 로드 실패, 초기값 사용", e);
   }
   return {
-    // 캠페인/에셋은 사용자가 직접 만들고 편집하는 데이터라 이전 방문 기록을 이어서 씁니다.
-    campaigns: savedCampaigns || seedCampaigns(),
+    // 캠페인은 앱 시작 시 DynamoDB에서 불러옵니다.
+    campaigns: [],
+    // 에셋은 아직 브라우저 로컬 저장소를 사용합니다.
     assets: savedAssets || seedAssets(),
     // ⚠️ templates는 여기서 절대 localStorage 값을 쓰지 않고 항상 새로 계산합니다.
     // 템플릿은 개발자가 배포하는 마스터 데이터(실서비스: S3 + templates.json)라서,
@@ -28,15 +34,32 @@ function load() {
   };
 }
 
-// 캠페인/에셋은 데모용으로 브라우저 로컬에 저장합니다 (실서비스: 캠페인→DynamoDB, 에셋→S3).
+// 캠페인은 DynamoDB를 사용하고, 에셋만 데모용으로 브라우저 로컬에 저장합니다.
 // 템플릿은 여기서 저장하지 않습니다 — mockData.js(→실서비스 S3)가 항상 단일 출처입니다.
 const data = load();
 
-function persist() {
+function persistAssets() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    campaigns: data.campaigns,
     assets: data.assets
   }));
+}
+
+function normalizeCampaign(campaign) {
+  const campaignId = campaign.campaignId || campaign.id;
+  return {
+    ...campaign,
+    campaignId,
+    // 기존 화면은 c.id를 사용하므로 DynamoDB 키를 화면용 id로도 연결합니다.
+    id: campaignId
+  };
+}
+
+function toApiCampaign(campaign) {
+  const { id, ...apiCampaign } = campaign;
+  return {
+    ...apiCampaign,
+    campaignId: apiCampaign.campaignId || id
+  };
 }
 
 export const store = {
@@ -45,48 +68,62 @@ export const store = {
   get templates() { return data.templates; },
 
   getCampaign(id) {
-    return data.campaigns.find(c => c.id === id) || null;
+    return data.campaigns.find(c => c.id === id || c.campaignId === id) || null;
   },
 
-  upsertCampaign(campaign) {
-    const idx = data.campaigns.findIndex(c => c.id === campaign.id);
-    if (idx >= 0) data.campaigns[idx] = campaign;
-    else data.campaigns.unshift(campaign);
-    persist();
+  async upsertCampaign(campaign) {
+    const campaignId = campaign.campaignId || campaign.id;
+    const idx = data.campaigns.findIndex(
+      c => c.id === campaignId || c.campaignId === campaignId
+    );
+    const payload = toApiCampaign(campaign);
+    const savedCampaign = idx >= 0
+      ? await updateCampaign(campaignId, payload)
+      : await createCampaign(payload);
+    const normalized = normalizeCampaign(savedCampaign);
+
+    if (idx >= 0) data.campaigns[idx] = normalized;
+    else data.campaigns.unshift(normalized);
+
+    return normalized;
   },
 
-  duplicateCampaign(id) {
+  async duplicateCampaign(id) {
     const src = this.getCampaign(id);
     if (!src) return null;
-    const copy = {
-      ...src,
-      id: "c" + Date.now(),
-      name: src.name + " (복제)",
-      status: "초안",
-      createdAt: new Date().toISOString().slice(0, 10).replace(/-/g, ".")
-    };
+
+    const copy = normalizeCampaign(await cloneCampaign(id));
     data.campaigns.unshift(copy);
-    persist();
     return copy;
   },
 
-  deleteCampaign(id) {
-    data.campaigns = data.campaigns.filter(c => c.id !== id);
-    persist();
+  async deleteCampaign(id) {
+    const result = await deleteCampaignFromApi(id);
+    data.campaigns = data.campaigns.filter(
+      c => c.id !== id && c.campaignId !== id
+    );
+    return result;
   },
 
   addAsset(asset) {
     data.assets.unshift(asset);
-    persist();
+    persistAssets();
   },
 
   deleteAsset(id) {
     data.assets = data.assets.filter(a => a.id !== id);
-    persist();
+    persistAssets();
   }
 };
 
 export function resetDemoData() {
   localStorage.removeItem(STORAGE_KEY);
   location.reload();
+}
+
+export async function loadCampaignsFromApi() {
+  const campaigns = await listCampaigns();
+  data.campaigns = campaigns.map(normalizeCampaign);
+
+  return data.campaigns;
 }
