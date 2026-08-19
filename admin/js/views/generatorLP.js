@@ -6,6 +6,7 @@ import { assembleLpHtml } from "../lib/blocksLP.js";
 import { seedLpTemplates } from "../data/lpTemplates.js";
 import { checkGuidelinesLP, summarizeGuidelineIssuesLP, LP_WIDTH_PATTERNS, DEPLOYMENT_COUNTRY } from "../lib/guidelineCheckLP.js";
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
+import { fetchSeriesInfo } from "../lib/seriesApi.js";
 
 const LP_TEMPLATES = seedLpTemplates();
 
@@ -16,7 +17,7 @@ const PAGE_TYPES = [
 
 export function renderGeneratorLP(root, params) {
   const editId = params.get("id");
-  let existing = editId ? store.getCampaign(editId) : null;
+  const existing = editId ? store.getCampaign(editId) : null;
   const draft = buildInitialDraftLP(existing);
 
   root.appendChild(el("div", { class: "gen-app" }, [
@@ -138,7 +139,7 @@ export function renderGeneratorLP(root, params) {
       el("div", { class: "sec-body" }, [
         grid,
         el("button", { class: "btn series-lookup-btn", onclick: lookupSeriesCodesLP }, "전체 조회 (상품 데이터 자동 불러오기)"),
-        el("p", { class: "hint" }, "미리보기에 바로 반영됩니다 · 시리즈 API 연동 전까지는 플레이스홀더로 표시")
+        el("p", { class: "hint" }, "미리보기에 바로 반영됩니다. 조회 결과에 없는 항목은 \"연동 예정\" 플레이스홀더로 표시됩니다.")
       ])
     ]);
   }
@@ -146,14 +147,21 @@ export function renderGeneratorLP(root, params) {
   async function lookupSeriesCodesLP() {
     const codes = draft.seriesCodes.filter(c => c && c.trim());
     if (!codes.length) { toast("시리즈 코드를 1개 이상 입력하세요"); return; }
-    log(`시리즈 코드 ${codes.length}건 등록 중...`);
-    // ⚠️ 실서비스 연동 지점: EDM의 lookupSeriesCodes()와 동일한 자리입니다. 개발팀이 EDM쪽에
-    // seriesApi.js를 연동하면, 같은 fetchSeriesInfo()를 그대로 여기 import해서 쓰면 됩니다.
-    // 지금은 API를 호출하지 않고 code만 채웁니다 — blocksLP.js가 나머지 필드를
-    // "연동 예정" 플레이스홀더로 표시합니다.
-    await new Promise(r => setTimeout(r, 400));
-    draft.products = codes.map(code => ({ code }));
-    log(`시리즈 코드 ${draft.products.length}건 등록 완료`);
+    log(`시리즈 코드 ${codes.length}건 조회 중...`);
+    const results = await Promise.all(codes.map(async code => {
+      try {
+        const product = await fetchSeriesInfo(code);
+        if (!product.name) log(`⚠ 시리즈 코드 "${code}"의 상품을 찾지 못했습니다.`);
+        return product;
+      } catch (e) {
+        log(`⚠ 시리즈 코드 "${code}" 조회 실패: ${e.message}`);
+        return { code };
+      }
+    }));
+    draft.products = results;
+    const successCount = results.filter(p => p.name).length;
+    log(`시리즈 조회 완료 — 성공 ${successCount}건${results.length - successCount ? ` · 실패 ${results.length - successCount}건` : ""}`);
+    toast(`상품 데이터 ${successCount}건을 불러왔습니다`);
     renderForm();
     renderPreview();
   }
@@ -539,23 +547,11 @@ export function renderGeneratorLP(root, params) {
     log("HTML 다운로드 완료");
   }
 
-  async function saveDraft(e) {
-    const button = e?.currentTarget;
-    if (button) button.disabled = true;
+  function saveDraft() {
     const campaign = draftToCampaignLP();
-    try {
-      const savedCampaign = await store.upsertCampaign(campaign);
-      draft.id = savedCampaign.id;
-      existing = savedCampaign;
-      toast("임시저장했습니다");
-      log("임시저장 완료");
-    } catch (error) {
-      console.error("LP 캠페인 저장 실패", error);
-      toast(`임시저장에 실패했습니다: ${error.message}`);
-      log(`임시저장 실패 — ${error.message}`);
-    } finally {
-      if (button) button.disabled = false;
-    }
+    store.upsertCampaign(campaign);
+    toast("임시저장했습니다");
+    log("임시저장 완료");
   }
 
   function draftToCampaignLP() {
