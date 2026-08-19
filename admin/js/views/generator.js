@@ -701,7 +701,7 @@ export function renderGenerator(root, params) {
               onchange: e => { if (e.target.files[0]) handleImageUpload(f.key, e.target.files[0]); }
             })
           ]),
-          el("button", { class: "btn btn-sm ghost", onclick: () => { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], urlMode: true }; renderForm(); } }, "URL 직접 입력")
+          el("button", { class: "btn btn-sm", onclick: () => { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], urlMode: true }; renderForm(); } }, "URL 직접 입력")
         ])
       ]);
     }
@@ -742,7 +742,7 @@ export function renderGenerator(root, params) {
       grid,
       el("div", { class: "row2" }, [
         el("button", { class: "btn series-lookup-btn", onclick: lookupSeriesCodes }, "전체 조회"),
-        el("label", { class: "btn ghost upload-label" }, [
+        el("label", { class: "btn upload-label" }, [
           "엑셀 업로드",
           el("input", {
             type: "file", accept: ".xlsx,.xls,.csv", style: "display:none;",
