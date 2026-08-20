@@ -8,7 +8,7 @@
 // 완전히 새로운 블록이 필요할 때만 이 파일에 함수를 추가하면 됩니다.
 
 import { esc } from "./dom.js";
-import { LP_WIDTH_PATTERNS, DEPLOYMENT_LANG } from "./guidelineCheckLP.js";
+import { LP_WIDTH_PATTERNS, DEPLOYMENT_LANG, LP_REQUIRED_DESCRIPTION_SUFFIX } from "./guidelineCheckLP.js";
 
 // ==========================================================================
 // 개별 블록 렌더 함수 (모두 동일 시그니처: (draft) => htmlString)
@@ -185,20 +185,57 @@ export function assembleLpHtml(draft, template, seoMeta = {}) {
 // 고치면 되고, 조립 로직(assembleLpCatalogGroupHtml)은 건드릴 필요 없습니다.
 // ==========================================================================
 
-/**
- * 신상품카탈로그의 8개 그룹 정의 — 그룹 탭 순서와 배포 파일명(html)의 단일 출처입니다.
- * CSV의 "group" 컬럼 값은 반드시 이 id 중 하나와 일치해야 합니다.
- */
-export const CATALOG_GROUPS = [
-  { id: "economy", label: "경제형", file: "economy.html" },
-  { id: "pneumatic", label: "공압기기", file: "pneumatic.html" },
-  { id: "door", label: "도어 부품/외장 부품", file: "door.html" },
-  { id: "piping", label: "배관 부품", file: "piping.html" },
-  { id: "positioning", label: "위치결정/고정부품", file: "positioning.html" },
-  { id: "fa-etc", label: "FA용 기타", file: "fa-etc.html" },
-  { id: "fastener", label: "나사/볼트/와셔/너트", file: "fastener.html" },
-  { id: "etc", label: "기타", file: "etc.html" }
+// ⚠️ 예전엔 이 배열이 "8개 그룹 고정 목록"이었지만, 이제 그룹은 엑셀에 어떤 값이
+// 들어오느냐에 따라 매번 자동으로 정해집니다(resolveCatalogGroups 참고). 이 배열은
+// 그 중 "이미 알려진 8개"에 한해 파일명을 예쁘게(영문) 유지하기 위한 참고표로만 씁니다 —
+// 여기 없는 새 그룹명이 들어와도 문제없이 자동으로 처리됩니다.
+export const KNOWN_GROUP_PRESETS = [
+  { label: "경제형", file: "economy.html" },
+  { label: "공압기기", file: "pneumatic.html" },
+  { label: "도어 부품/외장 부품", file: "door.html" },
+  { label: "배관 부품", file: "piping.html" },
+  { label: "위치결정/고정부품", file: "positioning.html" },
+  { label: "FA용 기타", file: "fa-etc.html" },
+  { label: "나사/볼트/와셔/너트", file: "fastener.html" },
+  { label: "기타", file: "etc.html" }
 ];
+
+/**
+ * 엑셀에 실제로 등장한 그룹 라벨 목록(첫 등장 순서 그대로)을 받아서, 탭/파일명에 쓸
+ * {label, file}[] 을 만듭니다. 마케터가 새 그룹명을 써도(예: "신규 카테고리") 코드
+ * 수정 없이 자동으로 파일이 하나 더 생깁니다.
+ *
+ * ⚠️ 한글 그룹명은 영문 파일명으로 자동 변환이 안 되므로(알파벳/숫자만 남기면 빈 문자열이
+ * 되는 경우가 많음), KNOWN_GROUP_PRESETS에 없는 새 그룹은 "group-2.html"처럼 순번으로
+ * 파일명이 정해집니다 — URL이 안 예뻐지는 것뿐, 동작에는 문제없습니다. 예쁜 파일명이
+ * 필요해지면 KNOWN_GROUP_PRESETS에 그 그룹을 추가하면 됩니다.
+ *
+ * @param {string[]} rawLabels 엑셀 "group" 열에서 뽑은 값들 (첫 등장 순서, 중복 제거 전)
+ * @returns {{label: string, file: string}[]} 중복 제거된 그룹 목록
+ */
+export function resolveCatalogGroups(rawLabels) {
+  const seen = new Set();
+  const groups = [];
+  let autoIndex = 1;
+  for (const raw of rawLabels) {
+    const label = String(raw || "").trim();
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    const preset = KNOWN_GROUP_PRESETS.find(g => g.label === label);
+    const file = preset ? preset.file : `group-${autoIndex++}.html`;
+    groups.push({ label, file });
+  }
+  return groups;
+}
+
+function catalogTabsHtml(activeGroupLabel, allGroups) {
+  const links = allGroups.map(g =>
+    g.label === activeGroupLabel
+      ? `      <a href="./${g.file}" class="is-active" aria-current="page">${esc(g.label)}</a>`
+      : `      <a href="./${g.file}">${esc(g.label)}</a>`
+  ).join("\n");
+  return `    <nav class="lp-tabs" aria-label="상품 그룹">\n${links}\n    </nav>`;
+}
 
 /** 배지 이름이 무엇이든 같은 스타일을 쓰되, 색이 지정된 종류만 style.css의
  *  .p-badge--{key} 클래스로 연결합니다. 여기 없는 배지는 회색 폴백으로 자동 표시됩니다
@@ -306,15 +343,6 @@ ${btns}
     </div>`;
 }
 
-function catalogTabsHtml(activeGroupId) {
-  const links = CATALOG_GROUPS.map(g =>
-    g.id === activeGroupId
-      ? `      <a href="./${g.file}" class="is-active" aria-current="page">${esc(g.label)}</a>`
-      : `      <a href="./${g.file}">${esc(g.label)}</a>`
-  ).join("\n");
-  return `    <nav class="lp-tabs" aria-label="상품 그룹">\n${links}\n    </nav>`;
-}
-
 function catalogLnbHtml(group, categories, totalCount, months) {
   const chips = months.map(m =>
     `        <button type="button" class="chip" data-month="${esc(m)}">${esc(formatSinceLabel(m))}월</button>`
@@ -348,11 +376,35 @@ ${items}
  * @param {{img: string, href: string, label: string}[]} [banners] 상단 배너 (최대 4개, 모든 그룹이 공유)
  * @returns {string} 완성된 그룹 페이지 HTML (style.css/script.js는 별도 파일로 같이 배포해야 함)
  */
-export function assembleLpCatalogGroupHtml(groupId, categories, seoMeta = {}, banners = []) {
-  const group = CATALOG_GROUPS.find(g => g.id === groupId);
-  if (!group) throw new Error(`assembleLpCatalogGroupHtml: 알 수 없는 그룹 id "${groupId}"`);
+/**
+ * 그룹 하나의 유효 SEO 메타(타이틀/디스크립션)를 계산합니다. assembleLpCatalogGroupHtml
+ * 내부에서 쓰는 것과 완전히 같은 로직을 export해서, generatorLP.js가 checkGuidelinesLP를
+ * 돌릴 때도 똑같은 값을 넘길 수 있게 합니다(안 그러면 HTML엔 기본값이 박혀 있는데
+ * 검사기는 "타이틀이 비어있습니다"라고 잘못 판단하게 됩니다).
+ *
+ * ⚠️ 디스크립션 기본값엔 가이드라인 필수 고정 문구(LP_REQUIRED_DESCRIPTION_SUFFIX)를
+ * 반드시 붙입니다 — 안 붙이면 매 그룹 페이지가 가이드라인 위반으로 잡힙니다.
+ */
+export function resolveCatalogSeoMeta(group, totalCount, seoMeta = {}) {
+  return {
+    title: seoMeta.title || `${group.label} 신상품 | 미스미 신상품 안내`,
+    description: seoMeta.description || `한국미스미 ${group.label} 신상품 ${totalCount}건을 확인해보세요. ${LP_REQUIRED_DESCRIPTION_SUFFIX}`,
+    keywords: seoMeta.keywords
+  };
+}
 
+/**
+ * @param {{label: string, file: string}} group 지금 만들 그룹 (resolveCatalogGroups 결과 중 하나)
+ * @param {{label: string, file: string}[]} allGroups 이번 업로드에 실제로 등장한 전체 그룹 목록 (탭 nav용)
+ * @param {{id: string, label: string, items: object[]}[]} categories 이 그룹의 카테고리별 상품 목록
+ * @param {{title?: string, description?: string}} seoMeta
+ * @param {{img: string, href: string, label: string}[]} banners 상단 배너 (비어있으면 안내 문구로 대체)
+ * @returns {string} 완성된 그룹 페이지 HTML (style.css/script.js는 별도 파일로 같이 배포해야 함)
+ */
+export function assembleLpCatalogGroupHtml(group, allGroups, categories, seoMeta = {}, banners = []) {
+  const groupKey = group.file.replace(/\.html$/, "");
   const totalCount = categories.reduce((sum, c) => sum + c.items.length, 0);
+  const effectiveSeoMeta = resolveCatalogSeoMeta(group, totalCount, seoMeta);
   const months = [...new Set(categories.flatMap(c => c.items.map(it => it.since)).filter(Boolean))].sort().reverse();
   const sectionsHtml = categories.map(catalogSectionHtml).join("\n");
 
@@ -361,14 +413,14 @@ export function assembleLpCatalogGroupHtml(groupId, categories, seoMeta = {}, ba
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${esc(seoMeta.title || `${group.label} 신상품 | 미스미 신상품 안내`)}</title>
-  <meta name="description" content="${esc(seoMeta.description || `한국미스미 ${group.label} 신상품 ${totalCount}건. 카테고리별로 확인하세요.`)}">
+  <title>${esc(effectiveSeoMeta.title)}</title>
+  <meta name="description" content="${esc(effectiveSeoMeta.description)}">
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-<div class="lp" data-group="${esc(group.id)}">
+<div class="lp" data-group="${esc(groupKey)}">
 
   <header class="lp-head">
     <h1>미스미 <em>신상품</em> 안내<span class="lp-n">N</span></h1>
@@ -377,9 +429,9 @@ export function assembleLpCatalogGroupHtml(groupId, categories, seoMeta = {}, ba
 
   <div class="lp-inner">
 
-${catalogBannerHtml(CATALOG_BANNERS)}
+${catalogBannerHtml(banners)}
 
-${catalogTabsHtml(group.id)}
+${catalogTabsHtml(group.label, allGroups)}
 
     <div class="lp-body">
 
@@ -453,7 +505,7 @@ a:hover { color: var(--lp-accent-dark); }
 }
 .lp-banner-slides li { display: none; }
 .lp-banner-slides li.is-on { display: block; }
-.lp-banner-slides img { display: block; width: 100%; height: auto; }
+.lp-banner-slides img { display: block; width: 100%; aspect-ratio: 1200 / 190; object-fit: cover; }
 .lp-banner-btns {
   flex: 0 1 300px; min-width: 220px; display: flex; flex-direction: column;
   margin: 0; padding: 0; list-style: none;

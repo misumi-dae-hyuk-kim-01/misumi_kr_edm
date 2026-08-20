@@ -2,12 +2,14 @@ import { store } from "../state.js";
 import { el, toast } from "../lib/dom.js";
 import { generateCopyLP } from "../lib/copyGeneratorLP.js";
 import { generateSeoMeta } from "../lib/seoMetaGenerator.js";
-import { assembleLpHtml, assembleLpCatalogGroupHtml, CATALOG_GROUPS, CATALOG_STYLE, CATALOG_SCRIPT } from "../lib/blocksLP.js";
+import { assembleLpHtml, assembleLpCatalogGroupHtml, resolveCatalogGroups, resolveCatalogSeoMeta, CATALOG_STYLE, CATALOG_SCRIPT } from "../lib/blocksLP.js";
 import { seedLpTemplates } from "../data/lpTemplates.js";
 import { checkGuidelinesLP, summarizeGuidelineIssuesLP, LP_WIDTH_PATTERNS, DEPLOYMENT_COUNTRY } from "../lib/guidelineCheckLP.js";
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
 import { fetchSeriesInfo, fetchSeriesInfoBatch } from "../lib/seriesApi.js";
 import { deployLpToS3, deployLpFilesToS3 } from "../lib/lpDeploy.js";
+import { resizeImage } from "../lib/imageResize.js";
+import { uploadToS3 } from "../lib/s3Upload.js";
 
 const LP_TEMPLATES = seedLpTemplates();
 // ⚠️ 신상품카탈로그는 다른 LP 템플릿과 완전히 다른 화면(캐치카피 등 타이핑 폼이 아니라
@@ -113,8 +115,8 @@ export function renderGeneratorLP(root, params) {
   // ==========================================================================
 
   function sectionCatalogUpload() {
-    const groupRows = CATALOG_GROUPS.map(g => {
-      const info = (draft.catalogGroups || {})[g.id];
+    const groupRows = (draft.catalogGroupsMeta || []).map(g => {
+      const info = (draft.catalogGroups || {})[g.label];
       const statusLabel = !info ? "대기 중" : info.status === "processing" ? "처리 중" : "완료";
       const statusClass = !info ? "" : info.status === "processing" ? "badge-warn" : "badge-pass";
       return el("div", { class: "catalog-group-row" }, [
@@ -123,7 +125,7 @@ export function renderGeneratorLP(root, params) {
         el("span", { class: "guideline-badge " + statusClass, style: "margin-left:auto;" }, statusLabel),
         el("button", {
           class: "btn btn-sm", disabled: info?.status === "done" ? null : "disabled",
-          onclick: () => { renderCatalogPreviewFor(g.id); }
+          onclick: () => { renderCatalogPreviewFor(g.label); }
         }, "미리보기")
       ]);
     });
@@ -147,7 +149,7 @@ export function renderGeneratorLP(root, params) {
             onchange: e => { if (e.target.files[0]) handleCatalogUpload(e.target.files[0]); }
           })
         ]),
-        el("p", { class: "hint" }, "1열부터 group(경제형/공압기기/도어 부품/외장 부품/배관 부품/위치결정/고정부품/FA용 기타/나사/볼트/와셔/너트/기타), category, code, price(선택), badges(선택, ;로 구분), since, bid 순서입니다. code만 있으면 상품명·이미지·가격·브랜드명은 시리즈 API가 자동으로 채웁니다."),
+        el("p", { class: "hint" }, "1열부터 group(경제형, FA 등 원하는 그룹명 — 처음 등장하는 값 그대로 새 그룹이 자동으로 만들어집니다), category, code, price(선택), badges(선택, ;로 구분), since, bid 순서입니다. code만 있으면 상품명·이미지·가격·브랜드명은 시리즈 API가 자동으로 채웁니다."),
         draft.catalogProgress ? el("div", { class: "catalog-progress" }, [
           el("div", { class: "catalog-progress-bar" }, [
             el("div", { class: "catalog-progress-fill", style: `width:${Math.round(draft.catalogProgress.done / draft.catalogProgress.total * 100)}%;` })
@@ -161,8 +163,78 @@ export function renderGeneratorLP(root, params) {
           onclick: deployCatalog
         }, allReady ? "전체 배포" : `전체 배포 (${readyCount}/${totalGroupsWithData || "?"}건 조회 완료)`),
         el("div", { id: "genlp-catalog-deploy-result" })
+      ]),
+      sectionCatalogBanners()
+    ]);
+  }
+
+  /** 상단 배너(최대 4개) 입력 — 모든 그룹 페이지가 같은 배너를 공유합니다.
+   *  이미지 URL이 비어있는 칸은 무시되고, 하나도 안 채우면 조립 함수가 안내
+   *  플레이스홀더를 대신 넣습니다. */
+  function sectionCatalogBanners() {
+    const banners = draft.catalogBanners;
+    const rows = banners.map((b, i) => el("div", { class: "field", style: "margin-bottom:10px;border-bottom:1px solid #f0f0f0;padding-bottom:10px;" }, [
+      el("label", {}, `배너 ${i + 1}`),
+      el("input", {
+        type: "text", value: b.img, placeholder: "이미지 URL (또는 아래에서 업로드)",
+        oninput: e => { banners[i].img = e.target.value; }
+      }),
+      el("div", { class: "image-upload-row", style: "margin-top:6px;" }, [
+        el("label", { class: "btn btn-sm upload-label" }, [
+          draft.catalogBannerUploading === i ? "업로드 중..." : "이미지 업로드",
+          el("input", {
+            type: "file", accept: "image/*", style: "display:none;", disabled: draft.catalogBannerUploading === i ? "disabled" : null,
+            onchange: e => { if (e.target.files[0]) handleCatalogBannerUpload(i, e.target.files[0]); }
+          })
+        ]),
+        b.img ? el("img", { src: b.img, alt: "", style: "width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid #e0e0e0;" }) : null
+      ]),
+      el("input", {
+        type: "text", value: b.href, placeholder: "클릭 시 이동할 링크 (선택)", style: "margin-top:6px;",
+        oninput: e => { banners[i].href = e.target.value; }
+      }),
+      el("input", {
+        type: "text", value: b.label, placeholder: "배너 이름 (버튼에 표시)", style: "margin-top:6px;",
+        oninput: e => { banners[i].label = e.target.value; }
+      })
+    ]));
+
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [
+        el("div", { class: "sec-hd-left" }, [
+          el("span", { class: "sec-badge" }, "③"),
+          el("span", { class: "sec-title" }, "상단 배너 (선택, 최대 4개)")
+        ])
+      ]),
+      el("div", { class: "sec-body" }, [
+        ...rows,
+        banners.length < 4 ? el("button", {
+          class: "btn btn-sm ghost", style: "width:100%;",
+          onclick: () => { banners.push({ img: "", href: "", label: "" }); renderForm(); }
+        }, "+ 배너 추가") : null,
+        el("p", { class: "hint" }, "배너를 바꾸면 다음 조회/배포 때부터 반영됩니다 — 이미 만들어진 그룹은 다시 배포해야 합니다.")
       ])
     ]);
+  }
+
+  /** 배너 이미지는 그냥 정적 이미지라 AI 보정이 필요 없어서, EDM 이미지 필드처럼
+   *  리사이징 + 순수 업로드만 합니다(카피/보정 요청 없음). 배너는 가로로 넓은 형태라
+   *  1200px 기준으로 리사이징합니다(배너 슬라이드 폭이 520px 이상이라 여유 있게). */
+  async function handleCatalogBannerUpload(index, file) {
+    draft.catalogBannerUploading = index;
+    renderForm();
+    try {
+      const resized = await resizeImage(file, 1200);
+      const url = await uploadToS3(resized, file.name, "LP");
+      draft.catalogBanners[index].img = url;
+      log(`배너 ${index + 1} 이미지 업로드 완료: ${file.name}`);
+    } catch (e) {
+      log("오류: " + e.message);
+      toast("배너 업로드에 실패했습니다");
+    } finally {
+      draft.catalogBannerUploading = null;
+      renderForm();
+    }
   }
 
   /** 배포 파일은 style.css/script.js를 외부 참조(공유용)로 두지만, 미리보기(iframe srcdoc)는
@@ -174,27 +246,30 @@ export function renderGeneratorLP(root, params) {
       .replace('<script src="./script.js"></script>', `<script>${CATALOG_SCRIPT}</script>`);
   }
 
+  /** iframe이 고정 높이만 갖고 있으면 내용이 길 때 안에서 스크롤이 생겨 "짧아 보이는"
+   *  문제가 생깁니다. 로드되자마자 실제 문서 높이를 재서 iframe 자체를 그만큼 늘립니다
+   *  (카탈로그처럼 배너+헤더+LNB만으로도 300px를 훌쩍 넘는 화면에 특히 필요합니다). */
+  function appendAutoHeightIframe(host, srcdoc) {
+    const iframe = el("iframe", { srcdoc });
+    iframe.addEventListener("load", () => {
+      try {
+        const h = iframe.contentDocument.documentElement.scrollHeight;
+        iframe.style.height = Math.max(h, 300) + "px";
+      } catch (e) { /* srcdoc은 동일 출처라 실패할 일이 거의 없지만, 방어적으로 무시 */ }
+    });
+    host.appendChild(iframe);
+  }
+
   function renderCatalogPreviewFor(groupId) {
     const info = (draft.catalogGroups || {})[groupId];
     if (!info || info.status !== "done") return;
     previewFrame.innerHTML = "";
-    previewFrame.appendChild(el("iframe", { srcdoc: buildCatalogPreviewHtml(info.html) }));
+    appendAutoHeightIframe(previewFrame, buildCatalogPreviewHtml(info.html));
   }
 
   /** "2026-07;신규" 처럼 세미콜론으로 구분된 배지 문자열을 배열로 */
   function parseBadges(raw) {
     return String(raw || "").split(";").map(s => s.trim()).filter(Boolean);
-  }
-
-  /** 엑셀의 "그룹" 칸엔 화면(탭)에서 보이는 한글 라벨("경제형")을 그대로 쓰는 게
-   *  자연스러워서, 영문 id("economy")뿐 아니라 한글 라벨도 같이 인식합니다. */
-  function resolveCatalogGroupId(raw) {
-    const v = String(raw || "").trim();
-    const byId = CATALOG_GROUPS.find(g => g.id === v);
-    if (byId) return byId.id;
-    const byLabel = CATALOG_GROUPS.find(g => g.label === v);
-    if (byLabel) return byLabel.id;
-    return null;
   }
 
   async function handleCatalogUpload(file) {
@@ -210,38 +285,27 @@ export function renderGeneratorLP(root, params) {
       const rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
       // 첫 행이 헤더 텍스트일 수 있으니, code 칸(3번째 열)에 숫자가 없는 행은 건너뜁니다
-      // (EDM 엑셀 업로드와 동일한 필터링 방식).
+      // (EDM 엑셀 업로드와 동일한 필터링 방식). 그룹 값은 이제 검증하지 않습니다 —
+      // 엑셀에 뭐라고 쓰든 그 값 그대로 새 그룹이 만들어집니다(resolveCatalogGroups).
       const parsed = rows
-        .map(r => {
-          const rawGroup = String(r[0] ?? "").trim();
-          return {
-            rawGroup,
-            group: resolveCatalogGroupId(rawGroup) || rawGroup, // 한글 라벨이면 id로 정규화, 못 찾으면 원본 그대로 둬서 경고에 노출
-            category: String(r[1] ?? "").trim(),
-            code: String(r[2] ?? "").trim(),
-            price: String(r[3] ?? "").trim(),
-            badges: parseBadges(r[4]),
-            since: String(r[5] ?? "").trim(),
-            bid: String(r[6] ?? "").trim()
-          };
-        })
-        .filter(r => r.code && /\d/.test(r.code));
+        .map(r => ({
+          group: String(r[0] ?? "").trim(),
+          category: String(r[1] ?? "").trim(),
+          code: String(r[2] ?? "").trim(),
+          price: String(r[3] ?? "").trim(),
+          badges: parseBadges(r[4]),
+          since: String(r[5] ?? "").trim(),
+          bid: String(r[6] ?? "").trim()
+        }))
+        .filter(r => r.code && /\d/.test(r.code) && r.group);
 
-      const validRows = parsed.filter(r => CATALOG_GROUPS.some(cg => cg.id === r.group));
-      const unknownGroups = [...new Set(parsed.map(r => r.rawGroup))].filter(g => !CATALOG_GROUPS.some(cg => cg.id === g || cg.label === g));
-      if (unknownGroups.length) {
-        log(`⚠ 알 수 없는 그룹 값이 있어 건너뜁니다: ${unknownGroups.join(", ")} (그룹 열엔 "${CATALOG_GROUPS.map(g => g.label).join('", "')}" 중 하나를 입력해주세요)`);
-      }
-
-      // 필터링 후 남는 행이 없으면 조용히 끝내지 않고 바로 눈에 띄게 알립니다 —
-      // 안 그러면 "업로드했는데 미리보기에 아무것도 안 뜬다"는 상황이 이유도 모른 채 발생합니다.
-      if (!validRows.length) {
-        toast("처리할 상품이 없습니다 — 그룹 값을 확인해주세요");
-        log(`⚠ 유효한 행이 0개라 카탈로그를 만들지 못했습니다. 그룹 열엔 "${CATALOG_GROUPS.map(g => g.label).join('", "')}" 중 하나를 정확히 입력해주세요.`);
+      if (!parsed.length) {
+        toast("처리할 상품이 없습니다 — 그룹/코드 값을 확인해주세요");
+        log("⚠ 유효한 행이 0개라 카탈로그를 만들지 못했습니다. group과 code 칸이 채워져 있는지 확인해주세요.");
         return;
       }
 
-      await runCatalogImport(validRows);
+      await runCatalogImport(parsed);
     } catch (e) {
       toast("엑셀 파일을 읽는 중 오류가 발생했습니다");
       log("오류: " + e.message);
@@ -257,17 +321,22 @@ export function renderGeneratorLP(root, params) {
     const byGroup = {};
     rows.forEach(r => { (byGroup[r.group] = byGroup[r.group] || []).push(r); });
 
+    // 엑셀에 실제로 등장한 그룹 값들로 이번 배포의 그룹 목록을 매번 새로 만듭니다 —
+    // 코드에 그룹을 미리 정의해둘 필요가 없습니다.
+    const allGroups = resolveCatalogGroups(rows.map(r => r.group));
+    draft.catalogGroupsMeta = allGroups;
+
     const totalCodes = rows.length;
     let doneCodes = 0;
     let failedCodes = 0;
     draft.catalogProgress = { done: 0, total: totalCodes, failed: 0 };
     renderForm();
 
-    for (const group of CATALOG_GROUPS) {
-      const groupRows = byGroup[group.id];
+    for (const group of allGroups) {
+      const groupRows = byGroup[group.label];
       if (!groupRows || !groupRows.length) continue;
 
-      draft.catalogGroups[group.id] = { status: "processing", count: groupRows.length };
+      draft.catalogGroups[group.label] = { status: "processing", count: groupRows.length };
       renderForm();
       log(`${group.label} — ${groupRows.length}건 조회 시작`);
 
@@ -304,8 +373,15 @@ export function renderGeneratorLP(root, params) {
       });
 
       const categories = categoryOrder.map(label => byCategory[label]);
-      const html = assembleLpCatalogGroupHtml(group.id, categories, currentSeoMeta());
-      draft.catalogGroups[group.id] = { status: "done", count: groupRows.length, html };
+      const validBanners = (draft.catalogBanners || []).filter(b => b.img && b.img.trim());
+      const html = assembleLpCatalogGroupHtml(group, allGroups, categories, currentSeoMeta(), validBanners);
+      const totalCount = categories.reduce((sum, c) => sum + c.items.length, 0);
+      const effectiveSeoMeta = resolveCatalogSeoMeta(group, totalCount, currentSeoMeta());
+      // ⚠️ HTML에 박힌 것과 검사기에 넘기는 메타가 어긋나면 "타이틀이 비어있습니다" 같은
+      // 오탐이 나므로, assembleLpCatalogGroupHtml이 실제로 쓴 것과 동일한 유효 메타를 씁니다.
+      const groupIssues = checkGuidelinesLP(html, { ...effectiveSeoMeta, widthPattern: 1200 });
+      draft.catalogGroups[group.label] = { status: "done", count: groupRows.length, html, issues: groupIssues };
+      updateCatalogGuidelineBadge();
       log(`${group.label} — 생성 완료 (${groupRows.length}건, 실패 ${results.filter(r => r.error).length}건)`);
       renderForm();
       renderPreview();
@@ -323,9 +399,9 @@ export function renderGeneratorLP(root, params) {
     const files = [
       { name: "style.css", content: CATALOG_STYLE, contentType: "text/css" },
       { name: "script.js", content: CATALOG_SCRIPT, contentType: "application/javascript" },
-      ...CATALOG_GROUPS
-        .filter(g => draft.catalogGroups?.[g.id]?.status === "done")
-        .map(g => ({ name: g.file, content: draft.catalogGroups[g.id].html, contentType: "text/html" }))
+      ...(draft.catalogGroupsMeta || [])
+        .filter(g => draft.catalogGroups?.[g.label]?.status === "done")
+        .map(g => ({ name: g.file, content: draft.catalogGroups[g.label].html, contentType: "text/html" }))
     ];
     log("배포 중...");
     try {
@@ -693,17 +769,35 @@ export function renderGeneratorLP(root, params) {
   /** 카탈로그 모드 미리보기 — 완료된 그룹 중 첫 번째를 보여줍니다.
    *  가이드라인은 그룹마다 결과가 달라질 수 있어 배지는 비워두고, 그룹별 카드에서
    *  각각 확인하도록 안내합니다(화면이 여러 장이라 배지 하나로 요약하기 어려움). */
+  /** 카탈로그는 그룹이 여러 개라 그룹마다 이슈가 다를 수 있는데, 그렇다고 배지 자리를
+   *  새로 만들지 않고 기존 하단 배지(#genlp-guideline-badge)를 그대로 씁니다 — 화면
+   *  구조를 일관되게 유지하려고, 그룹별 결과는 여기에 다 합쳐서 보여줍니다. */
+  function updateCatalogGuidelineBadge() {
+    const badge = root.querySelector("#genlp-guideline-badge");
+    if (!badge) return;
+    const allIssues = Object.entries(draft.catalogGroups || {}).flatMap(([label, info]) =>
+      (info.issues || []).map(i => ({ ...i, message: `[${label}] ${i.message}` }))
+    );
+    latestGuidelineIssues = allIssues;
+    const summary = summarizeGuidelineIssuesLP(allIssues);
+    badge.className = "guideline-badge " + (allIssues.length === 0 ? "badge-pass" : summary.errors ? "badge-fail" : "badge-warn");
+    badge.textContent = allIssues.length === 0
+      ? "✅ 완료된 그룹 전체 가이드라인 통과"
+      : `${summary.errors ? "❌" : "⚠️"} 위반 ${summary.errors}건 · 경고 ${summary.warnings}건 — 그룹별 상세는 클릭해서 보기`;
+  }
+
   function renderCatalogPreview() {
     const groups = draft.catalogGroups || {};
-    const firstReady = CATALOG_GROUPS.find(g => groups[g.id]?.status === "done");
+    const firstReady = (draft.catalogGroupsMeta || []).find(g => groups[g.label]?.status === "done");
     previewFrame.innerHTML = "";
     if (firstReady) {
-      previewFrame.appendChild(el("iframe", { srcdoc: buildCatalogPreviewHtml(groups[firstReady.id].html) }));
+      appendAutoHeightIframe(previewFrame, buildCatalogPreviewHtml(groups[firstReady.label].html));
+      updateCatalogGuidelineBadge();
     } else {
       previewFrame.appendChild(el("p", { class: "hint", style: "padding:40px;text-align:center;" }, "엑셀을 업로드하면 그룹별로 미리보기가 여기 표시됩니다."));
+      const badge = root.querySelector("#genlp-guideline-badge");
+      if (badge) { badge.className = "guideline-badge"; badge.textContent = "엑셀을 업로드하면 가이드라인을 확인합니다"; }
     }
-    const badge = root.querySelector("#genlp-guideline-badge");
-    if (badge) { badge.className = "guideline-badge"; badge.textContent = "그룹별 미리보기에서 확인하세요"; }
   }
 
   function updateGuidelineBadge(issues) {
@@ -903,9 +997,12 @@ function buildInitialDraftLP(existing) {
     products: [],
     deployedUrl: "",
     catalogGroups: {},
+    catalogGroupsMeta: [],
     catalogImporting: false,
     catalogProgress: null,
     catalogDeployedUrls: [],
+    catalogBanners: [{ img: "", href: "", label: "" }],
+    catalogBannerUploading: null,
     catchcopy: "",
     cta: "",
     heroImageOption: "기본",
