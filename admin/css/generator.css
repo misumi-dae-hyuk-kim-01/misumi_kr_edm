@@ -65,8 +65,8 @@
 }
 .field input:focus,.field select:focus,.field textarea:focus{border-color:#0F218B;}
 .field textarea{min-height:40px;resize:vertical;line-height:1.5;}
-.hint{font-size:10px;color:#999;margin-top:3px;line-height:1.5;}
-.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;}
+.field .hint{font-size:10px;color:#999;margin-top:3px;}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;}
 
 /* 쿠폰 미리보기 */
@@ -85,7 +85,7 @@
   position:absolute;right:5px;top:50%;transform:translateY(-50%);border:none;background:none;color:#bbb;cursor:pointer;font-size:12px;
 }
 .series-slot .rm:hover{color:#cc0000;}
-.series-lookup-btn,.upload-label{width:100%;justify-content:center;}
+.series-lookup-btn{width:100%;}
 .product-mini-list{display:flex;flex-direction:column;gap:5px;margin-top:8px;}
 .product-mini{display:flex;align-items:center;gap:8px;font-size:11px;color:#555;background:#f7f8fa;border-radius:6px;padding:6px 9px;}
 .product-mini .pm-code{font-family:monospace;color:#0F218B;font-weight:700;}
@@ -175,3 +175,12 @@
 .preview-wrap.mobile{max-width:400px;margin:0 auto;}
 .preview-frame{background:#fff;border-radius:8px;min-height:300px;overflow:hidden;min-width:0;}
 .preview-frame iframe{width:100%;border:none;min-height:300px;display:block;}
+
+/* ---------- 신상품카탈로그(생성기) ---------- */
+.catalog-group-list{display:flex;flex-direction:column;gap:6px;margin:10px 0;}
+.catalog-group-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #e8e8e8;border-radius:7px;background:#fafbfd;font-size:12.5px;}
+.catalog-group-label{font-weight:700;color:#1a1a1a;}
+.catalog-group-count{color:#868686;font-size:11.5px;}
+.catalog-progress{margin:10px 0;}
+.catalog-progress-bar{height:6px;background:#eee;border-radius:4px;overflow:hidden;margin-bottom:4px;}
+.catalog-progress-fill{height:100%;background:#0F218B;transition:width .3s;}

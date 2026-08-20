@@ -106,3 +106,34 @@ export async function fetchSeriesInfo(code) {
   const data = await res.json();
   return parseSeriesResponse(data, code);
 }
+
+/**
+ * 시리즈 코드가 아주 많을 때(신상품카탈로그 등 수백~수천 건) 한꺼번에 다 쏘지 않고
+ * batchSize개씩 순차적으로 처리합니다 — 배치 하나 안에서는 동시에 조회하고,
+ * 배치가 끝나야 다음 배치로 넘어갑니다.
+ *
+ * ⚠️ batchSize 기본값(10)은 서버 부담을 줄이기 위한 안전한 추정치일 뿐입니다.
+ * 이 API의 실제 초당/분당 허용치를 확인받으면 호출부에서 이 값만 조정하면 됩니다
+ * (이 함수 자체는 안 건드려도 됩니다).
+ *
+ * @param {string[]} codes 조회할 시리즈 코드 목록
+ * @param {number} batchSize 한 번에 동시 처리할 개수 (기본 10)
+ * @param {(done: number, total: number) => void} [onProgress] 배치 하나 끝날 때마다 호출
+ * @returns {Promise<Array<{code: string, [key: string]: any}>>} 코드별 조회 결과 (실패한 코드도 {code}만 채워서 포함됨)
+ */
+export async function fetchSeriesInfoBatch(codes, batchSize = 10, onProgress) {
+  const results = [];
+  for (let i = 0; i < codes.length; i += batchSize) {
+    const chunk = codes.slice(i, i + batchSize);
+    const chunkResults = await Promise.all(chunk.map(async code => {
+      try {
+        return await fetchSeriesInfo(code);
+      } catch (e) {
+        return { code, error: e.message };
+      }
+    }));
+    results.push(...chunkResults);
+    if (onProgress) onProgress(results.length, codes.length);
+  }
+  return results;
+}
