@@ -8,7 +8,7 @@
 // 완전히 새로운 블록이 필요할 때만 이 파일에 함수를 추가하면 됩니다.
 
 import { esc } from "./dom.js";
-import { LP_WIDTH_PATTERNS, DEPLOYMENT_LANG, LP_REQUIRED_DESCRIPTION_SUFFIX } from "./guidelineCheckLP.js";
+import { LP_WIDTH_PATTERNS, LP_ECONOMY_LAYOUT, DEPLOYMENT_LANG, LP_REQUIRED_DESCRIPTION_SUFFIX } from "./guidelineCheckLP.js";
 
 // ==========================================================================
 // 개별 블록 렌더 함수 (모두 동일 시그니처: (draft) => htmlString)
@@ -128,6 +128,34 @@ const STYLE = `
   .lp-product-card__name { font-size: 13px; margin-bottom: 4px; }
   .lp-product-card__price { font-size: 15px; font-weight: 700; color: #0F218B; }
   .lp-pending { color: #c9a227; font-style: italic; font-weight: normal; font-size: 12px; }
+
+  /* ⚠️ 경제형(page-economy) 전용 — 240px 사이드 + 920px 컨텐츠 분할, 옐로우+블랙 테마.
+     아직 디자인팀 목업이 없어서 색상 변수/사이드 내용은 뼈대만 잡아둔 상태입니다.
+     실제 목업이 오면 --lp-eco-yellow/--lp-eco-black 값과 .lp-economy__side 내부 마크업만
+     바꾸면 되고, 분할 구조(240/920) 자체는 LP_ECONOMY_LAYOUT과 맞춰뒀습니다. */
+  .page-economy .lp-wrap {
+    --lp-eco-yellow: #ffd400;
+    --lp-eco-black: #111;
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+  }
+  .lp-economy__side {
+    width: ${LP_ECONOMY_LAYOUT.sidebarWidth}px;
+    flex: 0 0 ${LP_ECONOMY_LAYOUT.sidebarWidth}px;
+    background: var(--lp-eco-black);
+    color: var(--lp-eco-yellow);
+    min-height: 100%;
+    padding: 24px 16px;
+    box-sizing: border-box;
+  }
+  .lp-economy__content {
+    width: ${LP_ECONOMY_LAYOUT.contentWidth}px;
+    flex: 0 0 ${LP_ECONOMY_LAYOUT.contentWidth}px;
+    box-sizing: border-box;
+  }
+  .page-economy .lp-hero { background: var(--lp-eco-black); color: var(--lp-eco-yellow); }
+  .page-economy .lp-product-card__price { color: var(--lp-eco-black); }
 `;
 
 /**
@@ -136,16 +164,30 @@ const STYLE = `
  * @param {{title, description, keywords}} seoMeta
  * @returns {string} 완성된 LP HTML
  */
+/** 경제형 사이드 영역 — 디자인팀 목업이 오기 전까지의 임시 뼈대입니다.
+ *  브레드크럼을 여기로 옮겨서 "경제형은 사이드에 카테고리 내비를 둔다"는 구조만
+ *  잡아뒀습니다. 실제 내용(카테고리 트리 등)은 목업 확인 후 교체하세요. */
+function economySideBlock(draft) {
+  return `<aside class="lp-economy__side">${breadcrumbBlock(draft)}</aside>`;
+}
+
 export function assembleLpHtml(draft, template, seoMeta = {}) {
-  const widthInfo = LP_WIDTH_PATTERNS[draft.widthPattern] || LP_WIDTH_PATTERNS[1200];
-  const bodyClass = widthInfo.class || "page-unknown"; // 920px처럼 실제 클래스명 미확인인 경우 대비
+  const isEconomy = draft.pageType === LP_ECONOMY_LAYOUT.pageType;
+  // 경제형은 총 폭이 항상 1200px 고정입니다(내부에서 240/920으로 나뉘는 것뿐) —
+  // widthPattern 값과 무관하게 여기서 강제합니다.
+  const effectiveWidthPattern = isEconomy ? LP_ECONOMY_LAYOUT.totalWidth : (draft.widthPattern || 1200);
+  const widthInfo = LP_WIDTH_PATTERNS[effectiveWidthPattern] || LP_WIDTH_PATTERNS[1200];
+  const bodyClass = isEconomy ? LP_ECONOMY_LAYOUT.class : (widthInfo.class || "page-unknown");
   const keywordsAttr = (seoMeta.keywords || []).join(", ");
 
   const blockNames = (template && template.blocks && template.blocks.length)
     ? template.blocks
     : FALLBACK_BLOCKS;
 
-  const bodyHtml = blockNames.map(name => {
+  // 경제형은 브레드크럼을 사이드로 빼고, 나머지 블록만 오른쪽 컨텐츠 컬럼에 놓습니다.
+  const contentBlockNames = isEconomy ? blockNames.filter(name => name !== "브레드크럼") : blockNames;
+
+  const bodyHtml = contentBlockNames.map(name => {
     const render = blockRegistry[name];
     if (!render) {
       console.warn(`[blocksLP.js] 레지스트리에 없는 블록명입니다: "${name}"`);
@@ -153,6 +195,10 @@ export function assembleLpHtml(draft, template, seoMeta = {}) {
     }
     return render(draft) || "";
   }).filter(Boolean).join("\n");
+
+  const wrapInner = isEconomy
+    ? `${economySideBlock(draft)}<div class="lp-economy__content">${bodyHtml}</div>`
+    : bodyHtml;
 
   return `<!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${DEPLOYMENT_LANG}" lang="${DEPLOYMENT_LANG}">
@@ -163,12 +209,12 @@ export function assembleLpHtml(draft, template, seoMeta = {}) {
 <meta name="description" content="${esc(seoMeta.description || "")}">
 <meta name="keywords" content="${esc(keywordsAttr)}">
 <style>
-  .lp-wrap { max-width: ${draft.widthPattern || 1200}px; }
+  .lp-wrap { max-width: ${effectiveWidthPattern}px; }
   ${STYLE}
 </style>
 </head>
 <body class="${bodyClass}">
-  <div class="lp-wrap">${bodyHtml}</div>
+  <div class="lp-wrap">${wrapInner}</div>
 </body>
 </html>`;
 }
@@ -244,29 +290,29 @@ function catalogTabsHtml(activeGroupLabel, allGroups) {
  */
 const BADGE_CLASS_MAP = { "경제형": "economy", "신규": "new" };
 
-/**
- * 8개 그룹 페이지가 전부 공유하는 상단 배너 4개입니다(디자인팀 원본 economy.html 등
- * 그대로 — 그룹마다 다른 배너가 아니라 카탈로그 전체가 같은 배너를 씁니다).
- *
- * ⚠️ 이 배너는 CSV 데이터가 아니라 월별로 바뀌는 프로모션 이미지라, 나중에 이걸
- * 생성기 화면에서 직접 바꿀 수 있게 하고 싶으면 이 배열을 draft에서 받아오도록
- * 고치면 됩니다(지금은 고정값입니다). href/img/alt만 있으면 되는 구조라 확장은 쉽습니다.
- *
- * ⚠️ img 경로(./images/...)는 배포 시 style.css/script.js와 마찬가지로 같은 캠페인
- * 폴더 안의 images/ 하위에 실제 파일이 있어야 합니다 — 지금 generatorLP.js의
- * 배포 목록엔 이 이미지 파일들이 아직 포함되어 있지 않습니다(실제 배너 이미지 파일을
- * 받아서 같이 올리는 작업이 별도로 필요합니다).
- */
-const CATALOG_BANNERS = [
-  { href: "/pr/vona/economy/aluminum_frame/?bid=bid_kr_all_KR240048_4858", img: "./images/topbanner1_260616.png", alt: "프로파일 국내 규격 출시", label: "프로파일 국내 규격 출시" },
-  { href: "/pr/vona/july_coreproduct_brand?bid=bid_kr_all_KR240048_5631", img: "./images/topbanner2_260728_v2.png", alt: "브랜드 특별전", label: "브랜드 특별전" },
-  { href: "/pr/vona/economy/july_coreproduct_lg/?bid=bid_kr_all_KR240048_5705", img: "./images/topbanner3_260728.png", alt: "리니어가이드 규격 확대", label: "리니어가이드 규격 확대" },
-  { href: "/pr/vona/june_coreproduct?bid=bid_kr_all_KR240048_4861", img: "./images/topbanner4_260626_v2.png", alt: "자동화 설비 부품 확대", label: "자동화 설비 부품 확대" }
-];
-
 function badgeClass(label) {
   const key = BADGE_CLASS_MAP[label];
   return key ? ` p-badge--${key}` : "";
+}
+
+/**
+ * 엑셀 bid 열에 순수 코드("bid_kr_all_..."))가 들어올 수도, 이미 완성된 쿼리스트링
+ * ("?bid=bid_kr_all_...")이 들어올 수도 있습니다 — 담당자마다 기존에 쓰던 시트를 복사해서
+ * 채우다 보니 두 형태가 섞여 들어옵니다. 어느 쪽이 오든 항상 순수 코드만 뽑아내서,
+ * 뒤에서 `?bid=` + encodeURIComponent를 한 번만 씌우게 만듭니다.
+ * (이 방어 처리가 없으면 이미 "?bid="가 붙은 값을 다시 encodeURIComponent로 감싸서
+ * "?bid=%3Fbid%3Dbid_kr_..." 처럼 이중 인코딩되는 버그가 발생합니다.)
+ */
+function normalizeBid(raw) {
+  if (!raw) return "";
+  const trimmed = String(raw).trim();
+  const m = /bid=([^&]+)/.exec(trimmed); // "?bid=xxx" 또는 "...&bid=xxx" 형태에서 값만 추출
+  const value = m ? m[1] : trimmed;
+  try {
+    return decodeURIComponent(value); // 혹시 이미 인코딩된 채로 들어온 경우까지 대비
+  } catch {
+    return value; // decode 실패 시(정상적인 순수 코드인데 %가 우연히 들어간 경우 등) 원본 그대로
+  }
 }
 
 function catalogProductCard(item) {
@@ -277,7 +323,8 @@ function catalogProductCard(item) {
   const priceHtml = item.price
     ? `<span class="p-price">${esc(item.price)}원 ~</span>`
     : `<span class="p-price p-price--none">가격 문의</span>`;
-  const detailUrl = `https://kr.misumi-ec.com/vona2/detail/${encodeURIComponent(item.code)}/${item.bid ? `?bid=${encodeURIComponent(item.bid)}` : ""}`;
+  const bid = normalizeBid(item.bid);
+  const detailUrl = `https://kr.misumi-ec.com/vona2/detail/${encodeURIComponent(item.code)}/${bid ? `?bid=${encodeURIComponent(bid)}` : ""}`;
 
   return `<li class="p-item" data-code="${esc(item.code)}" data-name="${esc(item.name || "")}" data-brand="${esc(item.brandName || "")}" data-since="${esc(item.since || "")}">
             <a class="p-link" href="${esc(detailUrl)}" target="_blank" rel="noopener">

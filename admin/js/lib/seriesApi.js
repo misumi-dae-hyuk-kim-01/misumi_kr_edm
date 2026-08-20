@@ -1,8 +1,8 @@
-// ⚠️ 참고 예시 구현 — 현재 generator.js에서 이 파일을 import/호출하지 않습니다.
-// 시리즈 API 실연동은 개발팀에서 직접 진행하기로 했습니다. 이 파일은 그때 그대로 갖다 쓰거나
-// 참고하시라고 만들어둔 예시입니다 (실제 API 응답으로 파싱 로직까지 테스트 완료된 상태).
-// generator.js에 연결하려면: 상단에 `import { fetchSeriesInfo } from "../lib/seriesApi.js";` 추가 후
-// lookupSeriesCodes() 안의 주석 처리된 예시 코드를 그대로 활성화하면 됩니다.
+// ✅ 실제로 연동되어 사용 중입니다 — generator.js가 이 파일의 fetchSeriesInfo()를 import해서
+// 씁니다 (11번 줄 import, 815번 줄 호출 부근 참고). generatorLP.js도 fetchSeriesInfo/
+// fetchSeriesInfoBatch를 그대로 씁니다. FIELD_MAP에 brandName 매핑까지 추가되어 있고
+// (브랜드명이 항상 "MISUMI"로만 나오던 버그 수정 완료), 실제 API 응답으로 파싱 로직까지
+// 테스트된 상태입니다 — 더 이상 "미연동 참고 예시" 단계가 아닙니다.
 //
 // ⚠️ 실서비스 연동 지점 (SERIES_API_CONTRACT.md 참고)
 // 미스미 시리즈 검색 API 실제 응답을 draft.products 계약(code/name/image/price)으로 변환합니다.

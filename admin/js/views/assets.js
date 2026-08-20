@@ -1,6 +1,6 @@
 import { store } from "../state.js";
 import { el, toast } from "../lib/dom.js";
-import { LP_WIDTH_PATTERNS } from "../lib/guidelineCheckLP.js";
+import { LP_WIDTH_PATTERNS, LP_ECONOMY_LAYOUT } from "../lib/guidelineCheckLP.js";
 import { resizeImage } from "../lib/imageResize.js";
 
 // ⚠️ 실서비스 연동 지점 (copyGenerator.js/seriesApi.js와 동일한 패턴)
@@ -20,12 +20,14 @@ const SIZE_TARGETS = [
   { key: "EDM", label: "EDM (최대 600px)", channel: "EDM", dim: 600 },
   { key: "LP1200", label: "LP 최대 1200px", channel: "LP", dim: 1200 },
   { key: "LP950", label: "LP 최대 950px", channel: "LP", dim: 950 },
-  { key: "LP920", label: `LP 최대 920px (${LP_WIDTH_PATTERNS[920].scope})`, channel: "LP", dim: 920 }
+  // ⚠️ 920은 더 이상 "총 폭 패턴"이 아니라 경제형 페이지의 오른쪽 컨텐츠 컬럼 폭입니다
+  // (guidelineCheckLP.js의 LP_ECONOMY_LAYOUT 참고) — LP_WIDTH_PATTERNS엔 더 이상 없습니다.
+  { key: "LP920", label: `LP 경제형 컨텐츠 최대 ${LP_ECONOMY_LAYOUT.contentWidth}px (${LP_ECONOMY_LAYOUT.scope})`, channel: "LP", dim: LP_ECONOMY_LAYOUT.contentWidth }
 ];
-const CATEGORY_PRESETS = ["히어로 배경", "본문 이미지"];
+const CATEGORY_PRESETS = ["히어로 배경", "본문 이미지", "배너 이미지"];
 
 const PAGE_SIZE = 10;
-let filters = { category: "전체", usage: "전체" };
+let filters = { category: "전체", usage: "전체", origin: "전체" };
 let searchQuery = "";
 let sortBy = "recent"; // "recent" | "size" | "name"
 let viewMode = "list"; // "list" | "grid"
@@ -83,6 +85,7 @@ export function renderAssets(root) {
     }),
     select(["전체", ...CATEGORY_PRESETS], filters.category, v => { filters.category = v; page = 1; renderTable(); }, "종류 필터"),
     select(["전체", "사용 중", "미사용"], filters.usage, v => { filters.usage = v; page = 1; renderTable(); }, "사용여부 필터"),
+    select(["전체", "고아 에셋만"], filters.origin, v => { filters.origin = v; page = 1; renderTable(); }, "출처 필터"),
     select(
       ["최신순", "용량순", "이름순"],
       sortBy === "recent" ? "최신순" : sortBy === "size" ? "용량순" : "이름순",
@@ -185,6 +188,23 @@ export function renderAssets(root) {
     return used;
   }
 
+  /** findUsage()는 "지금 어느 캠페인에서 쓰이고 있는지"(재사용 여부)를 보는 거고,
+   *  이건 "원래 어느 캠페인에서 만들어졌는지"(출처)를 봅니다 — 서로 다른 정보입니다.
+   *  생성기(registerAsset)가 등록할 때 sourceCampaignId를 남겨두면, 캠페인이 삭제된
+   *  뒤에도 "이 에셋이 원래 어디서 왔는지" 및 "출처 캠페인이 이미 삭제됐는지"(고아
+   *  에셋인지)를 알 수 있습니다. 에셋관리 화면에서 직접 업로드한 경우엔
+   *  sourceCampaignId가 없으므로 null을 반환합니다.
+   *  ⚠️ promotionName도 같이 반환합니다 — 캠페인명만으로는 "이 EDM 이미지랑 이 LP
+   *  배너가 같은 프로모션 소속"인지 알기 어렵고, 같은 프로모션이면 캠페인 설정 화면의
+   *  안내처럼 EDM/LP 양쪽에 동일한 프로모션명을 입력해두므로 이 값으로 매핑이 됩니다.
+   *  @returns {{name: string, promotionName: string, orphaned: boolean}|null} */
+  function sourceCampaignInfo(a) {
+    if (!a.sourceCampaignId) return null;
+    const campaign = store.campaigns.find(c => c.id === a.sourceCampaignId);
+    if (!campaign) return { name: "(삭제된 캠페인)", promotionName: "", orphaned: true };
+    return { name: campaign.name, promotionName: campaign.promotionName || "", orphaned: false };
+  }
+
   function getVariants(a) {
     return a.variants || legacyToVariants(a);
   }
@@ -196,6 +216,12 @@ export function renderAssets(root) {
       const used = findUsage(getVariants(a)).length > 0;
       if (filters.usage === "사용 중" && !used) return false;
       if (filters.usage === "미사용" && used) return false;
+    }
+    // 출처 캠페인이 삭제된(고아) 에셋만 걸러보고 싶을 때 — 캠페인 정리 시 같이 지울지
+    // 판단하는 용도입니다.
+    if (filters.origin === "고아 에셋만") {
+      const info = sourceCampaignInfo(a);
+      if (!info || !info.orphaned) return false;
     }
     return true;
   }
@@ -279,6 +305,7 @@ export function renderAssets(root) {
         const firstUrl = Object.values(variants)[0]?.url;
         const variantCount = Object.keys(variants).length;
         const usedIn = findUsage(variants);
+        const origin = sourceCampaignInfo(a);
         const detailId = `asset-link-detail-${idx}`;
 
         const mainRow = el("tr", {}, [
@@ -290,12 +317,19 @@ export function renderAssets(root) {
           el("td", {}, firstUrl
             ? el("img", { src: firstUrl, alt: a.filename, class: "asset-thumb" })
             : el("span", { class: "badge gray" }, "IMG")),
+          // ⚠️ "출처 캠페인"을 별도 컬럼으로 뺐더니(9컬럼) 좁은 화면에서 "액션" 컬럼이
+          // 오른쪽 밖으로 밀려서 안 보이는 문제가 있었습니다 — 컬럼 수를 원래(8개)대로
+          // 되돌리고, 출처 정보는 여기 파일명 셀 안에 배지로 합쳤습니다.
           el("td", { class: "cell-name" }, [
             el("div", {}, a.filename),
             el("div", { style: "margin-top:3px;" }, [
               sourceBadge(a.source),
               a.aiProcessed ? el("span", { class: "badge green", style: "margin-left:4px;" }, "AI 보정") : null
-            ])
+            ]),
+            origin ? el("div", { style: "margin-top:3px;", title: "출처 캠페인" }, [
+              el("span", { class: "badge " + (origin.orphaned ? "amber" : "gray") },
+                origin.promotionName ? `${origin.name} · ${origin.promotionName}` : origin.name)
+            ]) : null
           ]),
           el("td", {}, el("div", { class: "variant-chips" }, SIZE_TARGETS.map(t => {
             const v = variants[t.key];
@@ -358,6 +392,7 @@ export function renderAssets(root) {
       const variants = getVariants(a);
       const firstUrl = Object.values(variants)[0]?.url;
       const usedIn = findUsage(variants);
+      const origin = sourceCampaignInfo(a);
       return el("div", { class: "asset-grid-card" }, [
         el("input", {
           type: "checkbox", class: "asset-grid-check",
@@ -372,6 +407,10 @@ export function renderAssets(root) {
           sourceBadge(a.source),
           a.aiProcessed ? el("span", { class: "badge green", style: "margin-left:4px;" }, "AI 보정") : null
         ]),
+        origin ? el("div", { style: "margin:2px 0;" }, [
+          el("span", { class: "badge " + (origin.orphaned ? "amber" : "gray") },
+            origin.promotionName ? `${origin.name} · ${origin.promotionName}` : origin.name)
+        ]) : null,
         el("div", {}, usedIn.length
           ? el("span", { class: "badge green" }, `사용 중 (${usedIn.length})`)
           : el("span", { class: "badge amber" }, "미사용"))

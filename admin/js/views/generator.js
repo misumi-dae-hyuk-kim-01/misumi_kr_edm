@@ -494,6 +494,11 @@ export function renderGenerator(root, params) {
       uploadedAt: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
       variants: { EDM: { url, sizeKB: Math.round((blob?.size || 0) / 1024), isDemoUrl: !url.startsWith("http") } },
       source: "generator",
+      // ⚠️ 재사용 라이브러리로 바뀌면서 "사용 중인 캠페인"(findUsage)은 이미 대조로
+      // 알 수 있었지만 "원래 어느 캠페인에서 만들어졌는지"는 기록이 없었습니다.
+      // 캠페인을 삭제할 때 관련 에셋을 찾아 정리(또는 최소한 "출처 캠페인 삭제됨"으로
+      // 표시)하려면 이 필드가 필요합니다 — draft.id는 이 캠페인의 고유 id입니다.
+      sourceCampaignId: draft.id,
       aiProcessed,
       instruction
     });

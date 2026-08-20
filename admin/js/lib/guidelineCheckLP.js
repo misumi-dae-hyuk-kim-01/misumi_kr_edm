@@ -13,14 +13,30 @@ import {
   checkFluorescentColors
 } from "./guidelineRules/shared.js";
 
-/** 코딩가이드 A-2에 정의된 컨텐츠 폭 패턴.
- *  1200px(.page2), 950px(.page1)는 misumi_codingguideline_KOR_ver_2.pptx에 명시된 범용 값이고,
- *  920px은 문서엔 없지만 담당자 확인 결과 "한국 한정 · 경제형 페이지 전용"인 조건부 값입니다 —
- *  다른 두 패턴과 달리 아무 페이지에나 선택하면 안 됩니다. */
+/** 코딩가이드 A-2에 정의된 컨텐츠 "총" 폭 패턴 — 페이지 전체 max-width입니다.
+ *  1200px(.page2), 950px(.page1)는 misumi_codingguideline_KOR_ver_2.pptx에 명시된 범용 값입니다.
+ *  ⚠️ 예전엔 여기 920px도 "총 폭 선택지"처럼 나란히 들어있었는데, 이건 잘못된 모델이었습니다 —
+ *  920px은 페이지 전체 폭이 아니라 "경제형 페이지 안에서 오른쪽 컨텐츠 컬럼의 폭"입니다.
+ *  경제형 페이지의 실제 총 폭은 1200px이고(왼쪽 사이드 240px + 오른쪽 컨텐츠 920px 분할 구조),
+ *  독립된 페이지 폭 옵션이 아니므로 여기서 빼고 LP_ECONOMY_LAYOUT으로 분리했습니다. */
 export const LP_WIDTH_PATTERNS = {
   1200: { class: "page2", scope: "전체" },
-  950: { class: "page1", scope: "전체" },
-  920: { class: null, scope: "한국 한정 · 경제형(economy) 페이지 전용", country: "KR", pageType: "경제형" }
+  950: { class: "page1", scope: "전체" }
+};
+
+/** 경제형(economy) 페이지 전용 내부 분할 레이아웃 정보.
+ *  총 폭은 LP_WIDTH_PATTERNS[1200]과 동일하게 1200px을 쓰되, 그 안에서
+ *  왼쪽 사이드(240px) / 오른쪽 컨텐츠(920px)로 나뉩니다. 한국 한정입니다.
+ *  ⚠️ 실제 컬러(옐로우+블랙)와 사이드 영역에 뭘 넣을지는 디자인팀 목업이 필요합니다 —
+ *  지금 blocksLP.js의 스타일은 뼈대만 잡아둔 것이고 확정 디자인이 아닙니다. */
+export const LP_ECONOMY_LAYOUT = {
+  totalWidth: 1200,
+  sidebarWidth: 240,
+  contentWidth: 920,
+  class: "page-economy",
+  scope: "한국 한정 · 경제형 페이지 전용",
+  country: "KR",
+  pageType: "경제형"
 };
 
 /** 코딩가이드 C-3에 정의된 전체 국가별 언어 코드 목록 (참고용 — 아래 DEPLOYMENT_LANG이
@@ -98,21 +114,23 @@ export function checkGuidelinesLP(html, meta = {}) {
   //    여기서는 <meta charset=utf-8>만 확인합니다 (shared.checkUtf8Charset가 이미 처리).
 
   // 5. 컨텐츠 폭 패턴 선택 여부 확인
+  // ⚠️ 경제형은 더 이상 widthPattern 숫자로 구분하지 않습니다 — 경제형도 총 폭은
+  // 항상 1200px이고(LP_ECONOMY_LAYOUT.totalWidth), 내부 240/920 분할 여부만 pageType으로
+  // 결정됩니다. 그래서 여기 검사도 widthPattern(총 폭)과 pageType(경제형 여부)을 따로 봅니다.
   if (meta.widthPattern && !(meta.widthPattern in LP_WIDTH_PATTERNS)) {
     issues.push({ level: "warning", message: `컨텐츠 폭(${meta.widthPattern}px)이 정의된 패턴(${Object.keys(LP_WIDTH_PATTERNS).join("/")}px)에 없습니다. 실제 지원 패턴인지 확인하세요.` });
-  } else if (meta.widthPattern) {
-    const pattern = LP_WIDTH_PATTERNS[meta.widthPattern];
-    // 920px처럼 국가/페이지유형이 한정된 패턴인 경우, 지금 만드는 페이지가 그 조건에
-    // 맞는지 확인합니다 (예: 920px은 한국 · 경제형 페이지에서만 써야 함).
-    if (pattern.country && effectiveMeta.country && pattern.country !== effectiveMeta.country) {
-      issues.push({ level: "error", message: `컨텐츠 폭 ${meta.widthPattern}px는 ${pattern.scope}인데, 지금 국가는 ${effectiveMeta.country}입니다.` });
-    }
-    if (pattern.pageType && meta.pageType && pattern.pageType !== meta.pageType) {
-      issues.push({ level: "error", message: `컨텐츠 폭 ${meta.widthPattern}px는 ${pattern.scope}인데, 지금 페이지 유형은 ${meta.pageType}입니다.` });
-    }
   }
   if (!meta.widthPattern) {
     issues.push({ level: "warning", message: "컨텐츠 폭 패턴이 선택되지 않았습니다." });
+  }
+  // 경제형 페이지는 한국 한정 · 총 폭 1200px 고정입니다 — 다른 국가거나 총 폭이 1200이 아니면 위반.
+  if (meta.pageType === LP_ECONOMY_LAYOUT.pageType) {
+    if (effectiveMeta.country && effectiveMeta.country !== LP_ECONOMY_LAYOUT.country) {
+      issues.push({ level: "error", message: `경제형 페이지는 ${LP_ECONOMY_LAYOUT.scope}인데, 지금 국가는 ${effectiveMeta.country}입니다.` });
+    }
+    if (meta.widthPattern && meta.widthPattern !== LP_ECONOMY_LAYOUT.totalWidth) {
+      issues.push({ level: "error", message: `경제형 페이지의 총 폭은 항상 ${LP_ECONOMY_LAYOUT.totalWidth}px입니다 (지금 ${meta.widthPattern}px로 설정됨).` });
+    }
   }
 
   // 6. SEO 메타(타이틀/디스크립션/키워드) — 출처: 코딩가이드 C-4
