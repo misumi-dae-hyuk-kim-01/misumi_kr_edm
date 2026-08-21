@@ -2,7 +2,7 @@
 // CONFIG.uploadApiUrl이 비어있으면 데모 모드(브라우저 임시 URL)로 동작합니다 —
 // assets.js의 기존 uploadAsset()과 동일한 패턴입니다.
 export const S3_UPLOAD_CONFIG = {
-  uploadApiUrl: "" // 예: "https://xxxx.execute-api.ap-northeast-2.amazonaws.com/generate-upload-url"
+  uploadApiUrl: "https://f72jhi4vw6.execute-api.ap-northeast-1.amazonaws.com/default/get-upload-url"
 };
 
 export async function uploadToS3(blob, filename, channel = "EDM") {

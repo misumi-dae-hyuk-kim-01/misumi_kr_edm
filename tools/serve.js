@@ -14,7 +14,7 @@ const path = require("path");
 // path.resolve로 정규화 — 인자로 받은 슬래시 경로와 path.join의 백슬래시가 섞이면
 // 아래 디렉터리 탈출 검사가 항상 실패해서 전부 403이 됩니다.
 const ROOT = path.resolve(process.argv[2] || process.cwd());
-const PORT = Number(process.argv[3] || 5173);
+const PORT = Number(process.argv[3] || 5500);
 
 const MIME = {
   ".html": "text/html; charset=utf-8",

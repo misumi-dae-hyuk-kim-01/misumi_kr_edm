@@ -521,7 +521,14 @@ export function renderGenerator(root, params) {
     return w > 0 ? w : EDM_IMAGE_MAX_DIM;
   }
 
+  // ⚠️ "확인 후 업로드" 구조: AI 가공(processImage)은 S3에 아무것도 저장하지 않고
+  // 미리보기용 blob만 돌려줍니다. fieldValues[key]는 확정 전까지 비워둡니다 — blocks.js의
+  // substituteImages()가 빈 값을 "이미지 연동 예정" 문구로 안전하게 처리해주므로, 확정
+  // 전에는 EDM 미리보기(iframe)에 아직 아무 이미지도 뜨지 않습니다. 사용자가 "이 결과로
+  // 업로드" 버튼을 눌러야(handleConfirmUpload) 그제서야 uploadToS3()가 호출되어 실제로
+  // S3에 저장되고 미리보기에도 반영됩니다.
   async function handleImageUpload(key, file) {
+    if (draft.imageUploading === key) return; // 같은 필드에 대한 중복 요청 방지
     draft.imageUploading = key;
     renderForm();
     const t = resolveTemplate();
@@ -530,24 +537,30 @@ export function renderGenerator(root, params) {
       // 이 필드가 실제로 들어가는 슬롯의 폭에 맞춰 리사이징합니다 (원본을 그대로 보내면
       // 이메일 용량만 커지고, 좁은 슬롯엔 화질 이득도 없음).
       const resized = await resizeImage(file, inferImageMaxWidth(key));
-      let url, aiProcessed;
       if (instruction.trim()) {
-        log(`이미지 업로드 · AI 가공 요청 중... (${file.name})`);
-        url = await processImage(resized, instruction, t?.purpose);
-        aiProcessed = true;
+        // 보정 요청이 있으면 AI 가공까지만 하고 S3엔 아직 저장하지 않습니다 — 사용자
+        // 확인을 기다리는 미리보기 상태로 둡니다.
+        log(`AI 가공 요청 중... (${file.name})`);
+        const previewBlob = await processImage(resized, instruction, t?.purpose);
+        draft.imageMeta[key] = {
+          filename: file.name,
+          instruction,
+          pendingInstruction: instruction,
+          fileBlob: resized,
+          previewBlob,
+          previewPending: true
+        };
+        log(`AI 가공 완료 — 확인 후 업로드해주세요: ${file.name}`);
       } else {
-        // 보정 요청이 비어있으면 AI 가공 자체를 건너뛰고 리사이징 후 그냥 업로드만 합니다.
+        // 보정 요청이 비어있으면 AI 가공 자체를 건너뛰고, 확인 절차 없이 바로 업로드합니다
+        // (가공 결과가 없으니 "확인할 대상"도 없음).
         log(`이미지 업로드 중... (${file.name})`);
-        url = await uploadToS3(resized, file.name, "EDM");
-        aiProcessed = false;
+        const url = await uploadToS3(resized, file.name, "EDM");
+        draft.fieldValues[key] = url;
+        draft.imageMeta[key] = { filename: file.name, processed: true, instruction, aiProcessed: false, fileBlob: resized };
+        draft.imageMeta[key].assetId = registerAsset(key, file.name, url, resized, instruction, false);
+        log(`이미지 업로드 완료: ${file.name}`);
       }
-      draft.fieldValues[key] = url;
-      // fileBlob을 남겨두면, 지금 이미지를 다시 선택할 필요 없이 "나중에 보정 요청"이
-      // 가능해집니다. Blob은 JSON으로 저장되지 않으니 새로고침하면 사라지고, 그땐
-      // "다시 업로드"로 원본을 다시 선택해야 합니다 — 세션 중 편의 기능입니다.
-      draft.imageMeta[key] = { filename: file.name, processed: true, instruction, aiProcessed, fileBlob: resized };
-      draft.imageMeta[key].assetId = registerAsset(key, file.name, url, resized, instruction, aiProcessed);
-      log(aiProcessed ? `이미지 가공 완료: ${file.name}` : `이미지 업로드 완료: ${file.name}`);
     } catch (e) {
       log("오류: " + e.message);
     } finally {
@@ -557,24 +570,28 @@ export function renderGenerator(root, params) {
     }
   }
 
-  /** 이미 업로드된 이미지에 보정을 요청(또는 재요청)합니다. 원본을 다시 선택할 필요 없이,
-   *  업로드 때 남겨둔 fileBlob으로 다시 AI 가공을 겁니다. */
+  /** 이미 확정 업로드된 이미지에 보정을 요청(재요청)합니다. 원본을 다시 선택할 필요 없이,
+   *  업로드 때 남겨둔 fileBlob으로 다시 AI 가공을 걸되, 결과는 즉시 S3에 반영하지 않고
+   *  미리보기 상태로만 둡니다 — 기존 확정 이미지(fieldValues[key])는 사용자가 새 결과를
+   *  확정하기 전까지 그대로 유지됩니다. */
   async function handleRecorrect(key) {
     const meta = draft.imageMeta[key] || {};
     if (!meta.fileBlob || !meta.newInstruction?.trim()) return;
+    if (draft.imageUploading === key) return;
     draft.imageUploading = key;
     renderForm();
     const t = resolveTemplate();
     log(`보정 재요청 중... (${meta.filename})`);
     try {
-      const url = await processImage(meta.fileBlob, meta.newInstruction, t?.purpose);
-      draft.fieldValues[key] = url;
-      // 재보정한 새 버전만 남기고, 이 필드의 예전 버전 에셋은 지웁니다 — 안 그러면 보정을
-      // 시도할 때마다 안 쓰는 예전 이미지가 에셋 목록에 계속 쌓입니다.
-      if (meta.assetId) store.deleteAsset(meta.assetId);
-      const newAssetId = registerAsset(key, meta.filename, url, meta.fileBlob, meta.newInstruction, true);
-      draft.imageMeta[key] = { ...meta, instruction: meta.newInstruction, newInstruction: "", aiProcessed: true, processed: true, assetId: newAssetId };
-      log(`보정 완료: ${meta.filename}`);
+      const previewBlob = await processImage(meta.fileBlob, meta.newInstruction, t?.purpose);
+      draft.imageMeta[key] = {
+        ...meta,
+        previewBlob,
+        pendingInstruction: meta.newInstruction,
+        newInstruction: "",
+        previewPending: true
+      };
+      log(`보정 완료 — 확인 후 업로드해주세요: ${meta.filename}`);
     } catch (e) {
       log("오류: " + e.message);
     } finally {
@@ -582,6 +599,64 @@ export function renderGenerator(root, params) {
       renderForm();
       renderPreview();
     }
+  }
+
+  /** 미리보기(previewPending) 상태의 가공 결과를 실제로 S3에 확정 업로드합니다.
+   *  최초 업로드/재보정 재요청 두 경우 모두 이 함수 하나로 처리합니다 — 이미 확정된
+   *  이전 버전(assetId)이 있으면 새 버전 등록 후 지워서 에셋 목록에 옛 버전이 남지 않게
+   *  합니다. */
+  async function handleConfirmUpload(key) {
+    const meta = draft.imageMeta[key] || {};
+    if (!meta.previewBlob) return;
+    if (draft.imageUploading === key) return;
+    draft.imageUploading = key;
+    renderForm();
+    const finalInstruction = meta.pendingInstruction ?? meta.instruction ?? "";
+    try {
+      log(`업로드 중... (${meta.filename})`);
+      const url = await uploadToS3(meta.previewBlob, meta.filename, "EDM");
+      draft.fieldValues[key] = url;
+      // 재보정 확정인 경우, 옛 버전 에셋은 삭제 — 안 그러면 확정할 때마다 안 쓰는
+      // 예전 이미지가 에셋 목록에 계속 쌓입니다.
+      if (meta.assetId) store.deleteAsset(meta.assetId);
+      const newAssetId = registerAsset(key, meta.filename, url, meta.previewBlob, finalInstruction, true);
+      draft.imageMeta[key] = {
+        filename: meta.filename,
+        processed: true,
+        instruction: finalInstruction,
+        aiProcessed: true,
+        fileBlob: meta.previewBlob,
+        assetId: newAssetId
+      };
+      log(`업로드 완료: ${meta.filename}`);
+    } catch (e) {
+      log("오류: " + e.message);
+    } finally {
+      draft.imageUploading = null;
+      renderForm();
+      renderPreview();
+    }
+  }
+
+  /** 미리보기(previewPending) 상태를 확정하지 않고 되돌립니다. 이미 확정된 이전 버전이
+   *  있었으면(재보정 시도였던 경우) 그 상태로 복귀하고, 처음 업로드였던 경우엔 보정 요청
+   *  입력칸만 남기고 완전히 초기화합니다. S3엔 애초에 아무것도 저장되지 않았으므로
+   *  별도 삭제 처리가 필요 없습니다. */
+  function handleDiscardPreview(key) {
+    const meta = draft.imageMeta[key] || {};
+    if (meta.processed) {
+      draft.imageMeta[key] = {
+        filename: meta.filename,
+        processed: true,
+        instruction: meta.instruction,
+        aiProcessed: meta.aiProcessed,
+        fileBlob: meta.fileBlob,
+        assetId: meta.assetId
+      };
+    } else {
+      draft.imageMeta[key] = { instruction: meta.instruction || "" };
+    }
+    renderForm();
   }
 
   function toggleSwitch(checked, onChange) {
@@ -649,6 +724,35 @@ export function renderGenerator(root, params) {
     if (f.type === "image") {
       const meta = draft.imageMeta[f.key] || {};
       const uploading = draft.imageUploading === f.key;
+
+      // 미확정 미리보기 상태 — AI 가공은 끝났지만 아직 S3에 저장되지 않은 상태.
+      // 이 분기를 "완료 상태"보다 먼저 검사해야 합니다 — 재보정 재요청 중에는
+      // meta.processed가 true인 채로 previewPending도 함께 true가 될 수 있기 때문입니다
+      // (기존 확정본은 그대로 두고, 새 결과만 확인 대기 상태로 얹는 구조).
+      if (meta.previewPending) {
+        return el("div", { class: "field" }, [
+          labelRow,
+          el("div", { class: "image-field-filled" }, [
+            el("img", { src: URL.createObjectURL(meta.previewBlob), alt: "", class: "image-field-thumb" }),
+            el("div", { class: "image-field-info" }, [
+              el("p", { class: "image-field-name" }, meta.filename || "이미지"),
+              el("span", { class: "badge amber" }, "AI 가공됨 · 미확정")
+            ])
+          ]),
+          meta.pendingInstruction ? el("p", { class: "hint" }, `요청한 보정: "${meta.pendingInstruction}"`) : null,
+          el("p", { class: "hint" }, "확정 전까지는 S3에 저장되지 않고, 미리보기에도 반영되지 않습니다."),
+          el("div", { class: "row2" }, [
+            el("button", {
+              class: "btn btn-sm primary", disabled: uploading ? "disabled" : null,
+              onclick: () => handleConfirmUpload(f.key)
+            }, uploading ? "업로드 중..." : "이 결과로 업로드"),
+            el("button", {
+              class: "btn btn-sm ghost", disabled: uploading ? "disabled" : null,
+              onclick: () => handleDiscardPreview(f.key)
+            }, meta.processed ? "취소 (이전 이미지 유지)" : "다시 시도")
+          ])
+        ]);
+      }
 
       // 완료 상태 — 썸네일 + 배지 + 다시 업로드/URL 전환 + (가능하면) 추가 보정 요청
       if (value && meta.processed) {

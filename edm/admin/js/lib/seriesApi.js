@@ -39,7 +39,8 @@ const APPLICATION_ID = "c77a7279-ff8b-4f62-b874-509d42c7c896"; // ⚠️ 예시 
 const FIELD_MAP = {
   name: matched => matched.seriesName || undefined,
   image: matched => normalizeImageUrl(matched.productImageList?.[0]?.url),
-  price: matched => formatPrice(matched.minStandardUnitPrice)
+  price: matched => formatPrice(matched.minStandardUnitPrice),
+  shipDate: matched => formatDaysToShip(matched.minStandardDaysToShip)
 
   // 필드 추가 예시 (실제 API에 해당 필드가 있다면 그대로 추가):
   // stock: matched => matched.stockQuantity,
@@ -53,6 +54,20 @@ function normalizeImageUrl(rawUrl) {
 
 function formatPrice(rawPrice) {
   return typeof rawPrice === "number" ? rawPrice.toLocaleString() : undefined; // blocks.js 계약: 가격은 쉼표 포함 문자열
+}
+
+/**
+ * minStandardDaysToShip(숫자) → blocks.js가 그대로 출력할 수 있는 문자열.
+ *
+ * ⚠️ 숫자를 그대로 넘기면 안 됩니다. blocks.js의 productListBlock은
+ * `p.shipDate ? esc(p.shipDate) + " 출하" : 플레이스홀더` 로 분기하는데,
+ *   - 0(당일출하)은 falsy라서 "출하일 연동 예정" 플레이스홀더로 잘못 표시되고
+ *   - esc()도 `String(s || "")` 이라 0을 빈 문자열로 만들어 버립니다.
+ * 그래서 여기서 반드시 비어있지 않은 문자열로 변환합니다.
+ */
+function formatDaysToShip(rawDays) {
+  if (typeof rawDays !== "number") return undefined;
+  return rawDays === 0 ? "당일" : `${rawDays}일`;
 }
 
 /**
