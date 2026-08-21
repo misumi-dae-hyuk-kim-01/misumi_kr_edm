@@ -944,3 +944,390 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 });
 `;
+
+// ==========================================================================
+// 이벤트 LP (README.md / GENERATOR_SPEC.md 기준) — 공통 셸에 SSI로 얹히는
+// "부분 문서"용 블록입니다. 기존 일반형/경제형/신상품카탈로그 LP와는 완전히
+// 다른 배포 모델입니다:
+//   - index.html: 홈페이지 공통 셸(header/footer/사이드바)에 SSI로 얹히는
+//     부분 문서 → 웹서버(SSI 처리 가능)에 올라가야 함. S3 단독 배포 불가
+//     (SSI가 실행 안 되면 헤더/푸터/사이드바가 통째로 빠짐 — 개발팀 확인 중)
+//   - css/style.css, images/*: S3 + CloudFront
+// 이 함수들은 "콘텐츠 컬럼 내부"만 만듭니다 — 공통 셸 include는 건드리지 않습니다.
+// ==========================================================================
+
+/** README "Design Tokens" 표 그대로 옮긴 스킨별 값.
+ *  ⚠️ 마크업은 두 스킨이 완전히 동일하고, 색상·최대폭·좌우여백만 다릅니다. */
+export const EVENT_LP_SKINS = {
+  normal: {
+    key: "normal",
+    wrapperWidthPc: 950,
+    paddingInline: "clamp(20px, 5vw, 60px)",
+    main: "#0f218b",
+    mainHover: "#172ea3",
+    emphasis: "#ffd633",
+    cardAccent: "#ffcc00",
+    bodyText: "#17171b",
+    subText: "#666",
+    noticeText: "#777",
+    stepLabel: "#8a90b0",
+    iconBg: "#eef0f8",
+    cardBorder: "#dfe1ee",
+    stepSectionBg: "#f5f6fa",
+    noticeBg: "#f5f5f5",
+    contactBadgeSecondaryBg: "#5b6280",
+    linkColor: "#004bb1",
+    ctaSecondaryMaxWidth: 330,
+    summaryLabelBg: "#fff",
+    summaryLabelText: "#0f218b"
+  },
+  economy: {
+    key: "economy",
+    wrapperWidthPc: 920,
+    paddingInline: "clamp(20px, 4.5vw, 45px)",
+    main: "#111",
+    mainHover: "#1c1c1c",
+    emphasis: "#ffcc00",
+    cardAccent: "#ffcc00",
+    cardAccentBg: "#fffdf2",
+    bodyText: "#111",
+    subText: "#666",
+    noticeText: "#777",
+    stepLabel: "#888",
+    iconBg: "#eef0f8",
+    cardBorder: "#e2e2e2",
+    cardBorderMuted: "#d9d9d9",
+    stepSectionBg: "#f5f6fa",
+    noticeBg: "#f6f6f6",
+    contactBadgeSecondaryBg: "#555",
+    linkColor: "#004bb1",
+    ctaSecondaryMaxWidth: 320,
+    summaryLabelBg: "#ffcc00",
+    summaryLabelText: "#111"
+  }
+};
+
+export const EVENT_LP_TEMPLATE_ID = "event-lp";
+
+function eventSkinOf(skinKey) {
+  return EVENT_LP_SKINS[skinKey] || EVENT_LP_SKINS.normal;
+}
+
+/** headline의 <em>강조구간</em>은 최대 1개(검증 규칙) — 2개 이상이면 첫 번째만
+ *  실제 강조 처리하고 나머지는 일반 텍스트로 풀어 안전하게 방어합니다. */
+export function normalizeHeadlineEm(headline) {
+  let count = 0;
+  return String(headline || "").replace(/<em>(.*?)<\/em>/g, (m, inner) => {
+    count++;
+    return count === 1 ? `<em>${inner}</em>` : inner;
+  });
+}
+
+function eventKvBlock(draft, skin) {
+  const badgeHtml = draft.kvBadge ? `<div class="lp-kv-badge">${esc(draft.kvBadge)}</div>` : "";
+  const subcopyHtml = draft.kvSubcopy ? `<div class="lp-kv-subcopy">${esc(draft.kvSubcopy)}</div>` : "";
+  const headlineHtml = normalizeHeadlineEm(draft.kvHeadline);
+  const bgStyle = draft.kvImageUrl
+    ? `background-image:url('${esc(draft.kvImageUrl)}');background-size:cover;background-position:center;`
+    : `background:repeating-linear-gradient(135deg, ${skin.main}, ${skin.main} 12px, ${skin.mainHover} 12px, ${skin.mainHover} 24px);`;
+  return `<div class="lp-kv" role="img" aria-label="${esc(draft.kvAlt || "")}" style="${bgStyle}">
+    <div class="lp-kv-inner">
+      ${badgeHtml}
+      <div class="lp-kv-headline">${headlineHtml}</div>
+      ${subcopyHtml}
+    </div>
+  </div>`;
+}
+
+/** 요약표 강조는 최대 1개 — 2개 이상 표시돼 있으면 첫 번째만 남기고 나머지는 해제. */
+export function enforceSingleEmphasis(rows) {
+  let seen = false;
+  return (rows || []).map(row => {
+    if (row.emphasis && !seen) { seen = true; return row; }
+    return { ...row, emphasis: false };
+  });
+}
+
+function eventSummaryBlock(rows) {
+  const items = enforceSingleEmphasis(rows || []).map(row => `
+    <div class="lp-summary-row">
+      <div class="lp-summary-label">${esc(row.label)}</div>
+      <div class="lp-summary-value${row.emphasis ? " is-emphasis" : ""}">${esc(row.value)}</div>
+    </div>`).join("\n");
+  return `<div class="lp-summary">${items}</div>`;
+}
+
+/** "구간형 판정 정규식" — GENERATOR_SPEC.md 그대로. 금액("100,000원 이상") 또는
+ *  회차("3회차") 형태의 조건값인지 확인합니다. */
+const TIER_CONDITION_RE = /^[\d,]+원\s*이상$/;
+const TIER_ROUND_RE = /^\d+회차$/;
+
+function isTierCondition(condition) {
+  const c = String(condition || "").trim();
+  return TIER_CONDITION_RE.test(c) || TIER_ROUND_RE.test(c);
+}
+
+/** 유형은 입력 구조가 결정합니다 — 라디오 버튼을 두면 안 됩니다.
+ *  모든 항목의 condition이 구간형 패턴이면 "tier", 하나라도 아니면 "list". */
+export function detectBenefitType(items) {
+  if (!items || !items.length) return "list";
+  return items.every(it => isTierCondition(it.condition)) ? "tier" : "list";
+}
+
+/** 개수 → 레이아웃 규칙(GENERATOR_SPEC.md 표 그대로). auto-fit 금지 — 트랙 수 명시 + span. */
+export function benefitLayoutRule(count) {
+  if (count < 1 || count > 5) {
+    throw new Error("혜택이 6개 이상이면 카드가 아니라 표로 정리하는 편이 읽힙니다. 항목을 묶거나 유의사항으로 내려주세요.");
+  }
+  return count === 1 ? { tracks: 1, spanOf: () => null, banner: true }
+    : count === 4 ? { tracks: 2, spanOf: () => null, banner: false }
+    : count === 5 ? { tracks: 6, spanOf: i => (i < 3 ? 2 : 3), banner: false }
+    : { tracks: count, spanOf: () => null, banner: false }; // 2, 3개
+}
+
+function eventBenefitsBlock(draft, skin) {
+  const items = draft.benefitItems || [];
+  const type = detectBenefitType(items);
+  const isTierRow = type === "tier" && items.length === 5; // 구간형 5개 = 1행 5열 예외
+  const layout = isTierRow ? { tracks: 5, spanOf: () => null, banner: false } : benefitLayoutRule(items.length);
+
+  const subcopyHtml = draft.benefitSubcopy ? `<p class="lp-benefit-subcopy">${esc(draft.benefitSubcopy)}</p>` : "";
+
+  const cardsHtml = items.map((item, i) => {
+    const detailHtml = (item.detail || []).filter(Boolean).map(d => `<li>${esc(d)}</li>`).join("");
+    const spanCss = layout.spanOf(i) ? `grid-column:span ${layout.spanOf(i)};` : "";
+    if (isTierRow) {
+      const isLast = i === items.length - 1; // 구간형은 항상 마지막(최고 등급)이 강조
+      return `<div class="lp-benefit-card lp-benefit-card--tier${isLast ? " is-top" : ""}" style="${spanCss}">
+        <div class="lp-benefit-cap">${esc(item.condition)}</div>
+        <div class="lp-benefit-title">${esc(item.title)}</div>
+        <ul class="lp-benefit-list">${detailHtml}</ul>
+      </div>`;
+    }
+    const accentColor = i % 2 === 0 ? skin.main : skin.cardAccent;
+    return `<div class="lp-benefit-card${layout.banner ? " lp-benefit-card--banner" : ""}" style="${spanCss}border-top-color:${accentColor};">
+      <div class="lp-benefit-cap" style="color:${accentColor === skin.cardAccent ? "#8a6d00" : skin.main};">${esc(item.condition || "")}</div>
+      <div class="lp-benefit-title">${esc(item.title)}</div>
+      <ul class="lp-benefit-list">${detailHtml}</ul>
+    </div>`;
+  }).join("\n");
+
+  return `<div class="lp-benefits">
+    <h2 class="lp-benefit-heading">${esc(draft.benefitHeading || "이벤트 혜택")}</h2>
+    ${subcopyHtml}
+    <div class="lp-benefit-grid" style="grid-template-columns:repeat(${layout.tracks},1fr);" data-benefit-type="${type}">
+      ${cardsHtml}
+    </div>
+  </div>`;
+}
+
+const EVENT_STEP_ICONS = {
+  cart: `<path d="M3 4h2.2l2.3 10.4h9.6L19 7H6.2"></path><circle cx="9.5" cy="19" r="1.4"></circle><circle cx="16.5" cy="19" r="1.4"></circle>`,
+  click: `<path d="M7.5 3.5v6"></path><path d="M4.4 6.2l2.1 2.1"></path><path d="M10.6 6.2L8.5 8.3"></path><path d="M10 12.2l9.4 3.4-3.7 1.4-1.4 3.7z"></path>`,
+  form: `<path d="M13 3.5H5.5v17h13V9"></path><path d="M8.6 9.5h4"></path><path d="M8.6 13.4h6.8"></path><path d="M8.6 17.2h4.8"></path><path d="M15.6 3.2l4.6 4.6-1.9.5-.5 1.9z"></path>`,
+  upload: `<path d="M12 16V4"></path><path d="M6 10l6-6 6 6"></path><path d="M4 20h16"></path>`,
+  check: `<path d="M4 12l5 5L20 6"></path>`
+};
+
+function eventStepsBlock(draft) {
+  const items = draft.stepItems || [];
+  if (!items.length) return ""; // 블록 자체를 비우면 미출력 (구매·응모가 한 동작인 이벤트)
+  const itemsHtml = items.map((it, i) => `
+    <div class="lp-step-card">
+      <div class="lp-step-label">STEP <b>${String(i + 1).padStart(2, "0")}</b></div>
+      <div class="lp-step-icon">
+        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${EVENT_STEP_ICONS[it.icon] || EVENT_STEP_ICONS.click}</svg>
+      </div>
+      <div class="lp-step-text">${it.text}</div>
+    </div>`).join("\n");
+  const noteHtml = draft.stepNote ? `<p class="lp-step-note">${esc(draft.stepNote)}</p>` : "";
+  return `<div class="lp-steps">
+    <h2 class="lp-step-heading">${esc(draft.stepHeading || "이벤트 참여 방법")}</h2>
+    <div class="lp-step-grid">${itemsHtml}</div>
+    ${noteHtml}
+  </div>`;
+}
+
+function eventCtaBlock(draft) {
+  if (!draft.ctaPrimaryHref) return "";
+  const secondaryHtml = draft.ctaSecondaryHref
+    ? `<a href="${esc(draft.ctaSecondaryHref)}" class="lp-cta-btn lp-cta-btn--secondary" target="_blank" rel="noopener">${esc(draft.ctaSecondaryLabel || "")}</a>`
+    : "";
+  const primaryHtml = `<a href="${esc(draft.ctaPrimaryHref)}" class="lp-cta-btn lp-cta-btn--primary" target="_blank" rel="noopener">${esc(draft.ctaPrimaryLabel || "이벤트 응모하기")}</a>`;
+  const singleClass = draft.ctaSecondaryHref ? "" : " lp-cta--single";
+  return `<div class="lp-cta${singleClass}">${secondaryHtml}${primaryHtml}</div>`;
+}
+
+/** 공통 문구 마스터 — GENERATOR_SPEC.md 그대로. 절대 수정 금지(법무 확인 텍스트).
+ *  11번(문의처)은 항상 마지막에 자동 부착하므로 체크리스트엔 안 넣고 별도 처리합니다. */
+export const NOTICE_COMMON_MASTER = [
+  "구매 금액은 할인 적용 후 VAT 미포함 금액 기준입니다.",
+  "응모와 구매 월이 동일해야 하며 순서는 상관없습니다. (구매 후 응모 / 응모 후 구매 무관)",
+  "당첨 후 발주를 취소할 경우 당첨이 취소되며, 미사용 사은품 반환 또는 전액(소비자가) 반환 청구 됩니다.",
+  "이벤트 신청 시 등록해 주신 휴대폰 번호로 모바일 금액권이 발송됩니다. (번호 오기입으로 인한 재발송은 불가합니다.)",
+  "고객 정보 및 휴대폰 번호가 불명확한 경우 당첨에서 취소됩니다.",
+  "경품은 한 업체에 1회 지급으로 제한되어 있으며, 주문자별 중복 발행은 되지 않습니다.",
+  "경품은 양도할 수 없으며, 정해진 경품 대신에 그에 상응하는 현금이나 기타 경품을 요구할 수 없습니다.",
+  "본 이벤트는 당사 사정에 의해 예고 없이 변경 또는 조기 종료될 수 있습니다.",
+  "오후 6시 이후 주문건은 다음날로 실적이 집계될 수 있습니다.",
+  "개인정보 취급위탁동의(당사의 서비스 이행을 위해 아래와 같이 경품배송 업무를 위탁합니다) 수탁자 : 비즈 쿠팝 / 제공 범위 : 휴대폰 번호 / 수탁범위 : 경품 배송"
+];
+const NOTICE_CONTACT_LINE = "이벤트 관련 문의처 : event@misumi.co.kr";
+
+function eventNoticeBlock(draft, skin) {
+  const commonLines = (draft.noticeCommonIndexes || [])
+    .filter(i => i >= 0 && i < NOTICE_COMMON_MASTER.length)
+    .map(i => NOTICE_COMMON_MASTER[i]);
+  const customLines = (draft.noticeCustom || []).filter(Boolean);
+  const itemsHtml = [...commonLines, ...customLines].map(line => `<li>※ ${esc(line)}</li>`).join("\n");
+  const contactHtml = `<li>※ ${NOTICE_CONTACT_LINE.replace("event@misumi.co.kr", `<a href="mailto:event@misumi.co.kr" style="color:${skin.linkColor};text-decoration:underline;">event@misumi.co.kr</a>`)}</li>`;
+  return `<div class="lp-notice">
+    <strong class="lp-notice-heading">${esc(draft.noticeHeading || "응모 주의사항")}</strong>
+    <ul class="lp-notice-list">
+      ${itemsHtml}
+      ${contactHtml}
+    </ul>
+  </div>`;
+}
+
+/** ⚠️ 실제 배포본에서는 이 자리에 직접 렌더링하지 않고
+ *  `<!--#include virtual="/pr/common/contact/event.html" -->` 한 줄만 넣습니다
+ *  (이벤트별로 다른 연락처를 쓸 일이 없으므로 입력 필드를 두지 않음). */
+function eventContactIncludeTag() {
+  return `<!--#include virtual="/pr/common/contact/event.html" -->`;
+}
+
+const EVENT_LP_STYLE = `
+  .lp-kv{min-height:clamp(240px,32vw,300px);display:flex;align-items:center;justify-content:center;text-align:center;padding:clamp(28px,5vw,40px) var(--lp-pad,20px);box-sizing:border-box;}
+  .lp-kv-badge{display:inline-block;background:#ffcc00;color:#111;font-size:clamp(12px,1.6vw,14px);padding:6px 18px;border-radius:20px;margin-bottom:10px;}
+  .lp-kv-headline{font-size:clamp(22px,3.6vw,32px);line-height:1.35;letter-spacing:-.5px;color:#fff;}
+  .lp-kv-headline em{color:#ffd633;font-style:normal;}
+  .lp-kv-subcopy{font-size:clamp(15px,2.2vw,20px);line-height:1.5;color:#ffd633;margin-top:14px;}
+  .lp-summary{padding:clamp(28px,4.5vw,44px) var(--lp-pad,20px);display:flex;flex-direction:column;gap:14px;background:var(--lp-main,#0f218b);box-sizing:border-box;}
+  .lp-summary-row{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:baseline;}
+  .lp-summary-label{flex:0 0 auto;width:clamp(110px,18vw,170px);line-height:36px;border-radius:6px;text-align:center;font-size:clamp(14px,1.7vw,16px);background:var(--lp-summary-label-bg,#fff);color:var(--lp-summary-label-text,#0f218b);}
+  .lp-summary-value{flex:1 1 240px;font-size:clamp(14px,1.7vw,16px);line-height:1.6;color:#fff;}
+  .lp-summary-value.is-emphasis{color:#ffd633;}
+  .lp-benefits{padding:clamp(36px,5.5vw,56px) var(--lp-pad,20px);background:#fff;box-sizing:border-box;}
+  .lp-benefit-heading{text-align:center;font-size:clamp(20px,2.8vw,26px);letter-spacing:-.5px;margin:0 0 8px;}
+  .lp-benefit-subcopy{text-align:center;font-size:clamp(14px,1.6vw,15px);line-height:1.6;color:#666;margin:0 0 clamp(22px,3vw,30px);}
+  .lp-benefit-grid{display:grid;gap:18px;}
+  .lp-benefit-card{border:1px solid #dfe1ee;border-top:4px solid;padding:clamp(20px,3vw,26px) clamp(20px,3vw,28px);box-sizing:border-box;}
+  .lp-benefit-card--banner{display:flex;flex-wrap:wrap;gap:12px 40px;align-items:center;justify-content:space-between;}
+  .lp-benefit-card--tier{text-align:center;padding:22px 10px 24px;border-color:#e2e2e2;border-top-color:#d9d9d9;}
+  .lp-benefit-card--tier.is-top{border-color:#111;border-top-color:#ffcc00;background:#fffdf2;}
+  .lp-benefit-cap{font-size:clamp(13px,1.6vw,14px);letter-spacing:.02em;}
+  .lp-benefit-title{font-size:clamp(17px,2vw,19px);line-height:1.4;margin-top:8px;color:#17171b;}
+  .lp-benefit-list{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-direction:column;gap:10px;font-size:clamp(14px,1.7vw,16px);line-height:1.5;color:#55555e;}
+  .lp-steps{padding:clamp(36px,5.2vw,52px) var(--lp-pad,20px);background:#f5f6fa;box-sizing:border-box;}
+  .lp-step-heading{text-align:center;font-size:clamp(20px,2.8vw,26px);letter-spacing:-.5px;margin:0 0 clamp(22px,3vw,30px);}
+  .lp-step-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px;}
+  .lp-step-card{background:#fff;padding:clamp(22px,3vw,28px) 20px clamp(24px,3vw,30px);text-align:center;box-sizing:border-box;}
+  .lp-step-label{font-size:13px;letter-spacing:.08em;color:#8a90b0;}
+  .lp-step-icon{margin:18px auto 20px;width:76px;height:76px;border-radius:50%;background:#eef0f8;display:flex;align-items:center;justify-content:center;color:#0f218b;}
+  .lp-step-text{font-size:clamp(15px,1.8vw,17px);line-height:1.55;color:#17171b;}
+  .lp-step-note{margin:22px 0 0;text-align:center;font-size:clamp(13px,1.5vw,14px);line-height:1.6;color:#666;}
+  .lp-cta{padding:clamp(30px,4.4vw,44px) var(--lp-pad,20px);display:flex;flex-wrap:wrap;gap:14px;justify-content:center;box-sizing:border-box;}
+  .lp-cta--single{justify-content:center;}
+  .lp-cta-btn{flex:1 1 260px;max-width:330px;box-sizing:border-box;padding:19px 0;text-align:center;font-size:clamp(16px,1.9vw,18px);text-decoration:none;border:2px solid;}
+  .lp-cta-btn--secondary{color:#0f218b;border-color:#0f218b;background:#fff;}
+  .lp-cta-btn--primary{color:#fff;border-color:#0f218b;background:#0f218b;}
+  .lp-notice{padding:clamp(26px,3.4vw,34px) var(--lp-pad,20px);background:#f5f5f5;font-size:clamp(13px,1.5vw,14px);line-height:1.55;color:#777;box-sizing:border-box;}
+  .lp-notice-heading{display:block;margin-bottom:18px;color:#17171b;font-size:15px;}
+  .lp-notice-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px;}
+  body.lp-skin--economy .lp-summary{background:#111;}
+  body.lp-skin--economy .lp-kv-headline em{color:#ffcc00;}
+  body.lp-skin--economy .lp-cta-btn--primary{color:#111;background:#ffcc00;border-color:#ffcc00;}
+`;
+
+/** README "Target output" 규정 그대로 — index.html은 <link>로 참조만 하고,
+ *  실제 CSS 규칙은 이 함수가 만드는 별도 파일(css/style_<날짜>.css)에 있어야 합니다.
+ *  ⚠️ 예전엔 assembleEventLpHtml()이 이 규칙을 어기고 <style> 태그로 인라인
+ *  넣고 있었습니다 — <link>는 존재하지도 않는 파일을 가리키는 죽은 참조였고,
+ *  실제 스타일은 중복으로 인라인에 있었습니다. 이제 분리했습니다.
+ *  @param {string} [skinKey] "normal" | "economy" */
+export function buildEventLpCss(skinKey) {
+  const skin = eventSkinOf(skinKey);
+  return `:root{
+  --lp-main:${skin.main};
+  --lp-pad:${skin.paddingInline};
+  --lp-summary-label-bg:${skin.summaryLabelBg};
+  --lp-summary-label-text:${skin.summaryLabelText};
+}
+${EVENT_LP_STYLE}`;
+}
+
+/** 이벤트 LP 전체 조립. GENERATOR_SPEC.md 1절의 고정 head/body 구조를 따릅니다.
+ *  ⚠️ 이건 "콘텐츠 컬럼 내부 + 최소 확인용 셸"만 만듭니다 — 실제 배포 시엔 아래
+ *  head_navi.html / foot.html 등 SSI include로 진짜 헤더·푸터가 치환되어야 하고,
+ *  지금은 그 부분이 안 되어 있어 미리보기/시연용으로만 씁니다(개발팀 확인 중인 사안).
+ *  @param {object} draft
+ *  @param {{title?:string, description?:string, keywords?:string[]}} [seoMeta] */
+export function assembleEventLpHtml(draft, seoMeta = {}) {
+  const skin = eventSkinOf(draft.eventSkin);
+  const skinClass = draft.eventSkin === "economy" ? "lp-skin--economy" : "lp-skin--normal";
+  const wrapperWidth = skin.wrapperWidthPc;
+
+  const bodyHtml = [
+    eventKvBlock(draft, skin),
+    eventSummaryBlock(draft.summaryRows),
+    eventBenefitsBlock(draft, skin),
+    eventStepsBlock(draft),
+    eventCtaBlock(draft),
+    eventNoticeBlock(draft, skin),
+    eventContactIncludeTag()
+  ].filter(Boolean).join("\n");
+
+  const title = esc((seoMeta.title || draft.title || "") + " ｜ MISUMI｜미스미 종합 Web 카탈로그");
+  const description = esc(seoMeta.description || draft.description || "");
+
+  return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${DEPLOYMENT_LANG}" lang="${DEPLOYMENT_LANG}">
+<head>
+<!--#config errmsg="" -->
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${title}</title>
+<meta name="description" content="${description}" />
+<link rel="canonical" href="https://kr.misumi-ec.com/pr/vona/${esc(draft.slug || "")}/" />
+<!--#include virtual="/vcommon/common/include/import_head_css.html" -->
+<link href="${esc(draft.assetBaseUrl || "")}/${esc(draft.slug || "")}/css/style_${esc(draft.cssVersion || "")}.css" rel="stylesheet" type="text/css" media="all" />
+<script type="text/javascript">
+<!--
+var agentType = "win16|win32|win64|mac|macintel";
+if (navigator.platform) {
+	if (agentType.indexOf(navigator.platform.toLowerCase()) < 0)
+		location.href = '/sp/pr/vona/${esc(draft.slug || "")}/' + location.search;
+}
+//-->
+</script>
+</head>
+<body class="page2 ${skinClass}">
+	<!--#include virtual="/vcommon/common/include/import_head_js.html" -->
+	<div class="l-wrapper">
+		<!--#include virtual="/vcommon/common/include/head_navi.html" -->
+		<div class="l-main">
+			<div data-user="attention">
+				<!--#include virtual="/vcommon/common/include/attention_all.html" -->
+			</div>
+			<ul class="l-breadcrumb">
+				<li><a href="/">MISUMI HOME</a>&gt;</li>
+				<li><strong>${esc(draft.breadcrumbLabel || draft.title || "")}</strong></li>
+			</ul>
+			<div class="l-contentWrap">
+				<div class="l-content" style="max-width:${wrapperWidth}px;margin:0 auto;">
+					${bodyHtml}
+				</div>
+				<div class="l-nav">
+					<!--#include virtual="/vcommon/common/include/side_user_menu.html" -->
+					<div class="r-wingRight"><ul class="r-banner"></ul></div>
+				</div>
+			</div>
+		</div>
+		<!--#include virtual="/vcommon/common/include/foot.html" -->
+	</div>
+	<!--#include virtual="/vcommon/common/include/import_foot.html" -->
+	<!--#include virtual="/vcommon/common/include/analyze.html" -->
+</body>
+</html>`;
+}

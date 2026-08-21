@@ -2,7 +2,7 @@ import { store } from "../state.js";
 import { el, toast, esc } from "../lib/dom.js";
 import { generateCopyLP } from "../lib/copyGeneratorLP.js";
 import { generateSeoMeta } from "../lib/seoMetaGenerator.js";
-import { assembleLpHtml, assembleLpCatalogGroupHtml, resolveCatalogGroups, resolveCatalogSeoMeta, CATALOG_STYLE, CATALOG_SCRIPT } from "../lib/blocksLP.js";
+import { assembleLpHtml, assembleLpCatalogGroupHtml, resolveCatalogGroups, resolveCatalogSeoMeta, CATALOG_STYLE, CATALOG_SCRIPT, assembleEventLpHtml, buildEventLpCss, detectBenefitType, benefitLayoutRule, enforceSingleEmphasis, NOTICE_COMMON_MASTER, EVENT_LP_TEMPLATE_ID } from "../lib/blocksLP.js";
 import { seedLpTemplates } from "../data/lpTemplates.js";
 import { checkGuidelinesLP, summarizeGuidelineIssuesLP, LP_WIDTH_PATTERNS, LP_ECONOMY_LAYOUT, DEPLOYMENT_COUNTRY } from "../lib/guidelineCheckLP.js";
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
@@ -138,6 +138,7 @@ export function renderGeneratorLP(root, params) {
     formBody.appendChild(sectionTemplate());
 
     const isCatalog = draft.templateId === CATALOG_TEMPLATE_ID;
+    const isEventLp = draft.templateId === EVENT_LP_TEMPLATE_ID;
     renderFooterActions(isCatalog);
 
     formBody.appendChild(groupHeader("콘텐츠"));
@@ -149,6 +150,18 @@ export function renderGeneratorLP(root, params) {
       formBody.appendChild(sectionCatalogBanners());
       formBody.appendChild(sectionCatalogUpload());
       formBody.appendChild(sectionSeoMeta());
+      return;
+    }
+    if (isEventLp) {
+      // ⚠️ 이벤트 LP는 GENERATOR_SPEC.md 3절 "담당자가 채우는 순서 = LP의 블록
+      // 순서" 원칙 그대로: 기본정보 → KV → 요약표 → 혜택 → STEP(선택) → CTA → 유의사항.
+      formBody.appendChild(sectionEventLpBasic());
+      formBody.appendChild(sectionEventLpKv());
+      formBody.appendChild(sectionEventLpSummary());
+      formBody.appendChild(sectionEventLpBenefits());
+      formBody.appendChild(sectionEventLpSteps());
+      formBody.appendChild(sectionEventLpCta());
+      formBody.appendChild(sectionEventLpNotice());
       return;
     }
     formBody.appendChild(sectionPageType());
@@ -172,20 +185,19 @@ export function renderGeneratorLP(root, params) {
       const info = (draft.catalogGroups || {})[g.label];
       const statusLabel = !info ? "대기 중" : info.status === "processing" ? "처리 중" : "완료";
       const statusClass = !info ? "" : info.status === "processing" ? "badge-warn" : "badge-pass";
-      return el("div", { class: "catalog-group-row", style: "display:flex !important;align-items:center !important;gap:8px !important;" }, [
+      // ⚠️ 실제 원인은 .guideline-badge에 붙어있는 margin-top:8px였습니다(generator.css) —
+      // .btn/.btn-sm엔 그런 마진이 없어서, .catalog-group-row가 이미 flex+align-items:center로
+      // 잘 정렬돼 있어도 배지만 아래로 밀려 높이가 어긋나 보였습니다. margin-top만 0으로
+      // 눌러주면 되고, 나머지(flex/CSS 우선순위)는 원래도 문제없었습니다.
+      return el("div", { class: "catalog-group-row" }, [
         el("span", { class: "catalog-group-label" }, g.label),
         el("span", { class: "catalog-group-count" }, info ? `${info.count}개` : ""),
-        // ⚠️ !important를 붙인 이유: 인라인 스타일은 보통 외부 CSS보다 우선하지만,
-        // 외부 CSS 쪽에 !important가 걸려있으면(EDM 쪽 반응형 스택 기법 때문에 이
-        // 프로젝트 CSS에 !important가 흔합니다) 일반 인라인 스타일은 거기에 밀립니다.
-        // 확실히 이기도록 여기도 !important로 강제합니다.
         el("span", {
           class: "guideline-badge " + statusClass,
-          style: "margin-left:auto !important;display:inline-flex !important;align-items:center !important;height:26px !important;line-height:26px !important;padding:0 8px !important;border:0 !important;box-sizing:border-box !important;"
+          style: "margin-left:auto;margin-top:0;"
         }, statusLabel),
         el("button", {
           class: "btn btn-sm",
-          style: "display:inline-flex !important;align-items:center !important;height:26px !important;line-height:26px !important;padding:0 10px !important;box-sizing:border-box !important;",
           disabled: info?.status === "done" ? null : "disabled",
           onclick: () => { renderCatalogPreviewFor(g.label); }
         }, "미리보기")
@@ -285,13 +297,17 @@ export function renderGeneratorLP(root, params) {
   /** EDM 생성기의 registerAsset()과 동일한 목적/구조입니다 — 재사용 라이브러리(에셋관리)에
    *  등록해야 다른 캠페인에서도 이 배너 이미지를 찾아 재사용할 수 있고, sourceCampaignId를
    *  남겨야 "이 이미지가 어느 캠페인에서 만들어졌는지" 추적이 됩니다. 지금까지는 LP 쪽에
-   *  이 헬퍼가 없어서 배너를 업로드해도 에셋관리 목록에 전혀 나타나지 않았습니다. */
+   *  이 헬퍼가 없어서 배너를 업로드해도 에셋관리 목록에 전혀 나타나지 않았습니다.
+   *  ⚠️ 카테고리는 "히어로 배경"을 씁니다 — 카탈로그 배너와 EDM/LP의 상단 히어로 이미지는
+   *  둘 다 "페이지 맨 위의 프로모션 이미지"라는 본질이 같아서, 예전에 "배너 이미지"라는
+   *  별도 카테고리를 만들었던 건 채널별로 이름만 다르게 붙인 중복이었습니다. 하나로
+   *  합쳐야 나중에 "상단 이미지 전부 찾기"가 카테고리 필터 하나로 됩니다. */
   function registerBannerAsset(filename, url, blob) {
     const id = "a" + Date.now() + Math.random().toString(16).slice(2);
     store.addAsset({
       id,
       filename,
-      category: "배너 이미지",
+      category: "히어로 배경",
       uploadedAt: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
       variants: { LP1200: { url, sizeKB: Math.round((blob?.size || 0) / 1024), isDemoUrl: !url.startsWith("http") } },
       source: "generator",
@@ -750,13 +766,14 @@ export function renderGeneratorLP(root, params) {
   // ---------- 폼 섹션 ----------
 
   function resolveTemplate() {
-    if (draft.templateId === CATALOG_TEMPLATE_ID) return null;
+    if (draft.templateId === CATALOG_TEMPLATE_ID || draft.templateId === EVENT_LP_TEMPLATE_ID) return null;
     return LP_TEMPLATES.find(t => t.id === draft.templateId) || LP_TEMPLATES[0] || null;
   }
 
   function sectionTemplate() {
     const current = resolveTemplate();
     const isCatalog = draft.templateId === CATALOG_TEMPLATE_ID;
+    const isEventLp = draft.templateId === EVENT_LP_TEMPLATE_ID;
     return el("div", { class: "sec" }, [
       el("div", { class: "sec-hd" }, [
         el("div", { class: "sec-hd-left" }, [
@@ -770,9 +787,231 @@ export function renderGeneratorLP(root, params) {
           ...LP_TEMPLATES.map(t =>
             el("option", { value: t.id, ...(t.id === draft.templateId ? { selected: "selected" } : {}) }, t.name)
           ),
-          el("option", { value: CATALOG_TEMPLATE_ID, ...(isCatalog ? { selected: "selected" } : {}) }, "신상품카탈로그")
+          el("option", { value: CATALOG_TEMPLATE_ID, ...(isCatalog ? { selected: "selected" } : {}) }, "신상품카탈로그"),
+          el("option", { value: EVENT_LP_TEMPLATE_ID, ...(isEventLp ? { selected: "selected" } : {}) }, "이벤트 LP")
         ]),
-        current ? el("p", { class: "hint" }, "블록: " + current.blocks.join(" → ")) : null
+        current ? el("p", { class: "hint" }, "블록: " + current.blocks.join(" → ")) : null,
+        isEventLp ? el("p", { class: "hint", style: "color:#a9660a;" },
+          "⚠ 홈페이지 공통 셸(헤더·푸터·사이드바)에 SSI로 얹히는 페이지입니다 — S3 단독 배포 시 헤더/푸터가 빠집니다(개발팀 확인 중). 지금은 미리보기·다운로드까지만 지원합니다."
+        ) : null
+      ])
+    ]);
+  }
+
+
+  // ==========================================================================
+  // 이벤트 LP — GENERATOR_SPEC.md 2절 콘텐츠 입력 스펙 그대로
+  // ==========================================================================
+
+  function sectionEventLpBasic() {
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "기본 정보")])]),
+      el("div", { class: "sec-body" }, [
+        el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, ["slug ", el("span", { class: "req-tag" }, "· 필수")]),
+          el("input", { type: "text", value: draft.slug || "", placeholder: "예: welcomeevent (경로: /pr/vona/<slug>/)", oninput: e => { draft.slug = e.target.value; renderPreview(); } })
+        ]),
+        el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, ["타이틀 ", el("span", { class: "req-tag" }, "· 필수")]),
+          el("input", { type: "text", value: draft.title || "", placeholder: "｜MISUMI｜미스미 종합 Web 카탈로그 는 자동 부착", oninput: e => { draft.title = e.target.value; renderPreview(); } })
+        ]),
+        el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, "설명 (80자 이내)"),
+          el("textarea", { oninput: e => { draft.description = e.target.value; renderPreview(); } }, draft.description || "")
+        ]),
+        el("div", { class: "field" }, [
+          el("label", {}, "스킨"),
+          el("div", { class: "row2" }, [
+            el("div", { class: "opt-btn" + (draft.eventSkin !== "economy" ? " active" : ""), onclick: () => { draft.eventSkin = "normal"; renderForm(); renderPreview(); } }, "일반형 (950px)"),
+            el("div", { class: "opt-btn" + (draft.eventSkin === "economy" ? " active" : ""), onclick: () => { draft.eventSkin = "economy"; renderForm(); renderPreview(); } }, "경제형 (920px, 컬러 다름)")
+          ]),
+          draft.eventSkin === "economy" ? el("p", { class: "hint", style: "color:#a9660a;" }, "⚠ 경제형 스킨은 실제 사이트에서 카테고리 사이드 네비게이션(.ec-lnb)이 같이 붙는 것으로 확인됐습니다 — 이 생성기는 아직 그 블록을 안 만듭니다(개발팀 확인 중).") : null
+        ])
+      ])
+    ]);
+  }
+
+  function sectionEventLpKv() {
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "01. 메인 비주얼 (KV)")])]),
+      el("div", { class: "sec-body" }, [
+        el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, ["헤드라인 ", el("span", { class: "req-tag" }, "· 필수")]),
+          el("input", { type: "text", value: draft.kvHeadline || "", placeholder: "강조는 <em>...</em> 하나만 (예: 최대 <em>5회</em> 구매 건별 혜택)", oninput: e => { draft.kvHeadline = e.target.value; renderPreview(); } })
+        ]),
+        el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, "배지 (선택, 비우면 미출력)"),
+          el("input", { type: "text", value: draft.kvBadge || "", placeholder: "예: 경제형 구매 혜택", oninput: e => { draft.kvBadge = e.target.value; renderPreview(); } })
+        ]),
+        el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, "서브카피 (선택)"),
+          el("input", { type: "text", value: draft.kvSubcopy || "", oninput: e => { draft.kvSubcopy = e.target.value; renderPreview(); } })
+        ]),
+        el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, ["이미지 URL 또는 업로드 ", el("span", { class: "req-tag" }, "· 필수")]),
+          el("input", { type: "text", value: draft.kvImageUrl || "", placeholder: "일반형 950×300 / 경제형 920×300 기준", oninput: e => { draft.kvImageUrl = e.target.value; renderPreview(); } }),
+          el("input", {
+            type: "file", accept: "image/*",
+            onchange: e => { if (e.target.files[0]) handleEventKvUpload(e.target.files[0]); }
+          })
+        ]),
+        el("div", { class: "field" }, [
+          el("label", {}, ["대체텍스트(alt) ", el("span", { class: "req-tag" }, "· 필수")]),
+          el("input", { type: "text", value: draft.kvAlt || "", oninput: e => { draft.kvAlt = e.target.value; renderPreview(); } })
+        ])
+      ])
+    ]);
+  }
+
+  async function handleEventKvUpload(file) {
+    try {
+      const resized = await resizeImage(file, 950);
+      const url = await uploadToS3(resized, file.name, "LP");
+      draft.kvImageUrl = url;
+      log("KV 이미지 업로드 완료: " + file.name);
+      renderForm(); renderPreview();
+    } catch (e) {
+      toast("이미지 업로드에 실패했습니다");
+    }
+  }
+
+  function sectionEventLpSummary() {
+    const rows = draft.summaryRows;
+    const rowsHtml = rows.map((row, i) => el("div", { class: "field", style: "border-bottom:1px solid #f0f0f0;padding-bottom:8px;margin-bottom:8px;" }, [
+      el("div", { class: "row2" }, [
+        el("input", { type: "text", value: row.label, placeholder: "라벨 (8자 이내, 예: 대상)", oninput: e => { row.label = e.target.value; } }),
+        el("input", { type: "text", value: row.value, placeholder: "값", oninput: e => { row.value = e.target.value; } })
+      ]),
+      el("label", { style: "display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:400;" }, [
+        el("input", {
+          type: "checkbox", checked: row.emphasis ? "checked" : null,
+          onchange: e => { rows.forEach(r => r.emphasis = false); row.emphasis = e.target.checked; renderForm(); renderPreview(); }
+        }),
+        "강조 (최대 1개)"
+      ]),
+      rows.length > 1 ? el("button", { class: "btn btn-sm ghost", onclick: () => { rows.splice(i, 1); renderForm(); renderPreview(); } }, "− 이 행 삭제") : null
+    ]));
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "02. 이벤트 요약표 (3~5행 권장)")])]),
+      el("div", { class: "sec-body" }, [
+        ...rowsHtml,
+        rows.length < 6 ? el("button", { class: "btn btn-sm ghost", style: "width:100%;", onclick: () => { rows.push({ label: "", value: "", emphasis: false }); renderForm(); } }, "+ 행 추가") : null,
+        el("p", { class: "hint" }, "6행 이상은 요약이 아니라 본문입니다 — 유의사항으로 내려주세요.")
+      ])
+    ]);
+  }
+
+  function sectionEventLpBenefits() {
+    const items = draft.benefitItems;
+    let typeLabel = "—", ruleLabel = "";
+    try {
+      const type = detectBenefitType(items);
+      const layout = benefitLayoutRule(items.length);
+      typeLabel = type === "tier" ? "구간형 (조건값이 금액·회차 형태 → 자동 판정)" : "나열형";
+      ruleLabel = `${items.length}개 → 트랙 ${layout.tracks}개${layout.banner ? " (전폭 배너형)" : ""}`;
+    } catch (e) {
+      typeLabel = "—";
+      ruleLabel = e.message;
+    }
+    const itemsHtml = items.map((item, i) => el("div", { class: "field", style: "border-bottom:1px solid #f0f0f0;padding-bottom:8px;margin-bottom:8px;" }, [
+      el("input", {
+        type: "text", value: item.condition || "", placeholder: "조건 (선택) — 금액형 '100,000원 이상' / 회차형 '3회차' / 나열형 라벨 '100% 증정'",
+        oninput: e => { item.condition = e.target.value; renderForm(); },
+        onblur: renderPreview
+      }),
+      el("input", { type: "text", value: item.title || "", placeholder: "혜택명 (필수)", style: "margin-top:6px;", oninput: e => { item.title = e.target.value; }, onblur: renderPreview }),
+      el("input", {
+        type: "text", value: (item.detail || []).join(", "), placeholder: "부가 항목 (쉼표 구분, 0~2개)", style: "margin-top:6px;",
+        oninput: e => { item.detail = e.target.value.split(",").map(s => s.trim()).filter(Boolean); },
+        onblur: renderPreview
+      }),
+      items.length > 1 ? el("button", { class: "btn btn-sm ghost", style: "margin-top:6px;", onclick: () => { items.splice(i, 1); renderForm(); renderPreview(); } }, "− 이 혜택 삭제") : null
+    ]));
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "03. 혜택 상세 (1~5개, 개수가 레이아웃을 결정)")])]),
+      el("div", { class: "sec-body" }, [
+        el("input", { type: "text", value: draft.benefitHeading || "", placeholder: "제목 (예: 이벤트 혜택)", oninput: e => { draft.benefitHeading = e.target.value; renderPreview(); } }),
+        el("input", { type: "text", value: draft.benefitSubcopy || "", placeholder: "부제 (선택)", style: "margin-top:6px;margin-bottom:10px;", oninput: e => { draft.benefitSubcopy = e.target.value; renderPreview(); } }),
+        ...itemsHtml,
+        items.length < 5 ? el("button", { class: "btn btn-sm ghost", style: "width:100%;", onclick: () => { items.push({ condition: "", title: "", detail: [] }); renderForm(); } }, "+ 혜택 추가") : null,
+        el("p", { class: "guideline-badge", style: "margin-top:10px;" }, `유형: ${typeLabel} · ${ruleLabel}`),
+        el("p", { class: "hint" }, "나열형/구간형은 담당자가 고르는 게 아니라, 조건값이 금액·회차 패턴인지에 따라 자동으로 정해집니다.")
+      ])
+    ]);
+  }
+
+  function sectionEventLpSteps() {
+    const items = draft.stepItems;
+    const icons = ["cart", "click", "form", "upload", "check"];
+    const itemsHtml = items.map((item, i) => el("div", { class: "field", style: "border-bottom:1px solid #f0f0f0;padding-bottom:8px;margin-bottom:8px;" }, [
+      el("select", { onchange: e => { item.icon = e.target.value; renderPreview(); } }, icons.map(ic => el("option", { value: ic, ...(item.icon === ic ? { selected: "selected" } : {}) }, ic))),
+      el("input", { type: "text", value: item.text || "", placeholder: "문구 (2줄 권장, <b>강조</b> 허용)", style: "margin-top:6px;", oninput: e => { item.text = e.target.value; }, onblur: renderPreview }),
+      el("button", { class: "btn btn-sm ghost", style: "margin-top:6px;", onclick: () => { items.splice(i, 1); renderForm(); renderPreview(); } }, "− 삭제")
+    ]));
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "04. 참여 방법 (STEP, 선택 — 비우면 미출력, 3개 권장)")])]),
+      el("div", { class: "sec-body" }, [
+        el("input", { type: "text", value: draft.stepHeading || "", placeholder: "제목 (기본: 이벤트 참여 방법)", oninput: e => { draft.stepHeading = e.target.value; renderPreview(); } }),
+        el("div", { style: "margin-top:10px;" }, itemsHtml),
+        el("button", { class: "btn btn-sm ghost", style: "width:100%;", onclick: () => { items.push({ icon: "cart", text: "" }); renderForm(); } }, "+ STEP 추가"),
+        items.length > 3 ? el("p", { class: "hint", style: "color:#a9660a;" }, "⚠ 4개 이상이면 참여 장벽이 높다는 신호입니다 — 플로우를 줄이는 걸 권장합니다.") : null,
+        el("input", { type: "text", value: draft.stepNote || "", placeholder: "하단 ※ 주석 (선택)", style: "margin-top:10px;", oninput: e => { draft.stepNote = e.target.value; renderPreview(); } })
+      ])
+    ]);
+  }
+
+  function sectionEventLpCta() {
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "05. CTA (최대 2개)")])]),
+      el("div", { class: "sec-body" }, [
+        el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, ["전환 버튼 라벨 ", el("span", { class: "req-tag" }, "· 필수")]),
+          el("input", { type: "text", value: draft.ctaPrimaryLabel || "", placeholder: "기본: 이벤트 응모하기", oninput: e => { draft.ctaPrimaryLabel = e.target.value; renderPreview(); } })
+        ]),
+        el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, ["전환 버튼 링크 ", el("span", { class: "req-tag" }, "· 필수")]),
+          el("input", { type: "text", value: draft.ctaPrimaryHref || "", placeholder: "bid 등 추적 파라미터 포함", oninput: e => { draft.ctaPrimaryHref = e.target.value; renderPreview(); } })
+        ]),
+        el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, "보조 버튼 라벨 (선택 — 비우면 1버튼, 전환 버튼 중앙 정렬)"),
+          el("input", { type: "text", value: draft.ctaSecondaryLabel || "", oninput: e => { draft.ctaSecondaryLabel = e.target.value; renderPreview(); } })
+        ]),
+        el("div", { class: "field" }, [
+          el("label", {}, "보조 버튼 링크"),
+          el("input", { type: "text", value: draft.ctaSecondaryHref || "", oninput: e => { draft.ctaSecondaryHref = e.target.value; renderPreview(); } })
+        ])
+      ])
+    ]);
+  }
+
+  function sectionEventLpNotice() {
+    const customs = draft.noticeCustom;
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "06. 유의사항 (필수, include 안 함)")])]),
+      el("div", { class: "sec-body" }, [
+        el("input", { type: "text", value: draft.noticeHeading || "", placeholder: "제목 (기본: 응모 주의사항)", oninput: e => { draft.noticeHeading = e.target.value; renderPreview(); } }),
+        el("p", { class: "hint", style: "margin-top:10px;" }, "공통 문구 마스터 (수정 불가 — 법무 확인 텍스트, 필요한 것만 체크):"),
+        el("div", { style: "display:flex;flex-direction:column;gap:4px;margin:6px 0 12px;" }, NOTICE_COMMON_MASTER.map((line, i) =>
+          el("label", { style: "display:flex;align-items:flex-start;gap:6px;font-size:11.5px;font-weight:400;line-height:1.5;" }, [
+            el("input", {
+              type: "checkbox", checked: (draft.noticeCommonIndexes || []).includes(i) ? "checked" : null,
+              onchange: e => {
+                const set = new Set(draft.noticeCommonIndexes || []);
+                if (e.target.checked) set.add(i); else set.delete(i);
+                draft.noticeCommonIndexes = [...set].sort();
+                renderPreview();
+              }
+            }),
+            el("span", {}, line)
+          ])
+        )),
+        el("p", { class: "hint" }, "실제 캠페인엔 마스터에 없는 고유 문구가 여러 줄 필요한 게 일반적입니다. 법무 확인된 문구를 그대로 옮겨 적으세요:"),
+        ...customs.map((line, i) => el("div", { style: "display:flex;gap:6px;margin-bottom:6px;" }, [
+          el("input", { type: "text", value: line, style: "flex:1;", oninput: e => { customs[i] = e.target.value; }, onblur: renderPreview }),
+          el("button", { class: "btn btn-sm ghost", onclick: () => { customs.splice(i, 1); renderForm(); renderPreview(); } }, "✕")
+        ])),
+        el("button", { class: "btn btn-sm ghost", style: "width:100%;", onclick: () => { customs.push(""); renderForm(); } }, "+ 고유 문구 추가"),
+        el("p", { class: "hint", style: "margin-top:10px;" }, `※ "이벤트 관련 문의처 : event@misumi.co.kr"는 항상 마지막에 자동으로 붙습니다.`)
       ])
     ]);
   }
@@ -1104,6 +1343,10 @@ export function renderGeneratorLP(root, params) {
       renderCatalogPreview();
       return;
     }
+    if (draft.templateId === EVENT_LP_TEMPLATE_ID) {
+      renderEventLpPreview();
+      return;
+    }
     const html = assembleLpHtml(draft, resolveTemplate(), currentSeoMeta());
     previewFrame.innerHTML = "";
     previewFrame.appendChild(el("iframe", { srcdoc: html }));
@@ -1114,6 +1357,26 @@ export function renderGeneratorLP(root, params) {
       pageType: draft.pageType
     });
     updateGuidelineBadge(latestGuidelineIssues);
+  }
+
+  /** 이벤트 LP 미리보기 — 혜택 개수/조건값이 잘못돼(6개 이상 등) assembleEventLpHtml이
+   *  예외를 던질 수 있어서, 그 경우 조립 실패 메시지를 미리보기 자리에 그대로 보여줍니다. */
+  function renderEventLpPreview() {
+    previewFrame.innerHTML = "";
+    try {
+      const html = assembleEventLpHtml(draft, currentSeoMeta());
+      previewFrame.appendChild(el("iframe", { srcdoc: html }));
+      latestGuidelineIssues = [];
+      const badge = root.querySelector("#genlp-guideline-badge");
+      if (badge) {
+        badge.className = "guideline-badge badge-pass";
+        badge.textContent = "✅ 조립 성공 (SSI 헤더/푸터는 실제 배포 서버에서만 채워짐 — 개발팀 확인 중)";
+      }
+    } catch (e) {
+      previewFrame.appendChild(el("p", { class: "hint", style: "padding:40px;text-align:center;color:#c62828;" }, e.message));
+      const badge = root.querySelector("#genlp-guideline-badge");
+      if (badge) { badge.className = "guideline-badge badge-fail"; badge.textContent = "❌ " + e.message; }
+    }
   }
 
   /** 카탈로그 모드 미리보기 — 완료된 그룹 중 첫 번째를 보여줍니다.
@@ -1299,6 +1562,32 @@ export function renderGeneratorLP(root, params) {
       toast("신상품카탈로그는 위 '전체 배포' 버튼을 사용하세요");
       return;
     }
+    if (draft.templateId === EVENT_LP_TEMPLATE_ID) {
+      let html;
+      try {
+        html = assembleEventLpHtml(draft, currentSeoMeta());
+      } catch (e) {
+        toast(e.message);
+        return;
+      }
+      if (!confirm("이벤트 LP는 SSI include가 그대로 포함된 '부분 문서'입니다 — 이 파일을 그냥 열거나 S3에 올리면 헤더·푸터가 안 보입니다. 웹서버(SSI 처리 가능)에 배치할 용도로만 사용하세요. 계속할까요?")) return;
+      const css = buildEventLpCss(draft.eventSkin);
+      // ⚠️ README "Target output" 규정: index.html은 css/style_<날짜>.css를 <link>로
+      // 참조만 하고, 실제 CSS 규칙은 별도 파일이어야 합니다. 그래서 html 하나만
+      // 다운로드하면 스타일이 하나도 안 먹은 페이지가 되므로, 두 파일을 zip으로
+      // 같이 내려줍니다(신상품카탈로그의 buildZip()과 동일한 방식).
+      const files = [
+        { name: "index.html", content: html },
+        { name: `style_${draft.cssVersion || "latest"}.css`, content: css }
+      ];
+      const blob = buildZip(files);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = (draft.slug || "event-lp") + ".zip";
+      a.click();
+      log("이벤트 LP 다운로드 완료 (index.html + style.css, zip) — SSI include 포함, 웹서버용");
+      return;
+    }
     const html = assembleLpHtml(draft, resolveTemplate(), currentSeoMeta());
     if (!(await confirmExportGuards(html))) return;
     const blob = new Blob([html], { type: "text/html" });
@@ -1312,6 +1601,14 @@ export function renderGeneratorLP(root, params) {
   async function deployLp() {
     if (draft.templateId === CATALOG_TEMPLATE_ID) {
       toast("신상품카탈로그는 위 '전체 배포' 버튼을 사용하세요");
+      return;
+    }
+    if (draft.templateId === EVENT_LP_TEMPLATE_ID) {
+      // ⚠️ 이벤트 LP는 SSI로 공통 셸(헤더/푸터/사이드바)을 상속받는 부분 문서라,
+      // S3에 단독으로 올리면 그 부분이 통째로 빠집니다. 실제 웹서버(SSI 처리 가능)에
+      // 올려야 하는데 이 생성기는 그 배포 대상을 모릅니다 — 개발팀 확인 전까지는
+      // "다운로드"만 지원하고 S3 배포는 막습니다.
+      toast("이벤트 LP는 S3 배포를 지원하지 않습니다 (SSI 헤더/푸터 문제 — 개발팀 확인 중). '내보내기 ▾'의 다운로드를 이용해 웹서버에 직접 배치해주세요.");
       return;
     }
     const html = assembleLpHtml(draft, resolveTemplate(), currentSeoMeta());
@@ -1408,7 +1705,25 @@ function buildInitialDraftLP(existing) {
     seoTitle: "",
     seoDescription: "",
     seoKeywords: [],
-    generating: false
+    generating: false,
+    // ---- 이벤트 LP (GENERATOR_SPEC.md 2절) ----
+    slug: "",
+    title: "",
+    description: "",
+    eventSkin: "normal",
+    kvHeadline: "", kvBadge: "", kvSubcopy: "", kvImageUrl: "", kvAlt: "",
+    summaryRows: [
+      { label: "대상", value: "", emphasis: false },
+      { label: "내용", value: "", emphasis: true },
+      { label: "기간", value: "", emphasis: false },
+      { label: "경품 발송일", value: "", emphasis: false }
+    ],
+    benefitHeading: "이벤트 혜택", benefitSubcopy: "",
+    benefitItems: [{ condition: "", title: "", detail: [] }],
+    stepHeading: "이벤트 참여 방법", stepItems: [], stepNote: "",
+    ctaPrimaryLabel: "이벤트 응모하기", ctaPrimaryHref: "",
+    ctaSecondaryLabel: "", ctaSecondaryHref: "",
+    noticeHeading: "응모 주의사항", noticeCommonIndexes: [], noticeCustom: []
   };
   if (existing?.draftData) {
     return {
