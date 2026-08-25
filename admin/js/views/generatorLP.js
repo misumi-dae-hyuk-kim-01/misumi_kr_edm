@@ -2,7 +2,7 @@ import { store } from "../state.js";
 import { el, toast, esc } from "../lib/dom.js";
 import { generateCopyLP } from "../lib/copyGeneratorLP.js";
 import { generateSeoMeta } from "../lib/seoMetaGenerator.js";
-import { assembleLpHtml, assembleLpCatalogGroupHtml, resolveCatalogGroups, resolveCatalogSeoMeta, CATALOG_STYLE, CATALOG_SCRIPT, assembleEventLpHtml, buildEventLpCss, detectBenefitType, benefitLayoutRule, enforceSingleEmphasis, NOTICE_COMMON_MASTER, EVENT_LP_TEMPLATE_ID } from "../lib/blocksLP.js";
+import { assembleLpHtml, assembleLpCatalogGroupHtml, resolveCatalogGroups, resolveCatalogSeoMeta, CATALOG_STYLE, CATALOG_SCRIPT, assembleEventLpHtml, buildEventLpCss, detectBenefitType, benefitLayoutRule, enforceSingleEmphasis, NOTICE_COMMON_MASTER, EVENT_LP_TEMPLATE_ID, assembleEconomyLineupHtml, economyBid, economyLineupIssues, economySampleData, ECONOMY_LINEUP_TEMPLATE_ID, ECONOMY_LINEUP_PREVIEW_CSS } from "../lib/blocksLP.js";
 import { seedLpTemplates } from "../data/lpTemplates.js";
 import { checkGuidelinesLP, summarizeGuidelineIssuesLP, LP_WIDTH_PATTERNS, LP_ECONOMY_LAYOUT, DEPLOYMENT_COUNTRY } from "../lib/guidelineCheckLP.js";
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
@@ -139,6 +139,7 @@ export function renderGeneratorLP(root, params) {
 
     const isCatalog = draft.templateId === CATALOG_TEMPLATE_ID;
     const isEventLp = draft.templateId === EVENT_LP_TEMPLATE_ID;
+    const isEconomyLineup = draft.templateId === ECONOMY_LINEUP_TEMPLATE_ID;
     renderFooterActions(isCatalog);
 
     formBody.appendChild(groupHeader("콘텐츠"));
@@ -162,6 +163,17 @@ export function renderGeneratorLP(root, params) {
       formBody.appendChild(sectionEventLpSteps());
       formBody.appendChild(sectionEventLpCta());
       formBody.appendChild(sectionEventLpNotice());
+      return;
+    }
+    if (isEconomyLineup) {
+      // ⚠️ 신상품카탈로그와 마찬가지로 상시 운영되는(계속 갱신되는) 페이지입니다.
+      // 다른 점은 "구조"입니다 — 카탈로그는 그룹별로 개별 페이지를 만드는 방식인
+      // 반면, 경제형 라인업은 PC메인/전체라인업/모바일/데이터 4개 뷰가 하나의
+      // 사이트 구조를 이루고, 상품 데이터만 주기적으로 갱신됩니다. 그래서 콘텐츠
+      // 입력 폼도 기본정보(메타) → 상품 데이터 엑셀 업로드 → 뷰 전환 순서.
+      formBody.appendChild(sectionEconomyBasic());
+      formBody.appendChild(sectionEconomyUpload());
+      formBody.appendChild(sectionEconomyView());
       return;
     }
     formBody.appendChild(sectionPageType());
@@ -197,7 +209,7 @@ export function renderGeneratorLP(root, params) {
           style: "margin-left:auto;margin-top:0;"
         }, statusLabel),
         el("button", {
-          class: "btn btn-sm",
+          class: "btn btn-sm ghost",
           disabled: info?.status === "done" ? null : "disabled",
           onclick: () => { renderCatalogPreviewFor(g.label); }
         }, "미리보기")
@@ -755,7 +767,7 @@ export function renderGeneratorLP(root, params) {
     if (indexFile) {
       host.appendChild(el("div", { class: "guide-result guide-pass", style: "display:flex;align-items:center;gap:8px;" }, [
         el("span", { style: "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" }, indexFile.url),
-        el("button", { class: "btn btn-sm", onclick: () => { navigator.clipboard?.writeText(indexFile.url); toast("링크를 복사했습니다"); } }, "복사")
+        el("button", { class: "btn btn-sm ghost", onclick: () => { navigator.clipboard?.writeText(indexFile.url); toast("링크를 복사했습니다"); } }, "복사")
       ]));
     }
     if (failed.length) {
@@ -766,7 +778,7 @@ export function renderGeneratorLP(root, params) {
   // ---------- 폼 섹션 ----------
 
   function resolveTemplate() {
-    if (draft.templateId === CATALOG_TEMPLATE_ID || draft.templateId === EVENT_LP_TEMPLATE_ID) return null;
+    if (draft.templateId === CATALOG_TEMPLATE_ID || draft.templateId === EVENT_LP_TEMPLATE_ID || draft.templateId === ECONOMY_LINEUP_TEMPLATE_ID) return null;
     return LP_TEMPLATES.find(t => t.id === draft.templateId) || LP_TEMPLATES[0] || null;
   }
 
@@ -774,6 +786,7 @@ export function renderGeneratorLP(root, params) {
     const current = resolveTemplate();
     const isCatalog = draft.templateId === CATALOG_TEMPLATE_ID;
     const isEventLp = draft.templateId === EVENT_LP_TEMPLATE_ID;
+    const isEconomyLineup = draft.templateId === ECONOMY_LINEUP_TEMPLATE_ID;
     return el("div", { class: "sec" }, [
       el("div", { class: "sec-hd" }, [
         el("div", { class: "sec-hd-left" }, [
@@ -788,11 +801,15 @@ export function renderGeneratorLP(root, params) {
             el("option", { value: t.id, ...(t.id === draft.templateId ? { selected: "selected" } : {}) }, t.name)
           ),
           el("option", { value: CATALOG_TEMPLATE_ID, ...(isCatalog ? { selected: "selected" } : {}) }, "신상품카탈로그"),
-          el("option", { value: EVENT_LP_TEMPLATE_ID, ...(isEventLp ? { selected: "selected" } : {}) }, "이벤트 LP")
+          el("option", { value: EVENT_LP_TEMPLATE_ID, ...(isEventLp ? { selected: "selected" } : {}) }, "이벤트 LP"),
+          el("option", { value: ECONOMY_LINEUP_TEMPLATE_ID, ...(isEconomyLineup ? { selected: "selected" } : {}) }, "경제형 전체상품 라인업")
         ]),
         current ? el("p", { class: "hint" }, "블록: " + current.blocks.join(" → ")) : null,
-        isEventLp ? el("p", { class: "hint", style: "color:#a9660a;" },
-          "⚠ 홈페이지 공통 셸(헤더·푸터·사이드바)에 SSI로 얹히는 페이지입니다 — S3 단독 배포 시 헤더/푸터가 빠집니다(개발팀 확인 중). 지금은 미리보기·다운로드까지만 지원합니다."
+        isEventLp ? el("p", { class: "hint hint-danger" },
+          "🚫 실제로 확인됨: 이 페이지의 SSI include 구문(<!--#include virtual=...-->) 때문에 S3에 업로드 자체가 차단됩니다(보안 스캐너로 추정, 2026.08.21 콘솔에서 직접 재현 확인). 헤더/푸터가 안 붙는 문제 이전에, 업로드 시도 자체가 403으로 막힙니다. 개발팀이 웹서버 배치 방식을 확정하기 전까지 다운로드만 사용하세요."
+        ) : null,
+        isEconomyLineup ? el("p", { class: "hint hint-warn" },
+          "⚠ 신상품카탈로그와 마찬가지로 상시 운영(계속 갱신)되는 페이지입니다. 다른 점은 구조 — 카탈로그는 그룹별 개별 페이지인 반면, 이건 PC메인/전체라인업/모바일/데이터(QA) 4개 뷰가 하나의 사이트를 이룹니다. 모바일은 SP 전용 CSS 미확보로 자리만 잡아둔 상태입니다. 이 페이지도 실제로는 SSI 셸에 얹히는 걸로 확인된 바 있어(경제형 실물 소스 검증 완료), 헤더/푸터 배포 방식은 이벤트 LP와 같은 사안입니다."
         ) : null
       ])
     ]);
@@ -825,7 +842,7 @@ export function renderGeneratorLP(root, params) {
             el("div", { class: "opt-btn" + (draft.eventSkin !== "economy" ? " active" : ""), onclick: () => { draft.eventSkin = "normal"; renderForm(); renderPreview(); } }, "일반형 (950px)"),
             el("div", { class: "opt-btn" + (draft.eventSkin === "economy" ? " active" : ""), onclick: () => { draft.eventSkin = "economy"; renderForm(); renderPreview(); } }, "경제형 (920px, 컬러 다름)")
           ]),
-          draft.eventSkin === "economy" ? el("p", { class: "hint", style: "color:#a9660a;" }, "⚠ 경제형 스킨은 실제 사이트에서 카테고리 사이드 네비게이션(.ec-lnb)이 같이 붙는 것으로 확인됐습니다 — 이 생성기는 아직 그 블록을 안 만듭니다(개발팀 확인 중).") : null
+          draft.eventSkin === "economy" ? el("p", { class: "hint hint-warn" }, "⚠ 경제형 스킨은 실제 사이트에서 카테고리 사이드 네비게이션(.ec-lnb)이 같이 붙는 것으로 확인됐습니다 — 이 생성기는 아직 그 블록을 안 만듭니다(개발팀 확인 중).") : null
         ])
       ])
     ]);
@@ -954,7 +971,7 @@ export function renderGeneratorLP(root, params) {
         el("input", { type: "text", value: draft.stepHeading || "", placeholder: "제목 (기본: 이벤트 참여 방법)", oninput: e => { draft.stepHeading = e.target.value; renderPreview(); } }),
         el("div", { style: "margin-top:10px;" }, itemsHtml),
         el("button", { class: "btn btn-sm ghost", style: "width:100%;", onclick: () => { items.push({ icon: "cart", text: "" }); renderForm(); } }, "+ STEP 추가"),
-        items.length > 3 ? el("p", { class: "hint", style: "color:#a9660a;" }, "⚠ 4개 이상이면 참여 장벽이 높다는 신호입니다 — 플로우를 줄이는 걸 권장합니다.") : null,
+        items.length > 3 ? el("p", { class: "hint hint-warn" }, "⚠ 4개 이상이면 참여 장벽이 높다는 신호입니다 — 플로우를 줄이는 걸 권장합니다.") : null,
         el("input", { type: "text", value: draft.stepNote || "", placeholder: "하단 ※ 주석 (선택)", style: "margin-top:10px;", oninput: e => { draft.stepNote = e.target.value; renderPreview(); } })
       ])
     ]);
@@ -1012,6 +1029,121 @@ export function renderGeneratorLP(root, params) {
         ])),
         el("button", { class: "btn btn-sm ghost", style: "width:100%;", onclick: () => { customs.push(""); renderForm(); } }, "+ 고유 문구 추가"),
         el("p", { class: "hint", style: "margin-top:10px;" }, `※ "이벤트 관련 문의처 : event@misumi.co.kr"는 항상 마지막에 자동으로 붙습니다.`)
+      ])
+    ]);
+  }
+
+  // ==========================================================================
+  // 경제형 전체상품 라인업 — 경제형_LP_템플릿_v2_dc.html 기준
+  // ==========================================================================
+
+  function sectionEconomyBasic() {
+    const m = draft.economyMeta;
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "기본 정보 (메타)")])]),
+      el("div", { class: "sec-body" }, [
+        el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, ["캠페인 코드 ", el("span", { class: "req-tag" }, "· 필수")]),
+          el("input", { type: "text", value: m.campaign || "", placeholder: "예: KR260002", oninput: e => { m.campaign = e.target.value; renderPreview(); } })
+        ]),
+        el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, "bid 접두어 (기본: bid_kr_e)"),
+          el("input", { type: "text", value: m.bidPrefix || "", oninput: e => { m.bidPrefix = e.target.value; renderPreview(); } })
+        ]),
+        el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, "정식 URL (canonical)"),
+          el("input", { type: "text", value: m.canonical || "", placeholder: "https://kr.misumi-ec.com/pr/vona/economy/", oninput: e => { m.canonical = e.target.value; renderPreview(); } })
+        ]),
+        el("p", { class: "hint" }, "bid는 상품마다 직접 안 적어도 됩니다 — 캠페인 코드+접두어+배치 위치(메인 n / 카테고리 c / 대표상품 f)로 렌더 시점에 자동 생성됩니다.")
+      ])
+    ]);
+  }
+
+  function sectionEconomyUpload() {
+    const products = draft.economyProducts || [];
+    const issues = products.length ? economyLineupIssues(products) : [];
+    const hasIssue = issues.some(i => i.count > 0);
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "상품 데이터 업로드 (엑셀, 1행 = 상품 1개)")])]),
+      el("div", { class: "sec-body" }, [
+        el("p", { class: "hint" }, "열 순서: name · url · image · category · group(선택) · bid(선택, 비우면 자동생성) · isNew · featured · newArrival"),
+        el("input", {
+          type: "file", accept: ".xlsx,.xls",
+          onchange: e => { if (e.target.files[0]) handleEconomyUpload(e.target.files[0]); }
+        }),
+        products.length ? el("p", { class: "guideline-badge", style: "margin-top:10px;" }, `${products.length}개 상품 업로드됨`) : null,
+        products.length ? el("button", { class: "btn btn-sm ghost", style: "margin-top:6px;", onclick: () => { draft.economyView = "data"; renderForm(); renderPreview(); } }, "→ 데이터 검증 뷰로 확인하기") : null,
+        hasIssue ? el("p", { class: "hint hint-warn" }, "⚠ 데이터 품질 문제가 발견됐습니다 — 아래 '뷰 전환'에서 '데이터(QA)'를 선택해 상세 내용을 확인하세요.") : null
+      ])
+    ]);
+  }
+
+  async function handleEconomyUpload(file) {
+    if (typeof window === "undefined" || !window.XLSX) {
+      toast("엑셀 업로드 기능을 불러오지 못했습니다");
+      return;
+    }
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = window.XLSX.read(buf, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      const toBool = v => /^(1|true|y|yes|o)$/i.test(String(v ?? "").trim());
+      const parsed = rows
+        .map((r, i) => ({
+          id: "P" + String(i + 1).padStart(3, "0"),
+          name: String(r[0] ?? "").trim(),
+          url: String(r[1] ?? "").trim(),
+          image: String(r[2] ?? "").trim(),
+          category: String(r[3] ?? "").trim(),
+          group: String(r[4] ?? "").trim(),
+          bid: String(r[5] ?? "").trim(),
+          isNew: toBool(r[6]),
+          featured: toBool(r[7]),
+          newArrival: toBool(r[8])
+        }))
+        .filter(r => r.name && r.url);
+
+      if (!parsed.length) {
+        toast("처리할 상품이 없습니다 — name/url 칸을 확인해주세요");
+        return;
+      }
+      draft.economyProducts = parsed;
+      // 엑셀에 등장한 카테고리 코드를 자동으로 카테고리 목록에 반영 (이름은 코드와 동일하게 시작, 수동 수정 가능)
+      const seenCodes = new Set(draft.economyCategories.map(c => c.code));
+      parsed.forEach(p => {
+        if (p.category && !seenCodes.has(p.category)) {
+          draft.economyCategories.push({ code: p.category, name: p.category });
+          seenCodes.add(p.category);
+        }
+      });
+      log(`경제형 상품 데이터 업로드 완료: ${parsed.length}개`);
+      renderForm();
+      renderPreview();
+    } catch (e) {
+      toast("엑셀 파일을 읽는 중 오류가 발생했습니다");
+      log("오류: " + e.message);
+    }
+  }
+
+  function sectionEconomyView() {
+    const views = [
+      { id: "main", label: "PC 메인" },
+      { id: "all", label: "전체 라인업" },
+      { id: "mobile", label: "모바일 (placeholder)" },
+      { id: "data", label: "데이터 (QA)" }
+    ];
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "미리볼 뷰")])]),
+      el("div", { class: "sec-body" }, [
+        el("div", { class: "row2", style: "flex-wrap:wrap;" }, views.map(v =>
+          el("div", {
+            class: "opt-btn" + (draft.economyView === v.id ? " active" : ""),
+            onclick: () => { draft.economyView = v.id; renderForm(); renderPreview(); }
+          }, v.label)
+        )),
+        draft.economyView === "mobile" ? el("p", { class: "hint hint-warn", style: "margin-top:10px;" }, "⚠ SP 전용 CSS를 아직 못 받아서 레이아웃만 임시로 잡아둔 상태입니다 — PC용 데이터를 그대로 재사용합니다.") : null,
+        el("p", { class: "hint", style: "margin-top:10px;" }, "실제 배포 시엔 PC메인=index.html, 전체라인업=economy_all.html처럼 뷰별로 별도 파일이 됩니다. '데이터' 뷰는 QA 확인용이라 배포 대상이 아닙니다.")
       ])
     ]);
   }
@@ -1135,7 +1267,7 @@ export function renderGeneratorLP(root, params) {
     if (draft.pageType === LP_ECONOMY_LAYOUT.pageType) {
       return el("div", { class: "field", style: "margin-bottom:14px;" }, [
         el("label", {}, "컨텐츠 폭"),
-        el("p", { class: "hint", style: "color:#a9660a;" },
+        el("p", { class: "hint hint-warn" },
           `⚠ 경제형은 총 폭 ${LP_ECONOMY_LAYOUT.totalWidth}px 고정입니다 (사이드 ${LP_ECONOMY_LAYOUT.sidebarWidth}px + 컨텐츠 ${LP_ECONOMY_LAYOUT.contentWidth}px 분할, ${LP_ECONOMY_LAYOUT.scope}).`)
       ]);
     }
@@ -1347,6 +1479,10 @@ export function renderGeneratorLP(root, params) {
       renderEventLpPreview();
       return;
     }
+    if (draft.templateId === ECONOMY_LINEUP_TEMPLATE_ID) {
+      renderEconomyLineupPreview();
+      return;
+    }
     const html = assembleLpHtml(draft, resolveTemplate(), currentSeoMeta());
     previewFrame.innerHTML = "";
     previewFrame.appendChild(el("iframe", { srcdoc: html }));
@@ -1359,13 +1495,61 @@ export function renderGeneratorLP(root, params) {
     updateGuidelineBadge(latestGuidelineIssues);
   }
 
+  /** 경제형 라인업 미리보기 — 상품 데이터가 아직 없으면(초기 상태) 빈 화면
+   *  대신 안내 문구를 보여줍니다. 실제 CSS 4개 파일은 미리보기 전용으로만
+   *  인라인 삽입합니다(다운로드 산출물은 <link>만 유지 — 이벤트 LP와 동일). */
+  function renderEconomyLineupPreview() {
+    previewFrame.innerHTML = "";
+    const usingSample = !draft.economyProducts.length;
+    try {
+      const data = usingSample ? economySampleData() : {
+        meta: draft.economyMeta,
+        products: draft.economyProducts,
+        categories: draft.economyCategories,
+        news: draft.economyNews,
+        leadCards: draft.economyLeadCards,
+        lnbLinks: draft.economyLnbLinks
+      };
+      const bodyHtml = assembleEconomyLineupHtml(data, draft.economyView);
+      const sampleBanner = usingSample
+        ? `<div style="position:sticky;top:0;z-index:999;background:#fff3cd;color:#7a5c00;padding:8px 16px;font-size:12px;text-align:center;">샘플 데이터 미리보기입니다 — 실제 상품 데이터를 엑셀로 업로드하면 이 자리가 실제 내용으로 바뀝니다</div>`
+        : "";
+      const previewHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${ECONOMY_LINEUP_PREVIEW_CSS}</style></head><body>${sampleBanner}${bodyHtml}</body></html>`;
+      previewFrame.appendChild(el("iframe", { srcdoc: previewHtml }));
+
+      const badge = root.querySelector("#genlp-guideline-badge");
+      if (usingSample) {
+        if (badge) { badge.className = "guideline-badge"; badge.textContent = "샘플 미리보기 — 실제 데이터 업로드 전"; }
+        return;
+      }
+      const issues = economyLineupIssues(draft.economyProducts);
+      const hasIssue = issues.some(i => i.count > 0);
+      if (badge) {
+        badge.className = hasIssue ? "guideline-badge badge-warn" : "guideline-badge badge-pass";
+        badge.textContent = hasIssue
+          ? "⚠ 데이터 품질 문제 있음 — '데이터(QA)' 뷰에서 확인하세요"
+          : "✅ 데이터 검증 통과 (카테고리/bid/이미지/중복 URL 이상 없음)";
+      }
+    } catch (e) {
+      previewFrame.appendChild(el("p", { class: "preview-error" }, e.message));
+    }
+  }
+
   /** 이벤트 LP 미리보기 — 혜택 개수/조건값이 잘못돼(6개 이상 등) assembleEventLpHtml이
    *  예외를 던질 수 있어서, 그 경우 조립 실패 메시지를 미리보기 자리에 그대로 보여줍니다. */
   function renderEventLpPreview() {
     previewFrame.innerHTML = "";
     try {
       const html = assembleEventLpHtml(draft, currentSeoMeta());
-      previewFrame.appendChild(el("iframe", { srcdoc: html }));
+      // ⚠️ assembleEventLpHtml()이 만드는 <link>는 실제 배포 후에나 존재하는
+      // css/style_<날짜>.css 파일을 가리킵니다 — 아직 배포 전인 미리보기 단계에선
+      // 그 파일이 어디에도 없어서, 그냥 iframe에 넣으면 레이아웃/색상이 하나도 안
+      // 먹은 상태로 보입니다. 다운로드/배포용 산출물(html)은 스펙대로 "링크만"
+      // 유지하고, 이 미리보기 iframe에만 실제 CSS를 <style>로 끼워 넣어서
+      // 눈으로 확인 가능하게 합니다.
+      const previewCss = buildEventLpCss(draft.eventSkin);
+      const previewHtml = html.replace("</head>", `<style>${previewCss}</style></head>`);
+      previewFrame.appendChild(el("iframe", { srcdoc: previewHtml }));
       latestGuidelineIssues = [];
       const badge = root.querySelector("#genlp-guideline-badge");
       if (badge) {
@@ -1373,7 +1557,7 @@ export function renderGeneratorLP(root, params) {
         badge.textContent = "✅ 조립 성공 (SSI 헤더/푸터는 실제 배포 서버에서만 채워짐 — 개발팀 확인 중)";
       }
     } catch (e) {
-      previewFrame.appendChild(el("p", { class: "hint", style: "padding:40px;text-align:center;color:#c62828;" }, e.message));
+      previewFrame.appendChild(el("p", { class: "preview-error" }, e.message));
       const badge = root.querySelector("#genlp-guideline-badge");
       if (badge) { badge.className = "guideline-badge badge-fail"; badge.textContent = "❌ " + e.message; }
     }
@@ -1562,6 +1746,32 @@ export function renderGeneratorLP(root, params) {
       toast("신상품카탈로그는 위 '전체 배포' 버튼을 사용하세요");
       return;
     }
+    if (draft.templateId === ECONOMY_LINEUP_TEMPLATE_ID) {
+      if (!draft.economyProducts.length) {
+        toast("상품 데이터를 먼저 업로드해주세요");
+        return;
+      }
+      const issues = economyLineupIssues(draft.economyProducts);
+      const hasIssue = issues.some(i => i.count > 0);
+      if (hasIssue && !confirm("데이터 품질 문제가 있습니다(카테고리 미지정/bid없음/이미지없음/URL중복 중 하나 이상). 그래도 다운로드할까요?")) return;
+      const data = {
+        meta: draft.economyMeta, products: draft.economyProducts, categories: draft.economyCategories,
+        news: draft.economyNews, leadCards: draft.economyLeadCards, lnbLinks: draft.economyLnbLinks
+      };
+      // ⚠️ "데이터"/"모바일" 뷰는 QA·placeholder 용도라 배포 대상이 아니고,
+      // 실제 사이트에 나가는 건 "PC메인"(index.html)과 "전체라인업"(economy_all.html) 뿐입니다.
+      const files = [
+        { name: "index.html", content: assembleEconomyLineupHtml(data, "main") },
+        { name: "economy_all.html", content: assembleEconomyLineupHtml(data, "all") }
+      ];
+      const blob = buildZip(files);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "economy-lineup.zip";
+      a.click();
+      log("경제형 라인업 다운로드 완료 (index.html + economy_all.html, zip) — SSI 헤더/푸터는 별도 처리 필요");
+      return;
+    }
     if (draft.templateId === EVENT_LP_TEMPLATE_ID) {
       let html;
       try {
@@ -1570,7 +1780,7 @@ export function renderGeneratorLP(root, params) {
         toast(e.message);
         return;
       }
-      if (!confirm("이벤트 LP는 SSI include가 그대로 포함된 '부분 문서'입니다 — 이 파일을 그냥 열거나 S3에 올리면 헤더·푸터가 안 보입니다. 웹서버(SSI 처리 가능)에 배치할 용도로만 사용하세요. 계속할까요?")) return;
+      if (!confirm("⚠ 실제로 확인된 문제: 이 HTML의 SSI include 구문 때문에 S3에 그냥 업로드하면 (보안 스캐너로 추정) 업로드 자체가 403으로 차단됩니다 — 헤더/푸터가 안 붙는 것과는 별개로, 업로드 시도 자체가 막힙니다. 반드시 웹서버(SSI 처리 가능)에 배치하세요. 계속할까요?")) return;
       const css = buildEventLpCss(draft.eventSkin);
       // ⚠️ README "Target output" 규정: index.html은 css/style_<날짜>.css를 <link>로
       // 참조만 하고, 실제 CSS 규칙은 별도 파일이어야 합니다. 그래서 html 하나만
@@ -1603,12 +1813,18 @@ export function renderGeneratorLP(root, params) {
       toast("신상품카탈로그는 위 '전체 배포' 버튼을 사용하세요");
       return;
     }
+    if (draft.templateId === ECONOMY_LINEUP_TEMPLATE_ID) {
+      // ⚠️ 경제형 라인업도 실물 소스(경제형 구매혜택 이벤트 페이지) 검증 결과
+      // SSI 셸에 얹히는 구조로 확인됐습니다 — 이벤트 LP와 같은 이유로 S3 배포를 막습니다.
+      toast("경제형 라인업은 S3 배포를 지원하지 않습니다 — 이 페이지도 SSI 셸(헤더/사이드네비/푸터)에 얹히는 것으로 확인됐습니다. '내보내기 ▾'의 다운로드로 받아 웹서버에 직접 배치해주세요.");
+      return;
+    }
     if (draft.templateId === EVENT_LP_TEMPLATE_ID) {
       // ⚠️ 이벤트 LP는 SSI로 공통 셸(헤더/푸터/사이드바)을 상속받는 부분 문서라,
       // S3에 단독으로 올리면 그 부분이 통째로 빠집니다. 실제 웹서버(SSI 처리 가능)에
       // 올려야 하는데 이 생성기는 그 배포 대상을 모릅니다 — 개발팀 확인 전까지는
       // "다운로드"만 지원하고 S3 배포는 막습니다.
-      toast("이벤트 LP는 S3 배포를 지원하지 않습니다 (SSI 헤더/푸터 문제 — 개발팀 확인 중). '내보내기 ▾'의 다운로드를 이용해 웹서버에 직접 배치해주세요.");
+      toast("이벤트 LP는 S3 배포를 지원하지 않습니다 — SSI include가 있으면 S3 업로드 자체가 차단되는 것을 실제로 확인했습니다(개발팀 확인 중). '내보내기 ▾'의 다운로드로 받아 웹서버에 직접 배치해주세요.");
       return;
     }
     const html = assembleLpHtml(draft, resolveTemplate(), currentSeoMeta());
@@ -1631,7 +1847,7 @@ export function renderGeneratorLP(root, params) {
     host.innerHTML = "";
     host.appendChild(el("div", { class: "guide-result guide-pass", style: "display:flex;align-items:center;gap:8px;" }, [
       el("span", { style: "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" }, url),
-      el("button", { class: "btn btn-sm", onclick: () => { navigator.clipboard?.writeText(url); toast("링크를 복사했습니다"); } }, "복사")
+      el("button", { class: "btn btn-sm ghost", onclick: () => { navigator.clipboard?.writeText(url); toast("링크를 복사했습니다"); } }, "복사")
     ]));
   }
 
@@ -1723,7 +1939,15 @@ function buildInitialDraftLP(existing) {
     stepHeading: "이벤트 참여 방법", stepItems: [], stepNote: "",
     ctaPrimaryLabel: "이벤트 응모하기", ctaPrimaryHref: "",
     ctaSecondaryLabel: "", ctaSecondaryHref: "",
-    noticeHeading: "응모 주의사항", noticeCommonIndexes: [], noticeCustom: []
+    noticeHeading: "응모 주의사항", noticeCommonIndexes: [], noticeCustom: [],
+    // ---- 경제형 전체상품 라인업 ----
+    economyMeta: { campaign: "", bidPrefix: "bid_kr_e", canonical: "", lnbLogo: "", lnbBanner: "" },
+    economyProducts: [],
+    economyCategories: [],
+    economyNews: [],
+    economyLeadCards: [],
+    economyLnbLinks: [],
+    economyView: "main"
   };
   if (existing?.draftData) {
     return {

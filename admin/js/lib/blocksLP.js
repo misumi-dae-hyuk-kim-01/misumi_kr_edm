@@ -983,7 +983,11 @@ export const EVENT_LP_SKINS = {
   },
   economy: {
     key: "economy",
-    wrapperWidthPc: 920,
+    // ⚠️ 이 920은 미스미 "경제형" 브랜드의 표준 컨텐츠 폭이라, 일반형/경제형 LP의
+    // LP_ECONOMY_LAYOUT.contentWidth(240 사이드+920 컨텐츠=총 1200)와 정확히 같은
+    // 값이어야 합니다. 따로 숫자를 하드코딩하면 한쪽만 바뀌었을 때 불일치가
+    // 생기므로, 여기서도 같은 상수를 그대로 참조합니다.
+    wrapperWidthPc: LP_ECONOMY_LAYOUT.contentWidth,
     paddingInline: "clamp(20px, 4.5vw, 45px)",
     main: "#111",
     mainHover: "#1c1c1c",
@@ -1198,6 +1202,12 @@ function eventContactIncludeTag() {
 }
 
 const EVENT_LP_STYLE = `
+  /* ⚠️ 사이트 공통 CSS(import_head_css.html, SSI)에 기대지 않는 독립 기본값 —
+     SSI가 처리 안 돼도(또는 아직 해결 전이어도) 이 LP 콘텐츠 블록만은 항상
+     의도한 대로 보이게 하기 위함. 헤더/푸터 자체의 스타일은 어차피 SSI가
+     처리해야 나오므로 이걸로 못 고치지만, 최소한 저희가 만드는 콘텐츠는
+     이 리셋 덕분에 SSI 상태와 무관하게 항상 정상 렌더링됩니다. */
+  body{margin:0;background:#fff;font-family:"Pretendard Variable",Pretendard,sans-serif;-webkit-text-size-adjust:100%;}
   .lp-kv{min-height:clamp(240px,32vw,300px);display:flex;align-items:center;justify-content:center;text-align:center;padding:clamp(28px,5vw,40px) var(--lp-pad,20px);box-sizing:border-box;}
   .lp-kv-badge{display:inline-block;background:#ffcc00;color:#111;font-size:clamp(12px,1.6vw,14px);padding:6px 18px;border-radius:20px;margin-bottom:10px;}
   .lp-kv-headline{font-size:clamp(22px,3.6vw,32px);line-height:1.35;letter-spacing:-.5px;color:#fff;}
@@ -1261,6 +1271,15 @@ ${EVENT_LP_STYLE}`;
  *  ⚠️ 이건 "콘텐츠 컬럼 내부 + 최소 확인용 셸"만 만듭니다 — 실제 배포 시엔 아래
  *  head_navi.html / foot.html 등 SSI include로 진짜 헤더·푸터가 치환되어야 하고,
  *  지금은 그 부분이 안 되어 있어 미리보기/시연용으로만 씁니다(개발팀 확인 중인 사안).
+ *
+ *  ⚠️⚠️ 2026-08-21 실제로 확인됨: 헤더/푸터가 안 붙는 문제보다 앞서서, 이 SSI
+ *  include 구문(`<!--#include virtual="..." -->`) 자체가 S3 업로드 시점에
+ *  403으로 차단됩니다(회사 S3 버킷의 보안 스캐너로 추정 — SSI 인젝션 공격의
+ *  표준 시그니처라 이런 필터링이 흔함). 콘솔에서 직접 재현 테스트 완료:
+ *  이 include 줄이 없는 HTML은 업로드 성공, 있으면 실패. 그래서 이 함수의
+ *  결과물은 S3에 "잘못 배포되어 헤더가 안 보이는" 정도가 아니라, **애초에
+ *  업로드 자체가 안 될 가능성이 높습니다** — generatorLP.js가 다운로드/S3배포
+ *  버튼에 이 사실을 명시하는 이유입니다.
  *  @param {object} draft
  *  @param {{title?:string, description?:string, keywords?:string[]}} [seoMeta] */
 export function assembleEventLpHtml(draft, seoMeta = {}) {
@@ -1291,6 +1310,13 @@ export function assembleEventLpHtml(draft, seoMeta = {}) {
 <meta name="description" content="${description}" />
 <link rel="canonical" href="https://kr.misumi-ec.com/pr/vona/${esc(draft.slug || "")}/" />
 <!--#include virtual="/vcommon/common/include/import_head_css.html" -->
+<!-- ⚠️ 폰트는 SSI와 무관하게 CDN에서 직접 로드 — 원본 프로토타입(이벤트LP-일반형_dc.html)
+     그대로. 이걸 빠뜨리면 SSI 해결 여부와 상관없이 브라우저 기본 서체로 보입니다. -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+<style>
+@font-face{font-family:"GmarketSansMedium";src:url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff") format("woff");font-weight:normal;font-style:normal}
+@font-face{font-family:"GmarketSansBold";src:url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff") format("woff");font-weight:normal;font-style:normal}
+</style>
 <link href="${esc(draft.assetBaseUrl || "")}/${esc(draft.slug || "")}/css/style_${esc(draft.cssVersion || "")}.css" rel="stylesheet" type="text/css" media="all" />
 <script type="text/javascript">
 <!--
@@ -1331,3 +1357,2074 @@ if (navigator.platform) {
 </body>
 </html>`;
 }
+
+// ==========================================================================
+// 경제형 전체상품 라인업 (경제형_LP_템플릿_v2_dc.html 기준) — 신상품카탈로그와
+// 다른 "다중 뷰 허브" 유형입니다. 신상품카탈로그와 마찬가지로 상시 운영(계속
+// 갱신)되는 페이지지만, 구조가 다릅니다 — 카탈로그는 그룹별 개별 페이지인 반면,
+// 이건 경제형 제품
+// 전체를 카테고리별로 보여주는 정적 허브 페이지(/pr/vona/economy/ 성격)이고,
+// PC메인 / 전체라인업 / 모바일 / 데이터(QA) 4개 뷰로 구성됩니다.
+// ⚠️ 모바일(SP) 뷰는 원본 프로토타입에도 "sp CSS를 전달받지 않아 레이아웃만
+// 잡아둔 상태"라고 명시되어 있어, 여기서도 동일하게 자리만 잡아둔 placeholder로
+// 구현합니다 — 실제 SP CSS가 오면 그때 마저 채웁니다.
+// ==========================================================================
+
+export const ECONOMY_LINEUP_TEMPLATE_ID = "economy-lineup";
+
+/** bid 자동생성 규칙 — 경제형_LP_템플릿_v2_dc.html의 Component.bid()/href() 그대로.
+ *  상품에 bid가 이미 있으면 그대로 쓰고, 없으면 규칙으로 채웁니다:
+ *  {bidPrefix}_{campaign}_{placement}{순번(3자리, 0패딩)}
+ *  placement: "n"=신상품소식/대표상품 목록(메인), "c"=카테고리별 그리드, "f"=대표상품 */
+export function economyBid(product, index, placement, meta) {
+  if (product && product.bid) return product.bid;
+  return `${meta.bidPrefix}_${meta.campaign}_${placement}${String(index + 1).padStart(3, "0")}`;
+}
+
+export function economyHref(product, index, placement, meta) {
+  const bid = economyBid(product, index, placement, meta);
+  const sep = product.url.includes("?") ? "&" : "?";
+  return `${product.url}${sep}bid=${bid}`;
+}
+
+/** "데이터" 뷰가 보여주는 데이터 품질 검증 — 배포 전에 엑셀/JSON에 빠진 값이
+ *  있는지 미리 잡아내는 용도입니다(신상품카탈로그의 링크확인과 같은 역할). */
+export function economyLineupIssues(products) {
+  const missingCat = products.filter(p => !p.category);
+  const missingBid = products.filter(p => !p.bid);
+  const missingImg = products.filter(p => !p.image);
+  const seen = new Set();
+  const dupes = [];
+  products.forEach(p => { if (seen.has(p.url)) dupes.push(p.name); else seen.add(p.url); });
+  const sample = arr => arr.length
+    ? arr.slice(0, 3).map(p => p.name || p).join(", ") + (arr.length > 3 ? ` 외 ${arr.length - 3}건` : "")
+    : "없음";
+  return [
+    { label: "카테고리 미지정", count: missingCat.length, sample: sample(missingCat) },
+    { label: "bid 값 없음", count: missingBid.length, sample: missingBid.length ? sample(missingBid) + " — 규칙으로 자동 생성됨" : "없음" },
+    { label: "이미지 경로 없음", count: missingImg.length, sample: sample(missingImg) },
+    { label: "URL 중복", count: dupes.length, sample: sample(dupes) }
+  ];
+}
+
+function economyProductCard(p, i, placement, meta) {
+  const href = economyHref(p, i, placement, meta);
+  const newBadge = p.isNew ? `<span class="icon new">NEW</span>` : "";
+  return `<li>
+    <a href="${esc(href)}">
+      <span class="thumb">${newBadge}<img class="goods" src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy" /></span>
+      <span class="txt3">${esc(p.name)}</span>
+    </a>
+  </li>`;
+}
+
+/** PC 메인 뷰 — 신상품소식(latest-bx) + 대표상품(featured) + 전체 라인업
+ *  카테고리 요약(lnb 재활용) + 안내 카드(leadCards). */
+function economyMainView(data) {
+  const { meta, news, products, categories, leadCards } = data;
+  const arrivals = products.filter(p => p.newArrival);
+  const featured = products.filter(p => p.featured);
+
+  const newsHtml = news.map(n => `
+    <li><a href="${esc(n.url)}">
+      ${n.isNew ? `<span class="icon new">NEW</span>` : ""}
+      <span class="date">${esc(n.date)}</span>
+      <span class="title">${esc(n.title)}</span>
+    </a></li>`).join("\n");
+
+  const arrivalsHtml = arrivals.map((p, i) => economyProductCard(p, i, "n", meta)).join("\n");
+  const featuredHtml = featured.map((p, i) => economyProductCard(p, i, "f", meta)).join("\n");
+
+  const catLinksHtml = categories.map(c => {
+    const count = products.filter(p => p.category === c.code).length;
+    return `<li><a href="#" data-eco-cat="${esc(c.code)}">${esc(c.name)}</a></li>`;
+  }).join("\n");
+
+  const leadHtml = (leadCards || []).map(l => `
+    <a href="${esc(l.url)}" target="_blank" class="card">
+      <div class="card-start"><img src="${esc(l.icon)}" alt="${esc(l.title)}" /></div>
+      <div class="card-body">
+        <strong>${esc(l.title)}</strong>
+        ${(l.lines || []).map(line => `<small>${esc(line)}</small>`).join("")}
+      </div>
+    </a>`).join("\n");
+
+  return `<div class="goods-card">
+    <div class="latest-bx">
+      <div class="latest-hd">경제형 신규 상품 소식</div>
+      <div class="latest-by">
+        <div class="latest-list"><ul>${newsHtml}</ul></div>
+        <p class="emptybox"></p>
+        <ul class="goods-lst">${arrivalsHtml}</ul>
+      </div>
+    </div>
+  </div>
+  <div class="show_best">
+    <div class="goods-bx mb40">
+      <h2 class="nomg">경제형 대표상품 라인업</h2>
+      <ul class="goods-lst4">${featuredHtml}</ul>
+    </div>
+  </div>
+  <div class="show_lnb1_1">
+    <div class="goods-bx mb40">
+      <h2 class="nomg">경제형 전체 라인업</h2>
+      <ul class="goods-lst3">${catLinksHtml}</ul>
+    </div>
+    <p class="lead">원가절감, 설계시간 단축, 품질, 납기에 대한 고민<br><span class="bold"><strong>한국미스미가 함께 고민하여 해결하겠습니다.</strong></span></p>
+    <div class="lead-box mb40">${leadHtml}</div>
+  </div>`;
+}
+
+/** 전체 라인업 뷰 — 카테고리별로 묶어서(그룹이 있으면 그룹별로 한 번 더 쪼개서)
+ *  상품 그리드를 나열. GENERATOR 원본의 sections/groups 구조를 그대로 재현. */
+function economyAllView(data) {
+  const { meta, categories, products } = data;
+  const sectionsHtml = categories.map(c => {
+    const items = products.filter(p => p.category === c.code);
+    if (!items.length) return "";
+    const groupLabels = [...new Set(items.map(p => p.group || ""))];
+    const groupsHtml = groupLabels.map(label => {
+      const groupItems = items.filter(p => (p.group || "") === label);
+      const cardsHtml = groupItems.map((p, i) => economyProductCard(p, i, "c", meta)).join("\n");
+      const labelHtml = label ? `<h3 class="economy_h3">${esc(label)}</h3>` : "";
+      return `<div class="goods-bx mb40">${labelHtml}<ul class="goods-lst2 flex-wrap">${cardsHtml}</ul></div>`;
+    }).join("\n");
+    return `<div><h2 class="homeicon">${esc(c.name)}</h2>${groupsHtml}</div>`;
+  }).join("\n");
+  return sectionsHtml;
+}
+
+/** 모바일(SP) 뷰 — ⚠️ placeholder. 원본과 동일하게 레이아웃만 잡아뒀고, 실제
+ *  SP 전용 CSS가 오기 전까지는 PC용 economy.json을 그대로 재사용합니다. */
+function economyMobileView(data) {
+  const { news, products } = data;
+  const arrivals = products.filter(p => p.newArrival).slice(0, 4);
+  const newsHtml = news.map(n => `<li><span class="tmpl-mono">${esc(n.date)}</span><br><a href="${esc(n.url)}">${esc(n.title)}</a></li>`).join("");
+  const arrivalsHtml = arrivals.map(p => `<a href="${esc(p.url)}"><span class="thumb"><img src="${esc(p.image)}" alt="${esc(p.name)}"></span><span>${esc(p.name)}</span></a>`).join("");
+  return `<div class="eco-mobile-placeholder" style="max-width:390px;margin:0 auto;">
+    <p style="padding:8px;background:#fff3cd;font-size:12px;">⚠ SP 전용 CSS 미확보 — 레이아웃만 임시로 잡아둔 상태입니다.</p>
+    <ul>${newsHtml}</ul>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">${arrivalsHtml}</div>
+  </div>`;
+}
+
+/** 데이터(QA) 뷰 — 배포 전 담당자가 직접 확인하는 검증 패널. */
+function economyDataView(data) {
+  const { meta, categories, products } = data;
+  const featured = products.filter(p => p.featured);
+  const arrivals = products.filter(p => p.newArrival);
+  const issues = economyLineupIssues(products);
+
+  const statsHtml = [
+    { label: "products", value: products.length },
+    { label: "categories", value: categories.length },
+    { label: "featured", value: featured.length },
+    { label: "new arrivals", value: arrivals.length }
+  ].map(s => `<div><div class="tmpl-mono">${s.label}</div><div style="font-size:22px;font-weight:bold;">${s.value}</div></div>`).join("");
+
+  const issuesHtml = issues.map(i => `
+    <div style="display:flex;gap:12px;padding:7px 10px;background:#f8f8f8;margin-bottom:5px;">
+      <strong style="flex:0 0 120px;font-weight:normal;">${esc(i.label)}</strong>
+      <span class="tmpl-mono" style="flex:0 0 40px;font-weight:bold;">${i.count}</span>
+      <span style="color:#666;">${esc(i.sample)}</span>
+    </div>`).join("");
+
+  const rowsHtml = products.map(p => `
+    <tr>
+      <td class="tmpl-mono">${esc(p.id || "")}</td>
+      <td>${esc(p.name)}</td>
+      <td class="tmpl-mono">${esc(p.category || "—")}</td>
+      <td>${esc(p.group || "—")}</td>
+      <td class="tmpl-mono">${[p.featured ? "F" : "", p.newArrival ? "N" : "", p.isNew ? "new" : ""].filter(Boolean).join(" ") || "—"}</td>
+      <td class="tmpl-mono">${esc(p.url)}</td>
+      <td class="tmpl-mono">${esc(p.bid || "(auto)")}</td>
+    </tr>`).join("\n");
+
+  return `<div class="tmpl-data" style="display:flex;flex-direction:column;gap:16px;">
+    <div style="display:flex;gap:24px;padding:14px 16px;border:1px solid #ddd;">${statsHtml}</div>
+    <div style="padding:14px 16px;border:1px solid #ddd;">
+      <div style="font-weight:bold;margin-bottom:8px;">bid 파라미터 생성 규칙</div>
+      <div class="tmpl-mono" style="padding:10px 12px;background:#f8f8f8;">bid = {bidPrefix}_{campaign}_{placement}{순번}<br>예시 → ${esc(meta.bidPrefix)}_${esc(meta.campaign)}_c005</div>
+      <p style="margin:8px 0 0;color:#555;">캠페인 코드와 순번만 데이터에 두면 bid는 렌더 시점에 붙습니다. 배치 위치(메인 n / 카테고리 c / 대표상품 f)별 구분도 규칙으로 처리됩니다.</p>
+    </div>
+    <div style="padding:14px 16px;border:1px solid #ddd;">
+      <div style="font-weight:bold;margin-bottom:10px;">데이터 점검</div>
+      ${issuesHtml}
+    </div>
+    <div style="border:1px solid #ddd;">
+      <div style="padding:12px 16px;border-bottom:1px solid #ddd;"><strong>상품 테이블 — 엑셀 1행 = 상품 1개</strong> <span class="tmpl-mono">${products.length} rows</span></div>
+      <div style="max-height:520px;overflow:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr>${["id","name","category","group","flags","url","bid"].map(c => `<th class="tmpl-mono" style="text-align:left;padding:7px 10px;background:#f4f4f4;position:sticky;top:0;">${c}</th>`).join("")}</tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
+
+/** 엑셀 업로드 전에도 "이렇게 나옵니다"를 보여주기 위한 샘플 데이터 —
+ *  카탈로그의 catalogSampleHtml()과 같은 목적입니다. 실제 economy.json 형식과
+ *  동일한 스키마로, 최소한의 그럴듯한 예시 몇 개만 채웠습니다. */
+export function economySampleData() {
+  const meta = { campaign: "SAMPLE", bidPrefix: "bid_kr_e", canonical: "https://kr.misumi-ec.com/pr/vona/economy/", lnbLogo: "", lnbBanner: "" };
+  const categories = [
+    { code: "A", name: "직동 부품" },
+    { code: "B", name: "전동 부품" },
+    { code: "C", name: "배선 부품" }
+  ];
+  const img = "https://via.placeholder.com/150x150/eef0f8/0f218b?text=SAMPLE";
+  const products = [
+    { id: "P001", name: "(샘플) 리니어가이드", url: "#", image: img, category: "A", group: "", bid: "", isNew: true, featured: true, newArrival: true },
+    { id: "P002", name: "(샘플) 리니어부시", url: "#", image: img, category: "A", group: "", bid: "", isNew: false, featured: false, newArrival: false },
+    { id: "P003", name: "(샘플) 타이밍벨트", url: "#", image: img, category: "B", group: "", bid: "", isNew: true, featured: true, newArrival: true },
+    { id: "P004", name: "(샘플) 커플링", url: "#", image: img, category: "B", group: "", bid: "", isNew: false, featured: false, newArrival: false },
+    { id: "P005", name: "(샘플) LAN 케이블", url: "#", image: img, category: "C", group: "", bid: "", isNew: false, featured: true, newArrival: false }
+  ];
+  const news = [
+    { date: "2026/08/01", title: "(샘플) 신상품이 이 자리에 표시됩니다", url: "#", isNew: true }
+  ];
+  const leadCards = [
+    { icon: img, title: "(샘플) 안내 카드 제목", lines: ["예시 문구 1", "예시 문구 2"], url: "#" }
+  ];
+  const lnbLinks = [
+    { label: "(샘플) 진행중 이벤트", url: "#", cls: "event" }
+  ];
+  return { meta, categories, products, news, leadCards, lnbLinks };
+}
+
+/** 경제형 전체상품 라인업 페이지 조립. view는 "main"(PC메인) | "all"(전체라인업) |
+ *  "mobile"(SP, placeholder) | "data"(QA검증) 중 하나 — 실제로는 뷰별로 각각
+ *  별도 파일(index.html/economy_all.html/모바일용)로 배포하게 됩니다.
+ *  ⚠️ 신상품카탈로그와 마찬가지로 이 페이지도 실제 사이트에서는 SSI 셸에
+ *  얹히는 걸로 확인된 바 있어(경제형 실물 소스 검증 완료), 헤더/푸터는
+ *  여기서 안 만듭니다 — 개발팀 확인 후 처리 방식이 정해질 부분입니다. */
+export function assembleEconomyLineupHtml(data, view = "main") {
+  const bodyHtml = view === "all" ? economyAllView(data)
+    : view === "mobile" ? economyMobileView(data)
+    : view === "data" ? economyDataView(data)
+    : economyMainView(data);
+
+  return `<div class="tmpl-wrap">
+    <ul class="l-breadcrumb" style="list-style:none;margin:0 0 12px;padding:0;display:flex;gap:6px;font-size:11px;color:#666;">
+      <li>MISUMI HOME &gt;</li>
+      <li><strong>${view === "main" ? "경제형 전상품 분류" : "경제형 전체 라인업"}</strong></li>
+    </ul>
+    <div class="container">
+      <div class="nav">
+        <h1><a href="${esc(data.meta.canonical)}" class="allCate"><img src="${esc(data.meta.lnbLogo)}" alt="MISUMI 경제형" /></a></h1>
+        <div class="ec-lnb left_sv">
+          <ul class="event-lnb">
+            ${(data.lnbLinks || []).map(l => `<li class="${esc(l.cls || "")}"><a href="${esc(l.url)}">${esc(l.label)}${l.badge ? `<span class="blt_bat">${esc(l.badge)}</span>` : ""}</a></li>`).join("\n")}
+          </ul>
+          <ul id="snb" class="allview"><li><a href="${esc(data.meta.canonical)}economy_all">전체 보기</a></li></ul>
+          ${data.categories.map(c => {
+            const count = data.products.filter(p => p.category === c.code).length;
+            return `<ul id="snb"><li><a href="${esc(data.meta.canonical)}economy_all?cat=${esc(c.code)}">${esc(c.name)}${count === 0 ? "" : ""}</a></li></ul>`;
+          }).join("\n")}
+        </div>
+        <div class="eco_bnr"><a href="https://www.misumi.co.kr/catalogrequest/" target="_blank"><img src="${esc(data.meta.lnbBanner)}" alt="경제형 카탈로그 무료신청하기" /></a></div>
+      </div>
+      <div class="contents">
+        ${bodyHtml}
+      </div>
+    </div>
+  </div>`;
+}
+
+
+/** 경제형 전체상품 라인업 — 실제 운영 중인 4개 CSS 파일(style.css, all_20250910.css,
+ *  left_nav.css, event.css)을 그대로 합친 것입니다. ⚠️ 실제 배포 시엔 이 4개 파일을
+ *  각각 <link>로 참조하는 게 맞고(원본 프로토타입도 그렇게 되어 있음), 이 상수는
+ *  "미리보기 iframe에서 실제 스타일을 확인하기 위한 용도"로만 씁니다 — 이벤트 LP의
+ *  buildEventLpCss()와 같은 이유입니다.
+ */
+export const ECONOMY_LINEUP_PREVIEW_CSS = `
+/* ===== style.css ===== */
+@charset "UTF-8";
+@import url('https://kr.misumi-ec.com/vcommon/top/css/style_rev_1804121859.css');
+@font-face {
+    font-family: "GmarketSansLight";
+    src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansLight.woff")
+        format("woff");
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "GmarketSansMedium";
+    src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff")
+        format("woff");
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "GmarketSansBold";
+    src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff")
+        format("woff");
+    font-weight: normal;
+    font-style: normal;
+}
+p { margin-bottom: 0;}
+.mb0{margin-bottom: 0;}
+.mb10 { margin-bottom: 10px;}
+.mb20 { margin-bottom: 20px;}
+.mb30 { margin-bottom: 30px;}
+.mb40 { margin-bottom: 40px;}
+
+
+.btn_group{ text-align:center; margin:40px 0 0 0;}
+.clearFix{clear: both;}
+.center{margin: 0 auto;display: inline-block;}
+.hide_txt{ position: absolute; top:-9999px; left:-9999px; }
+
+.twoColumn .keyVisual{
+	position: relative;
+	width: 950px;
+	height: auto;
+	margin: 0 !important;
+	padding: 0 !important;
+	border: none !important;
+}
+
+#incNavArea{ margin:0 0 20px 0;}
+#incNavArea ul.hover li a:hover,
+a:hover img{
+	opacity: 0.8 !important;
+	filter: alpha(opacity=80) !important;
+	border: none;
+}
+
+
+
+	
+
+/*문의처*/
+.askdesk {
+border-bottom: 1px solid #dfdfdf;
+border-left: 1px solid #dfdfdf;
+border-right: 1px solid #dfdfdf;
+}
+
+.askdesk .text {
+	padding:0 10px 20px 10px; 
+}
+.askdesk .text .big {
+	font-size:16px;
+	font-weight:bold;
+}
+
+
+/*top*/
+.pageTop {
+    margin: 40px 0 0;
+    padding-bottom: 20px;
+}
+ .pageTop a {
+    background-position: -131px -1338px;
+}
+
+
+/* */
+.hdArea:after{content:""; display:block; height:0; clear:both; visibility:hidden;}
+
+/* gnb */
+#gnbWrap{ background-color:#666; position:relative; left:50%; z-index:9; width:100vw; transform: translateX(-50%); margin:0 0 30px 0; min-width:1200px;}
+#gnbWrap #gnb{ max-width: 1200px; margin:0 auto; height:50px; display:flex;}
+#gnbWrap #gnb > li{ position:relative; flex:0 0 auto;}
+#gnbWrap #gnb > li + li{ margin-left:10px;}
+#gnbWrap #gnb > li > a{ display:block; line-height:50px; height:50px; font-size:14px; color:#f5f5f5; padding:0 10px; text-align:center; font-weight:600; -webkit-transition: all 0.1s ease-in-out;-moz-transition: all 0.1s ease-in-out;-ms-transition: all 0.1s ease-in-out;-o-transition: all 0.1s ease-in-out; transition:all 0.1s ease-in-out;}
+#gnbWrap #gnb > li > a::after{ content:""; display:inline-block; width:7px; height:7px; border-top:#fff 1px solid; border-right:#fff 1px solid; margin-left:8px; transform: rotate(135deg); vertical-align:4px; -webkit-transition: all 0.1s ease-in-out;-moz-transition: all 0.1s ease-in-out;-ms-transition: all 0.1s ease-in-out;-o-transition: all 0.1s ease-in-out; transition:all 0.1s ease-in-out;}
+#gnbWrap #gnb > li > a::before{ content:""; position:absolute; bottom:0; left:0; width:100%; height:5px; background-color:#ffcc00; opacity:0; -webkit-transition: all 0.1s ease-in-out;-moz-transition: all 0.1s ease-in-out;-ms-transition: all 0.1s ease-in-out;-o-transition: all 0.1s ease-in-out; transition:all 0.1s ease-in-out;}
+#gnbWrap #gnb > li:hover > a{ color:#ffcc00; text-decoration:none;}
+#gnbWrap #gnb > li:hover > a::before{ opacity:1;}
+#gnbWrap #gnb > li:hover > a::after{ transform: rotate(-45deg); vertical-align:-2px;border-color:#ffcc00; }
+#gnbWrap #gnb > li.gnb1{ flex: 0 0 70px; }
+#gnbWrap #gnb > li.gnb1 > a{ color:#000; background-color:#f2f2f2;}
+#gnbWrap #gnb > li.gnb2{ flex: 0 0 180px; }
+#gnbWrap #gnb > li.gnb2 > a{ color:#000; background-color:#ffcc00;}
+#gnbWrap #gnb > li.gnb1 > a,
+#gnbWrap #gnb > li.gnb2 > a{ color:#000; }
+#gnbWrap #gnb > li.gnb1 > a::before{ display:none;}
+#gnbWrap #gnb > li.gnb1 > a::after{ display:none;}
+#gnbWrap #gnb > li.gnb2 > a::after{border-color:#000; }
+#gnbWrap #gnb > li .depth2{ position:absolute; top:44px; left:0; padding-top:6px; width:220px; letter-spacing:-.05em; display:none;}
+#gnbWrap #gnb > li .depth2 ul{ background-color:#fff; border:#bfbfbf 1px solid;}
+#gnbWrap #gnb > li .depth2 ul > li > a{ display:block; height:40px; line-height:40px; padding:0 0 0 15px; color:#000; -webkit-transition: all 0.1s ease-in-out;-moz-transition: all 0.1s ease-in-out;-ms-transition: all 0.1s ease-in-out;-o-transition: all 0.1s ease-in-out; transition:all 0.1s ease-in-out;}
+#gnbWrap #gnb > li .depth2 ul > li > a:hover{ background-color:#ffcc00; text-decoration:none;}
+
+.l-wrapper{ overflow:hidden;}
+.container{ position:relative; -webkit-box-sizing: border-box; -moz-box-sizing: border-box; box-sizing: border-box;}
+.container *{ -webkit-box-sizing: border-box; -moz-box-sizing: border-box; box-sizing: border-box;}
+
+/* lnb */
+.nav{ position:relative; float:left; width:240px; border-bottom:#ddd 1px solid;  -webkit-box-sizing: border-box; -moz-box-sizing: border-box; box-sizing: border-box; }
+.nav *{ -webkit-box-sizing: border-box;	-moz-box-sizing: border-box;	box-sizing: border-box; }
+.nav > h1{ margin-bottom: 0  !important; padding: 0 !important; border-top: none !important;}
+.nav > h1 a.allCate img{ display:block; padding:0;}
+
+.ts-menu { background:#fff;	border:1px solid #ddd; padding:15px 0 30px; letter-spacing:-.05em;}
+.ts-menu *{ white-space:nowrap;}
+.ts-menu > .tit{ display:block; text-align:center; color:#000 !important; font-size:18px !important; font-weight:600 !important; margin:0 19px 25px 19px !important; border-bottom:#000 1px solid !important; padding:0 0 15px 0 !important;}
+.ts-menu > .tit:hover{ text-decoration:none;}
+
+#snb a{ position:relative; display: block; text-decoration: none; color:#000; font-size:14px; letter-spacing:-1.5px; line-height:30px; padding:0 0 0 28px; -webkit-transition: all 0.1s ease-in-out;-moz-transition: all 0.1s ease-in-out;-ms-transition: all 0.1s ease-in-out;-o-transition: all 0.1s ease-in-out; transition:all 0.1s ease-in-out;}
+#snb > li > a{ line-height:30px; font-size:16px; color:#000; padding:0 19px; font-weight:600;}
+#snb > li > a:hover{ background-color:#fbf9d2; text-decoration:none;} 
+#snb > li + li{ margin-top:12px;}
+#snb > li > ul{ margin-top:3px; }
+
+#snb > li > ul > li:hover > a,
+#snb > li > ul > li > a:hover{ background-color:#fbf9d2; text-decoration:none;}
+#snb > li > ul > li.active > a:before{ transform: rotate(90deg);  } 
+#snb > li > ul > li > div.dp3{ display:none; padding:1px 0 0 0;}
+#snb > li > ul > li.active > div.dp3{ display:block;}
+#snb > li > ul > li > div.dp3 > ul > li + li{ margin-top:1px;}
+#snb > li > ul > li > div.dp3 > ul > li > a:hover{ background-color:#fbf9d2; text-decoration:none;}
+#snb > li > ul > li > div.dp3 > ul > li.active > a{ background-color:#ffcc00; text-decoration:none;}
+
+.contents{ position:relative; width:920px; float:right;}
+.contents .page-tit{ font-size:26px !important; color:#000 !important; font-weight:600; line-height:1; background-color:transparent !important; padding:0 !important; border:none !important;}
+.contents .sub-tit{ font-size:18px !important; margin:0 0 25px !important; color:#000 !important; padding:0 !important; font-weight:600; line-height:1; border:none !important; display:flex; align-items: center;}
+.contents .sub-tit span{ flex:0 0 auto; margin-right:30px;}
+.contents .sub-tit::after{ content:""; flex:1 1 auto; height:5px; background: -moz-linear-gradient(left,  rgba(51,51,51,1) 0%, rgba(255,255,255,1) 100%); background: -webkit-linear-gradient(left,  rgba(51,51,51,1) 0%,rgba(255,255,255,1) 100%); background: linear-gradient(to right,  rgba(51,51,51,1) 0%,rgba(255,255,255,1) 100%); }
+.contents .page-tit + .sub-tit{ margin-top:25px !important;}
+
+.goods-bx{ margin:-25px 0 35px 0;}
+.goods-bx::after{ content:""; display:block; clear:both;}
+.goods-bx .item{ float:left; width:200px; margin:25px 0 0 40px; }
+.goods-bx .item:nth-child(4n+1){ margin-left:0; clear:both;}
+.goods-bx .item a{ display:flex; flex-direction: column;  text-decoration:none; }
+.goods-bx .item .thumb{ position:relative; display: block; padding:9px 0 0 0;width:100%; text-align:center; border:#ddd 1px solid; border-radius: 6px; flex:0 0 228px; -webkit-transition: all 0.1s ease-in-out;-moz-transition: all 0.1s ease-in-out;-ms-transition: all 0.1s ease-in-out;-o-transition: all 0.1s ease-in-out; transition:all 0.1s ease-in-out;}
+.goods-bx .item .thumb img{ -webkit-transition: all 0.1s ease-in-out;-moz-transition: all 0.1s ease-in-out;-ms-transition: all 0.1s ease-in-out;-o-transition: all 0.1s ease-in-out; transition:all 0.1s ease-in-out;}
+.goods-bx .item .desc{ text-align:center; margin-top:10px; color:#000; -webkit-transition: all 0.1s ease-in-out;-moz-transition: all 0.1s ease-in-out;-ms-transition: all 0.1s ease-in-out;-o-transition: all 0.1s ease-in-out; transition:all 0.1s ease-in-out; line-height: 1.4; }
+.goods-bx .item .price{ text-align:center; margin-top:2px; color:#d00; font-weight: bold; -webkit-transition: all 0.1s ease-in-out;-moz-transition: all 0.1s ease-in-out;-ms-transition: all 0.1s ease-in-out;-o-transition: all 0.1s ease-in-out; transition:all 0.1s ease-in-out;  }
+.goods-bx .item .flag{ top:10px; left:0; display:block; width:100%; padding:0 10px; text-align:left; }
+.goods-bx .item .flag > img{ margin-right:2px; }
+.goods-bx .item .flag .flag-sale{ font-style:normal; width:93px; height:36px; line-height:36px; display:inline-block; background:url(../images/blt_sale.png) 50% 50% no-repeat; text-align:center; font-size:10px; padding:0 2px 0 50px; color:#dd0000; letter-spacing:-.05em;}
+.goods-bx .item .flag .flag-sale b{ display:block; position:absolute; top:-9999px; left:-9999px;}
+.goods-bx .item .flag .flag-sale strong{ display:inline-block; font-size:22px;}
+.goods-bx .item a:hover .thumb{ border-color:#0f218b; }
+.goods-bx .item a:hover .desc{ color:#0f218b; text-decoration:none; font-weight:600; padding:0 10px;}
+
+.goods-bx .item .flag2 { top:10px; left:0; display:block; width:100%; padding:0 10px; text-align:left; height: 28px; }
+.goods-bx .item .flag2 > img{ margin:0px; }
+.goods-bx .item .flag2 .flag-sale2 { font-style:normal; width:84px; height:28px; line-height:32px; display:inline-block; background:url(../images/blt_sale2.png) 50% 50% no-repeat; text-align:center; font-size:10px; padding:0 2px 0 33px; color:#c00; letter-spacing:-.05em; float: right;}
+.goods-bx .item .flag2 .flag-sale2 b { font-size: 0; display: block; position: absolute;}
+.goods-bx .item .flag2 .flag-sale2 strong{ display:inline-block; font-size:18px; font-weight: normal; font-family: 'GmarketSansBold';}
+.goods-bx .item .flag2 .flag-new {width: 42px; height: 28px; display: inline-block;}
+.goods-bx .item .flag2 .flag-plus {width: 42px; height: 28px; display: inline-block;}
+
+.new_lnb {display: inline-block; margin-left: 5px;}
+.new_lnb2 {display: inline-block; margin-left: 5px; vertical-align: text-bottom; height: 15px; }
+.new_lnb2 img { vertical-align: top;}
+.new_lnb2 img + img {margin-left: 2px;}
+.new_goods {vertical-align: text-bottom; margin-right: 5px;}
+
+.btn_box { background-color: #f5f5f5; box-sizing: border-box; padding: 20px; font-size: 18px; font-weight: bold; color: #333; text-align: center;}
+.btn_box > a {display: inline-block; margin-left: 30px;}
+@media screen and (max-width:1200px){
+	#gnbWrap{ width:100%; left:0; transform: translateX(0); margin:0 0 30px 0; }
+}
+
+/* ===== all_20250910.css ===== */
+@charset "UTF-8";
+@font-face {
+  font-family: "GmarketSansLight";
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansLight.woff") format("woff");
+  font-weight: normal;
+  font-style: normal;
+}
+@font-face {
+  font-family: "GmarketSansMedium";
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff") format("woff");
+  font-weight: normal;
+  font-style: normal;
+}
+@font-face {
+  font-family: "GmarketSansBold";
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff") format("woff");
+  font-weight: normal;
+  font-style: normal;
+}
+.hide_txt {
+  position: absolute;
+  top: -9999px;
+  left: -9999px;
+}
+
+.mainVisual {
+  width: 920px;
+  text-indent: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 0;
+}
+
+.mainVisual img {
+  display: block;
+}
+
+.cBlue {
+  color: #0f218b !important;
+  font-weight: bold;
+}
+
+.red_txt {
+  width: 100%;
+  color: #ea0000;
+  text-align: center;
+  font-size: 16px;
+  letter-spacing: -0.5px;
+  margin-top: 20px;
+}
+
+.black_txt {
+  width: 100%;
+  color: #333;
+  text-align: center;
+  font-size: 16px;
+  letter-spacing: -0.5px;
+  margin-top: 20px;
+}
+
+/* 상단 박스 리스트 */
+.goods-card {
+  width: 920px;
+  background: #ffcc00;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+}
+.goods-card .latest-hd {
+  width: 100%;
+  height: 46px;
+  border-radius: 6px 6px 0px 0px;
+  background: #222;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fc0;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 23.2px;
+}
+.goods-card .latest-by {
+  background: #fff;
+  border-radius: 0 0 6px 6px;
+  overflow: hidden;
+}
+.goods-card .latest-by .emptybox{
+  width: 100%;
+  height: 4px;
+  background: #fff7d6;
+  border-top: 1px solid #FFDE5D;
+  border-bottom: 1px solid #FFDE5D;
+  display: none;
+}
+.goods-card .latest-by .latest-list {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  padding: 8px 0;
+  max-height: 104px;
+  overflow-y: scroll;
+}
+.goods-card .latest-by .latest-list li {
+  position: relative;
+  display: flex;
+  padding: 0 32px;
+  height: 30px;
+  align-items: center;
+  gap: 20px;
+  align-self: stretch;
+}
+.goods-card .latest-by .latest-list li a {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding-left: 53px;
+  text-decoration: none;
+}
+.goods-card .latest-by .latest-list li a .icon {
+  position: absolute;
+  left: 20px;
+  display: flex;
+  padding: 4px 5px;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+.goods-card .latest-by .latest-list li a .icon.new {
+  border-radius: 3px;
+  background: #fc0;
+  color: #c00;
+  text-align: center;
+  font-family: "GmarketSansMedium";
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 100%;
+}
+.goods-card .latest-by .latest-list li a .date,
+.goods-card .latest-by .latest-list li a .title {
+  color: #222;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 100%; /* 14px */
+  letter-spacing: -0.7px;
+}
+.goods-card .latest-by .latest-list li:hover {
+  background: rgb(255, 247, 214);
+}
+.goods-card .latest-by .more {
+  width: 100%;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 0px 0px 6px 6px;
+  background: rgb(246, 246, 246);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  color: #222;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 19.2px;
+  cursor: pointer;
+}
+.goods-card .latest-by .more > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: solid 1px rgb(245, 196, 0);
+  background-color: rgb(255, 204, 0);
+  color: #222;
+  font-weight: 600;
+}
+.goods-card .latest-by .more > span::before {
+  content: "+";
+  transition: content 0.3s ease-in-out;
+}
+.goods-card .latest-by .more::after {
+  content: "더보기";
+  transition: content 0.3s ease-in-out;
+}
+.goods-card .latest-by.showon .emptybox{
+  display: block;
+}
+.goods-card .latest-by.showon .goods-lst {
+  display: flex;
+}
+.goods-card .latest-by.showon .more > span::before {
+  content: "-";
+}
+.goods-card .latest-by.showon .more::after {
+  content: "닫기";
+}
+.goods-card .goods-lst {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 880px;
+  min-height: 380px;
+  border-radius: 6px;
+  background: #fff;
+  padding: 20px;
+  display: none;
+}
+.goods-card .goods-lst > li {
+  flex: 1 0 calc(16.66666667% - 12px);
+  max-width: 130px;
+}
+.goods-card .goods-lst > li .thumb {
+  border: #ddd 1px solid;
+  background-color: #fff;
+  display: flex !important;
+  justify-content: center;
+  align-items: center;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  position: relative;
+}
+.goods-card .goods-lst > li .thumb {
+  max-width: 130px;
+  aspect-ratio: 1/1;
+}
+.goods-card .goods-lst > li .thumb img {
+  max-width: 100px;
+  max-height: 100px;
+  object-fit: cover;
+}
+.goods-card .goods-lst > li .thumb .icon {
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 20px;
+  border-radius: 5px 0px;
+  z-index: 1;
+}
+.goods-card .goods-lst > li .thumb .icon.new {
+  width: 44px;
+  background: #c00;
+  color: #fff;
+  text-align: center;
+  font-family: "GmarketSansMedium";
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 100%; /* 10px */
+}
+.goods-card .goods-lst > li .thumb .icon.date {
+  width: 70px;
+  background: #333;
+  color: #fff;
+  text-align: center;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 100%; /* 10px */
+}
+.goods-card .goods-lst > li .txt3 {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  max-width: 130px;
+  text-align: center;
+  padding: 0 5px;
+  color: #333;
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 17px;
+  letter-spacing: -1.5px;
+  word-break: keep-all;
+}
+.goods-card .goods-lst > li a {
+  text-decoration: none;
+}
+.goods-card .goods-lst > li a:hover {
+  text-decoration: none;
+}
+.goods-card .goods-lst > li a:hover .txt3 {
+  color: #000;
+  font-weight: 600;
+}
+.goods-card .goods-lst > li a:hover .thumb {
+  border-color: #fc0;
+}
+
+/*리스트*/
+.goods-bx {
+  margin: 0 0 16px !important;
+}
+.goods-bx.d-flex {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+.goods-bx > .col {
+  flex: 1 0 0%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+.goods-bx > .col.col-2 {
+  flex: none;
+  width: 344px;
+}
+.goods-bx > .col.col-15 {
+  flex: none;
+  width: 279px;
+}
+.goods-bx > .col.col-1 {
+  flex: none;
+  width: 189px;
+}
+.goods-bx > .col:last-child {
+  position: relative;
+  flex: 1 1 auto;
+  width: 1%;
+  min-width: 0;
+}
+.goods-bx h2.nomg{
+  margin-bottom: 16px !important;
+}
+
+.goods-bx .goods-lst2 {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 16px;
+}
+.goods-bx .goods-lst2 > li {
+  margin: 0;
+}
+.goods-bx .goods-lst2 > li:last-child {
+  padding-right: 48px;
+}
+.goods-bx .goods-lst2 > li a {
+  display: flex;
+  flex-direction: column;
+  justify-content: start;
+  align-items: center;
+  position: relative;
+  gap: 10px;
+  width: 140px;
+  text-decoration: none;
+}
+.goods-bx .goods-lst2 > li a .blt_goods {
+  position: absolute;
+  left: 4px;
+  top: 4px;
+}
+.goods-bx .goods-lst2 > li a .thumb {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1/1;
+  border-radius: 6px;
+  border: 1px solid #DDD;
+  background: #FFF;
+  width: 140px;
+  height: 132px;
+  padding: 1px;
+}
+.goods-bx .goods-lst2 > li a .thumb img {
+  max-width: 120px;
+  max-height: 120px;
+  object-fit: contain;
+}
+.goods-bx .goods-lst2 > li a .txt3 {
+  color: #333;
+  text-align: center;
+  font-size: 15px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 18.8px; /* 120% */
+  letter-spacing: -0.5px;
+  word-break: keep-all;
+}
+.goods-bx .goods-lst2.flex-wrap {
+  flex-wrap: wrap;
+}
+.goods-bx .goods-lst2.flex-wrap > li:last-child {
+  padding-right: 0;
+}
+
+.lead {
+  margin: 20px auto 30px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: #333;
+  text-align: center;
+  font-size: 24px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 140%;
+}
+.lead .bold {
+  position: relative;
+}
+.lead .bold strong {
+  position: relative;
+  color: #222;
+  font-weight: 700;
+}
+.lead .bold::before {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  height: 14px;
+  background-color: rgb(255, 231, 134);
+}
+
+.lead-box {
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+}
+.lead-box .card {
+  flex: 1 0 0%;
+  border-radius: 6px;
+  border: 1px solid #DDD;
+  background: #FFF;
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 20px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.lead-box .card .card-start {
+  width: 60px;
+}
+.lead-box .card .card-start img {
+  max-width: 100%;
+  object-fit: cover;
+}
+.lead-box .card .card-body {
+  flex: 1 1 auto;
+  width: 1%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lead-box .card .card-body > strang,
+.lead-box .card .card-body > p,
+.lead-box .card .card-body > small {
+  font-style: normal;
+  font-weight: 600;
+  line-height: 140%;
+}
+.lead-box .card .card-body > strang {
+  color: #222;
+  font-size: 20px;
+}
+.lead-box .card .card-body > p {
+  color: rgb(0, 64, 152);
+  font-size: 16px;
+}
+.lead-box .card .card-body > small {
+  color: rgb(117, 117, 117);
+  font-size: 14px;
+}
+
+.contents h2 {
+  position: relative;
+  text-align: center;
+  box-sizing: border-box;
+  font-size: 24px !important;
+  color: #fc0 !important;
+  padding: 7px 0 4px 0 !important;
+  background-color: #222 !important;
+  border-bottom: 3px solid #fc0 !important;
+  font-weight: 600 !important;
+  margin-bottom: 16px !important;
+}
+
+.goods-bx .goods-lst3 {
+  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: stretch;
+  row-gap: 16px;
+}
+.goods-bx .goods-lst3 > li > a{
+  width: 218px;
+  height: 48px; 
+  box-sizing: border-box;
+  background: #FFCC00;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #000;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  text-decoration: none;
+}
+.goods-bx .more {
+  width: 100%;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 0px 0px 6px 6px;
+  background: rgb(246, 246, 246);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: none;
+  color: #222;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  margin-top: 16px;
+}
+.goods-bx .more2{
+  height: 50px;
+  font-size:20px;
+}
+.goods-bx .more > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: solid 1px rgb(245, 196, 0);
+  background-color: rgb(255, 204, 0);
+  color: #222;
+  font-weight: 600;
+}
+.goods-bx .more > span::before {
+  content: "+";
+  transition: content 0.3s ease-in-out;
+}
+.goods-bx .more::before {
+  content: "전체 카테고리 보러가기";
+  transition: content 0.3s ease-in-out;
+}
+
+.goods-bx .goods-lst4 {
+  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  justify-content: space-between;
+  row-gap: 16px;
+}
+.goods-bx .goods-lst4 > li {
+  flex: 1 0 16%;
+  max-width: 140px;
+}
+.goods-bx .goods-lst4 > li .thumb {
+  border: #ddd 1px solid;
+  background-color: #fff;
+  display: flex !important;
+  justify-content: center;
+  align-items: center;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  position: relative;
+}
+.goods-bx .goods-lst4 > li .thumb {
+  max-width: 140px;
+  height:132px;
+  /*aspect-ratio: 1/1;*/
+}
+.goods-bx .goods-lst4 > li .thumb img {
+  max-width: 120px;
+  max-height: 120px;
+  object-fit: cover;
+}
+.goods-bx .goods-lst4 > li .thumb .icon {
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 20px;
+  border-radius: 5px 0px;
+  z-index: 1;
+}
+.goods-bx .goods-lst4 > li .thumb .icon.new {
+  width: 44px;
+  background: #c00;
+  color: #fff;
+  text-align: center;
+  font-family: "GmarketSansMedium";
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 100%; /* 10px */
+}
+.goods-bx .goods-lst4 > li .thumb .icon.date {
+  width: 70px;
+  background: #333;
+  color: #fff;
+  text-align: center;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 100%; /* 10px */
+}
+.goods-bx .goods-lst4 > li .txt3 {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  max-width: 140px;
+  text-align: center;
+  padding: 0 5px;
+  color: #333;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 16.8px;
+  letter-spacing: -1.5px;
+  word-break: keep-all;
+}
+.goods-bx .goods-lst4 > li a {
+  text-decoration: none;
+}
+.goods-bx .goods-lst4 > li a:hover {
+  text-decoration: none;
+}
+.goods-bx .goods-lst4 > li a:hover .txt3 {
+  color: #000;
+  font-weight: 600;
+}
+.goods-bx .goods-lst4 > li a:hover .thumb {
+  border-color: #fc0;
+}
+
+.blt_goods {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+}
+
+.blt_goods img + img {
+  margin-left: 3px;
+}
+
+.recommend {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  z-index: 1;
+}
+
+.txt1 {
+  font-size: 18px;
+  letter-spacing: -0.5px;
+  position: relative;
+  top: 0px;
+  font-weight: bold;
+  color: #333;
+  text-decoration: none;
+  line-height: 1.3;
+}
+
+.txt2 {
+  position: relative;
+  top: 0px;
+  font-size: 12px;
+  color: #777;
+  text-decoration: none;
+  margin-bottom: 8px;
+}
+
+.txt3 {
+  font-size: 14px;
+  letter-spacing: -0.5px;
+  position: relative;
+  top: 0px;
+  color: #333;
+  text-decoration: none;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.txt4 {
+  font-size: 12px;
+  letter-spacing: -0.5px;
+  position: relative;
+  top: 0px;
+  font-weight: bold;
+  color: #c00;
+  text-decoration: none;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.mark_box {
+  width: 100%;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+  font-family: "GmarketSansMedium";
+  font-size: 12px;
+  color: #777;
+  line-height: 1.3;
+  padding: 6px;
+  box-sizing: border-box;
+  height: 40px;
+  margin-bottom: 4px;
+}
+
+.mark_box img {
+  margin-right: 2px;
+  vertical-align: middle;
+}
+
+.price {
+  font-family: "GmarketSansMedium";
+  position: relative;
+  font-size: 12px;
+  color: #777;
+  top: 0px;
+}
+
+.price i {
+  font-size: 18px;
+  font-family: "GmarketSansBold";
+  color: #c00;
+  margin-right: 4px;
+}
+
+.discount {
+  font-family: "GmarketSansMedium";
+  position: relative;
+  font-size: 14px;
+  color: #0f218b;
+  top: 0px;
+  line-height: 1;
+}
+
+.discount b {
+  font-size: 16px;
+  font-family: "GmarketSansBold";
+}
+
+.badge {
+  position: absolute;
+  right: 5px;
+  top: 90px;
+  display: block;
+}
+
+.badge div {
+  position: relative;
+}
+
+.badge div b {
+  position: absolute;
+  text-align: right;
+  top: 8px;
+  right: 24px;
+  font-family: "GmarketSansBold";
+  font-weight: normal;
+  color: #333;
+  font-size: 20px;
+  letter-spacing: -0.5px;
+}
+
+/*top*/
+.pageTop {
+  margin: 40px 0 0;
+  padding-bottom: 20px;
+  text-align: right;
+}
+
+.pageTop a {
+  background-position: -131px -1338px;
+}
+
+.side_banner {
+  margin-top: 30px;
+}
+
+.mou {
+  margin-bottom: 40px;
+  position: relative;
+}
+
+.mou div {
+  position: absolute;
+  left: 0;
+  top: 60px;
+  vertical-align: top;
+  font-family: "GmarketSansMedium";
+  font-size: 17px;
+  letter-spacing: -0.5px;
+  color: #888;
+  line-height: 1.3;
+}
+
+.mou div b {
+  color: #333;
+  font-size: 24px;
+  display: block;
+  font-family: "GmarketSansMedium";
+  font-weight: normal;
+}
+
+.blue1_b {
+  font-family: "GmarketSansBold";
+  color: #0074be;
+}
+
+.blue2_b {
+  font-family: "GmarketSansBold";
+  color: #0f218b;
+}
+
+.blue1 {
+  font-family: "GmarketSansMedium";
+  color: #0074be;
+}
+
+.blue2 {
+  font-family: "GmarketSansMedium";
+  color: #0f218b;
+}
+
+.infoBlock_h2 {
+  font-size: 16px;
+  font-family: "GmarketSansBold";
+  color: #333;
+  margin-bottom: 5px !important;
+  background-color: #fff !important;
+  padding: 0 !important;
+  margin-top: 40px;
+  border: none !important;
+}
+
+.infoBlock_h2 span {
+  color: #fc0;
+  margin-right: 5px;
+}
+
+.infoBlock {
+  border: 1px solid #ddd;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  padding: 10px 0;
+  height: 90px;
+  width: 918px;
+  overflow: auto;
+  scroll-snap-type: y mandatory;
+  margin-bottom: 40px;
+}
+
+.infoBlock .inner {
+  padding: 5px 0 0;
+  width: 100%;
+  box-sizing: border-box;
+  display: table;
+  font-size: 14px;
+  font-weight: bold;
+  color: #333;
+  position: relative;
+  scroll-snap-align: start;
+}
+
+.infoBlock .inner .date {
+  font-family: "GmarketSansBold";
+  width: 180px;
+  display: table-cell;
+  padding: 0 0 0 20px;
+}
+
+.infoBlock .inner .txt {
+  font-family: "GmarketSansMedium";
+  display: table-cell;
+  font-weight: normal;
+  width: 890px;
+}
+
+.topFixedTab {
+  position: fixed;
+  z-index: 5000;
+  background-color: #ffffff;
+}
+
+.rosh10 {
+  white-space: nowrap;
+  overflow: hidden;
+  font-size: 0 !important;
+  margin-bottom: 30px !important;
+  padding: 0 !important;
+  border: none !important;
+}
+
+.economy_h3 {
+  width: 100%;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px !important;
+  padding: 0 !important;
+  color: #000 !important;
+  font-size: 20px !important;
+  font-weight: bold !important;
+  border: none !important;
+  background-color: #fff !important;
+  line-height: 1;
+  border-bottom: 2px solid #ddd !important;
+}
+
+.economy_h3:before {
+  content: "";
+  width: 4px;
+  height: 20px;
+  background-color: #fc0;
+  display: inline-block;
+  margin-right: 8px;
+}
+
+.goods-bx ul li a:hover .thumb {
+  border: #ffcc00 2px solid;
+}
+
+.goods-bx ul li a:hover .txt3 {
+  color: #333;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.contents {
+  min-height: 1200px;
+}
+
+.info_box {
+  width: 920px;
+  float: right;
+}
+
+.mb16{
+  margin-bottom: 16px !important;
+}
+
+/* ===== left_nav.css ===== */
+#snb a {
+		position: relative;
+		display: block;
+		text-decoration: none;
+		color: #000;
+		font-size: 14px;
+		letter-spacing: -1.5px;
+		line-height: 30px;
+		padding: 0 0 0 20px;
+		-webkit-transition: all 0.1s ease-in-out;
+		-moz-transition: all 0.1s ease-in-out;
+		-ms-transition: all 0.1s ease-in-out;
+		-o-transition: all 0.1s ease-in-out;
+		transition: all 0.1s ease-in-out;
+	}
+
+	#snb>li>a {
+		line-height: 30px;
+		font-size: 16px;
+		color: #000;
+		padding-right: 20px;
+		font-weight: 400;
+	}
+
+	#snb>li>a:hover {
+		background-color: #fbf9d2;
+		text-decoration: none;
+	}
+
+	#snb>li+li {
+		margin-top: 0;
+	}
+
+	#snb>li>ul {
+		margin-top: 3px;
+	}
+
+	#snb>li.event>ul>li>a::before {
+		display: none;
+	}
+
+	#snb>li>ul>li:hover>a,
+	#snb>li>ul>li>a:hover {
+		background-color: #ffe786;
+		text-decoration: none;
+	}
+
+	#snb>li>ul>li.active>a:before {
+		transform: rotate(90deg);
+	}
+
+	#snb>li>ul>li>div.dp3 {
+		display: none;
+		padding: 1px 0 0 0;
+	}
+
+	#snb>li>ul>li.active>div.dp3 {
+		display: block;
+	}
+
+	#snb>li>ul>li>div.dp3>ul>li+li {
+		margin-top: 1px;
+	}
+
+	#snb>li>ul>li>div.dp3>ul>li>a:hover {
+		background-color: #fbf9d2;
+		text-decoration: none;
+	}
+
+	#snb>li>ul>li>div.dp3>ul>li.active>a {
+		background-color: #ffcc00;
+		text-decoration: none;
+	}
+
+	.left_sv::-webkit-scrollbar {
+		width: 6px;
+	}
+
+	.left_sv::-webkit-scrollbar-thumb {
+		background-color: #cdcdcd;
+		border-radius: 3px;
+	}
+
+	.left_sv::-webkit-scrollbar-track {
+		background-color: #F6F6F6;
+	}
+
+	.right_sv::-webkit-scrollbar {
+		width: 0px;
+	}
+
+	.ec-lnb>.event-lnb {
+		padding: 8px 0;
+	}
+
+	.ec-lnb>.event-lnb>li.event {
+		background-color: #ffcc00;
+		margin-bottom: 10px;
+	}
+
+	.ec-lnb>.event-lnb>li.event a{
+		padding: 0 20px;
+		font-weight: bold;
+	}
+
+	.ec-lnb>.event-lnb>li>a {
+		padding: 0 10px;
+		display: flex;
+		height: 34px;
+		font-weight: 400;
+		font-size: 15px;
+		letter-spacing: -0.5px;
+		align-items: center;
+		color: #000;
+	}
+
+	.ec-lnb>.event-lnb>li.event>a::before {
+		content: "";
+		display: inline-block;
+		width: 2px;
+		height: 8px;
+		background-color: #000;
+		margin: 0 8px 0 0;
+		vertical-align: 3px;
+		margin-right: 5px;
+	}
+
+	.ec-lnb>.event-lnb>li>a:hover,
+	.ec-lnb>.event-lnb>li>ul>li>a:hover {
+		text-decoration: none;
+		background-color: #ffe786;
+	}
+
+	.ec-lnb>.event-lnb>li>a .blt {
+		margin-left: auto;
+		width: 44px;
+		height: 15px;
+		border-radius: 3px;
+		background-color: #000;
+		color: #ffcc00;
+		font-size: 10px;
+		text-align: center;
+		line-height: 18px;
+		font-family: 'GmarketSansMedium';
+	}
+
+	.ec-lnb>.event-lnb>li>a .blt_rohs {
+		margin-left: auto;
+		width: 44px;
+		height: 15px;
+		border-radius: 3px;
+		background-color: #23a638;
+		color: #fff;
+		font-size: 10px;
+		text-align: center;
+		line-height: 18px;
+		font-family: 'GmarketSansMedium';
+	}
+
+	.ec-lnb>.event-lnb>li>a .blt_new {
+		margin-left: auto;
+		width: 44px;
+		height: 15px;
+		border-radius: 3px;
+		background-color: #fc0;
+		color: #c00;
+		font-size: 10px;
+		text-align: center;
+		line-height: 18px;
+		font-family: 'GmarketSansMedium';
+	}
+
+	.blt_new2 {
+		margin-left: 4px;
+		width: 15px;
+		height: 14px;
+		letter-spacing: -0.5px;
+		border-radius: 3px;
+		background-color: #c00;
+		color: #fff;
+		font-size: 10px;
+		text-align: center;
+		line-height: 17px;
+		font-family: 'GmarketSansMedium';
+	}
+
+	.blt_new3 {
+		display: inline-block;
+		margin-left: 4px;
+		width: 15px;
+		height: 14px;
+		letter-spacing: -0.5px;
+		border-radius: 3px;
+		background-color: #c00;
+		color: #fff;
+		font-size: 10px;
+		text-align: center;
+		line-height: 17px;
+		font-family: 'GmarketSansMedium';
+	}
+
+	.ec-lnb>.event-lnb>li>a .blt_bat {
+		margin-left: auto;
+		width: 44px;
+		height: 15px;
+		border-radius: 3px;
+		background-color: #010446;
+		color: #86ecff;
+		font-size: 10px;
+		text-align: center;
+		line-height: 18px;
+		font-family: 'GmarketSansMedium';
+	}
+
+	.ec-lnb>.event-lnb>li.active>ul {
+		display: block;
+	}
+
+	.ec-lnb>.event-lnb>li>ul {
+		display: none;
+	}
+
+	.ec-lnb>.event-lnb>li>ul>li>a {
+		display: block;
+		line-height: 22px;
+		color: #000;
+		font-size: 13px;
+		padding: 0 20px;
+	}
+
+	.ec-lnb>.event-lnb>li>ul>li>a::before {
+		top: 7px;
+	}
+
+	.ec-lnb>.event-lnb>li>ul>li>a:hover {
+		background-color: #ffe786;
+	}
+
+	.ec-lnb>.event-lnb>li>ul {
+		margin: 0;
+		padding: 0 0 10px 0;
+	}
+
+	.ec-lnb>.event-lnb>li.noBlt>a {
+		height: 26px;
+		padding-left: 20px;
+	}
+
+	.ec-lnb>.event-lnb>li.noBlt>a::before {
+		display: none;
+	}
+
+	.ec-lnb {
+		border: #ddd 1px solid;
+		border-top: none;
+		max-height: 855px;
+		padding: 0 0 10px 0;
+		overflow-y: auto;
+	}
+
+	.ec-lnb::after {
+		content: "";
+		position: absolute;
+		left: 1px;
+		bottom: 0;
+		background-color: #fff;
+		display: block;
+		width: calc(100% - 12px);
+		height: 5px;
+	}
+
+	.ec-lnb>#snb>li>a {
+		display: flex;
+		height: 32px;
+		font-size: 15px;
+		align-items: center;
+		color: #000;
+	}
+	.ec-lnb>#snb.allview>li>a{
+		background: #000;
+		color: #FFCD00;
+		border-bottom: 2px solid #FFCD00;
+		margin-bottom: 5px;
+	}
+	.ec-lnb>#snb.allview>li>a::before{
+		content: "";
+    display: inline-block;
+    width: 2px;
+    height: 8px;
+    background-color: #FFCD00;
+    margin-right: 5px;
+	}
+	.ec-lnb>#snb.allview>li>a:hover{
+		background: #000;
+		color: #FFCD00;
+	}
+	.ec-lnb>#snb>li>a:hover,
+	.ec-lnb>#snb>li>ul>li>a:hover {
+		background-color: #ffe786;
+	}
+
+	.ec-lnb>#snb>li.active>a:before {
+		transform: rotate(90deg);
+	}
+
+	.ec-lnb>#snb>li>ul>li>a {
+		line-height: 24px;
+		font-size: 14px;
+	}
+
+	.ec-lnb>#snb>li>ul>li>.dp3>ul>li>a {
+		line-height: 22px;
+		font-size: 13px;
+	}
+
+	.ec-lnb>#snb>li>ul>li>.dp3>ul>li>a::before {
+		content: "-";
+		display: inline-block;
+		margin-right: 3px;
+	}
+
+	.ec-lnb>#snb>li>ul>li>.dp3>ul>li>a:hover {
+		background-color: #ffcc00;
+	}
+
+	.nav {
+		background-color: #fff;
+	}
+
+	.nav.fix {
+		position: fixed;
+		top: 80px;
+		left: 50%;
+		margin-left: -600px;
+	}
+
+	.eco_bnr {
+		position: relative;
+		margin-top: 20px;
+	}
+
+
+/* ===== event.css ===== */
+@charset "UTF-8";
+@font-face {
+    font-family: "GmarketSansLight";
+    src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansLight.woff")
+        format("woff");
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "GmarketSansMedium";
+    src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff")
+        format("woff");
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: "GmarketSansBold";
+    src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff")
+        format("woff");
+    font-weight: normal;
+    font-style: normal;
+}
+
+.hide_txt{ position: absolute; top:-9999px; left:-9999px; }
+
+.mainVisual{ width: 920px; text-indent: 100%; white-space: nowrap; overflow: hidden; font-size: 0;}
+.mainVisual img{ display:block;}
+
+.cBlue {color: #0f218b !important; font-weight: bold;}
+
+
+.red_txt { width:100%; color:#ea0000; text-align: center; font-size: 16px; letter-spacing: -0.5px; margin-top: 20px; }
+.black_txt { width:100%; color:#333; text-align: center; font-size: 16px; letter-spacing: -0.5px; margin-top: 20px; }
+
+
+/*리스트 5개*/
+.goods-bx {margin: 0 0 40px!important;}
+
+.goods-bx h3 {
+	text-align: left; box-sizing: border-box; font-family: 'GmarketSansBold'; font-size: 24px!important; color: #fff!important; padding: 7px 0 4px 20px!important; background-color: #222; border-bottom: 3px solid #fc0!important; font-weight: normal!important; margin-bottom: 0!important;
+}
+
+.goods-bx .goods-lst{ overflow:hidden; }
+.goods-bx .goods-lst>li{ float:left; width:210px; text-align:left; box-sizing: border-box; padding:0; margin-top: 20px; margin-left: 26px; position: relative;}
+.goods-bx .goods-lst>li:nth-child(4n+1){clear:both; margin-left: 0;}
+.goods-bx .goods-lst>li>a{
+    display: block;
+    height: 300px;
+    text-decoration: none;
+    color: #004bb1;}
+.goods-bx .goods-lst>li span{ display:block;}
+
+
+.goods-bx .goods-lst2{ overflow:hidden; }
+.goods-bx .goods-lst2>li{ float:left; width:168px; text-align:left; box-sizing: border-box; padding:0; margin-top: 20px; margin-left: 20px; position: relative;}
+.goods-bx .goods-lst2>li:nth-child(5n+1){clear:both; margin-left: 0; width: 168px;}
+.goods-bx .goods-lst2>li>a{
+    display: block;
+    text-decoration: none;
+    color: #004bb1;}
+.goods-bx .goods-lst2>li span{ display:block;}
+
+
+.goods-bx .goods-lst3{ overflow:hidden; }
+.goods-bx .goods-lst3>li{ float:left; width:215px; text-align:left; box-sizing: border-box; padding:0; margin-left: 20px; position: relative;}
+.goods-bx .goods-lst3>li:nth-child(4n+1){clear:both; margin-left: 0; width: 215px;}
+.goods-bx .goods-lst3>li>a{
+    display: block;
+    text-decoration: none;
+    color: #004bb1;}
+.goods-bx .goods-lst3>li span{ display:block;}
+
+.goods {
+    max-width: 150px;
+    max-height: 150px;
+    width: auto;    
+    position: relative;
+}
+
+.thumb {
+	border: #ddd 1px solid;
+	background-color: #fff;
+	display: flex!important;
+	justify-content: center;
+	align-items: center;
+	border-radius: 6px;
+	height: 160px;
+	margin-bottom: 10px;
+	position: relative;
+}
+.recommend {
+	position: absolute;
+	top: 5px;
+	left: 5px;
+	z-index: 1;
+}
+
+.txt1 {
+	
+	font-size: 18px;
+	letter-spacing: -0.5px;	
+	position: relative;
+    top: 0px;
+	font-weight:bold;
+	color:#333;
+	text-decoration: none;
+	line-height:1.3; 
+	}
+.txt2 {
+	
+    position: relative;
+    top: 0px;	
+	font-size: 12px;
+	color:#777;
+	text-decoration: none;
+	margin-bottom: 8px;
+	}
+.txt3 {
+	
+	font-size: 14px;
+	letter-spacing: -0.5px;	
+	position: relative;
+    top: 0px;
+	font-weight:bold;
+	color:#333;
+	text-decoration: none;
+	line-height:1.2; 
+	text-align: center;
+	}
+.txt4 {
+	
+	font-size: 12px;
+	letter-spacing: -0.5px;	
+	position: relative;
+    top: 0px;
+	font-weight:bold;
+	color:#c00;
+	text-decoration: none;
+	line-height:1.2; 
+	text-align: center;
+	}
+.mark_box {
+	width: 100%;	
+	background-color: #f5f5f5;
+	border-radius: 4px;
+	font-family: 'GmarketSansMedium';	
+	font-size: 12px;
+	color: #777;
+	line-height: 1.3;
+	padding: 6px;
+	box-sizing: border-box;
+	height: 40px;
+	margin-bottom: 4px;
+}
+.mark_box img {
+	margin-right: 2px;
+	vertical-align: middle;
+}
+.price {
+	font-family: 'GmarketSansMedium';
+	position: relative;
+	font-size: 12px;
+	color:#777;   
+	top: 0px;	
+	}
+
+.price i {
+	font-size: 18px;
+	font-family: 'GmarketSansBold';
+	color: #c00;
+	margin-right: 4px;
+}
+.discount {
+	font-family: 'GmarketSansMedium';
+	position: relative;
+	font-size: 14px;
+	color:#0f218b;   
+	top: 0px;
+	line-height: 1;
+	}
+
+.discount b {
+	font-size: 16px;
+	font-family: 'GmarketSansBold';
+}
+.badge {
+	position: absolute;
+	right: 5px;
+	top: 90px;
+	display: block;
+}
+.badge div {
+	position: relative;
+}
+.badge div b {
+	position: absolute;
+	text-align: right;
+	top: 8px; right: 24px;
+	font-family: "GmarketSansBold"; font-weight: normal; color: #333; font-size: 20px; letter-spacing: -0.5px;
+}
+/*top*/
+.pageTop {
+    margin: 40px 0 0;
+    padding-bottom: 20px;
+	text-align: right;
+}
+ .pageTop a {
+    background-position: -131px -1338px;
+}
+
+
+.side_banner {margin-top: 30px;}
+
+
+.mou {margin-bottom: 40px; position: relative;}
+.mou div {position: absolute; left: 0; top: 60px; vertical-align: top; font-family:"GmarketSansMedium"; font-size: 17px; letter-spacing: -0.5px; color: #888; line-height: 1.3;  }
+.mou div b {color: #333; font-size: 24px; display: block; font-family:"GmarketSansMedium"; font-weight: normal;}
+.blue1_b {font-family: "GmarketSansBold"; color: #0074be; }
+.blue2_b {font-family: "GmarketSansBold"; color: #0f218b; }
+.blue1 {font-family:"GmarketSansMedium"; color: #0074be; }
+.blue2 {font-family:"GmarketSansMedium"; color: #0f218b; }
+
+
+.infoBlock_h2 {
+	font-size: 16px;
+	font-family: 'GmarketSansBold';
+	color: #333;
+	margin-bottom: 5px!important;
+	background-color: #fff!important;
+	padding: 0!important;
+	margin-top: 40px;
+	border: none!important;
+}
+.infoBlock_h2 span {
+	color: #fc0;
+	margin-right: 5px;
+}
+.infoBlock {
+  border: 1px solid #ddd;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: scroll;  
+  padding: 10px 0;
+  height: 90px;
+  width: 918px;
+  overflow: auto;
+  scroll-snap-type: y mandatory;
+	margin-bottom: 40px;
+}
+
+.infoBlock .inner {
+  padding: 5px 0 0;
+  width: 100%;
+  box-sizing: border-box;
+  display: table;
+  font-size: 14px;
+  font-weight: bold;
+	color: #333;
+  position: relative;
+  scroll-snap-align: start;
+}
+.infoBlock .inner .date {
+  font-family: 'GmarketSansBold';
+  width: 180px;
+  display: table-cell;
+  padding: 0 0 0 20px;
+}
+.infoBlock .inner .txt {
+  font-family: 'GmarketSansMedium';
+  display: table-cell;
+  font-weight: normal;
+  width: 890px;
+}
+
+.topFixedTab{position: fixed; z-index: 5000; background-color: #ffffff;}	
+
+
+.rosh10 {
+	 white-space: nowrap; overflow: hidden; font-size: 0!important; margin-bottom: 20px!important; padding: 0!important; border: none!important;
+}
+.economy_h2 {
+	font-family: 'GmarketSansBold'; margin-bottom: 20px!important; padding: 0!important; color:#000!important; font-size: 30px!important; font-weight: normal!important; border:none!important; background-color: #fff!important; line-height: 1;
+}
+.economy_h2:before {
+	content: ""; width: 5px; height: 27px; background-color: #fc0; display: inline-block; margin-right: 8px; vertical-align: text-top;
+}
+
+.goods-bx ul li a:hover .thumb{ border-color:#0f218b; }
+.goods-bx ul li a:hover .txt3{ color:#0f218b; text-decoration:none; font-weight:bold; }
+
+`;
