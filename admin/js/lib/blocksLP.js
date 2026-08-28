@@ -3428,3 +3428,424 @@ border-right: 1px solid #dfdfdf;
 .goods-bx ul li a:hover .txt3{ color:#0f218b; text-decoration:none; font-weight:bold; }
 
 `;
+
+// ==========================================================================
+// "미스미는 진화중!" (Evolution) — 기능 개선 안내 LP + 허브 페이지.
+// LP_템플릿_생성기_dc.html 기준. 다른 템플릿과 달리 애초부터 "블록 조합형"으로
+// 설계되어 있습니다 — 담당자가 블록을 골라 추가/삭제/순서변경하면서 페이지를
+// 만드는 방식이라, 고정된 필드 목록이 아니라 블록 타입별 필드 정의(레지스트리)를
+// 두고 그걸로 폼과 HTML을 둘 다 생성합니다.
+//
+// 페이지가 2종류입니다:
+//   - "lp": 개별 기능 개선 안내 페이지 (/pr/misumi_evolution/pr/new_feature/{slug}/)
+//   - "hub": 그 LP들을 모아 보여주는 허브 페이지 (/pr/misumi_evolution/)
+// 두 페이지 다 SSI 셸에 얹히는 구조가 원본에 그대로 있어(head_navi.html 등),
+// 이벤트 LP·경제형 라인업과 동일하게 S3 배포는 막고 다운로드만 지원합니다.
+// ==========================================================================
+
+export const EVOLUTION_TEMPLATE_ID = "evolution";
+
+/** 블록 타입 레지스트리 — LP_템플릿_생성기_dc.html의 T 객체를 그대로 이식.
+ *  fields의 t(타입)는 폼에서 어떤 입력을 그릴지 결정: text(한줄) / html(여러줄,
+ *  <br><strong> 등 허용) / mono(파일명 등 고정폭) / items(하위 항목 배열). */
+export const EVOLUTION_BLOCK_TYPES = {
+  hero: {
+    label: "히어로", page: "lp",
+    fields: [{ k: "eyebrow", l: "상단 한 줄", t: "text" }, { k: "title", l: "제목 (<br> 사용 가능)", t: "html" }],
+    make: () => ({ eyebrow: "- 효율적인 업무지원을 위한 개선 -", title: "새 기능이 추가되었습니다!" })
+  },
+  ba: {
+    label: "BEFORE / AFTER", page: "lp",
+    fields: [
+      { k: "before", l: "BEFORE 문구", t: "html" }, { k: "after", l: "AFTER 문구", t: "html" },
+      { k: "beforeImg", l: "BEFORE 이미지 파일", t: "mono" }, { k: "afterImg", l: "AFTER 이미지 파일", t: "mono" }, { k: "arrowImg", l: "화살표 이미지 파일", t: "mono" }
+    ],
+    make: () => ({ before: "", after: "", beforeImg: "before.png", afterImg: "after.png", arrowImg: "arrow.png" })
+  },
+  arrow: {
+    label: "화살표 제목", page: "lp",
+    fields: [{ k: "title", l: "제목", t: "text" }],
+    make: () => ({ title: "개선내용" })
+  },
+  summary: {
+    label: "요약 텍스트 박스", page: "lp",
+    fields: [
+      { k: "heading", l: "소제목", t: "html" }, { k: "body", l: "본문", t: "html" },
+      { k: "ctaText", l: "CTA 문구 (비우면 미출력)", t: "text" }, { k: "ctaUrl", l: "CTA 링크", t: "mono" }
+    ],
+    make: () => ({ heading: "", body: "", ctaText: "", ctaUrl: "" })
+  },
+  improve: {
+    label: "개선내용 리스트", page: "lp",
+    fields: [
+      { k: "heading", l: "소제목", t: "html" }, { k: "body", l: "본문", t: "html" },
+      { k: "items", l: "개선내용 항목", t: "items", sub: [{ k: "label", l: "라벨", t: "text" }, { k: "title", l: "제목", t: "text" }, { k: "desc", l: "설명", t: "html" }], newItem: n => ({ label: "개선내용 " + n + ".", title: "", desc: "" }) },
+      { k: "ctaText", l: "CTA 문구 (비우면 미출력)", t: "text" }, { k: "ctaUrl", l: "CTA 링크", t: "mono" }
+    ],
+    make: () => ({ heading: "무엇이 달라졌나요?", body: "", items: [{ label: "개선내용 1.", title: "", desc: "" }], ctaText: "", ctaUrl: "" })
+  },
+  num: {
+    label: "이미지 + 번호 설명", page: "lp",
+    fields: [
+      { k: "heading", l: "소제목", t: "html" }, { k: "desc", l: "리드 문구 (선택)", t: "html" },
+      { k: "img", l: "기능 이미지 파일", t: "mono" },
+      { k: "items", l: "번호 설명", t: "items", sub: [{ k: "title", l: "영역 이름", t: "text" }, { k: "desc", l: "설명", t: "html" }, { k: "note", l: "※ 주석 (선택)", t: "text" }], newItem: () => ({ title: "", desc: "", note: "" }) }
+    ],
+    make: () => ({ heading: "기능 소개", desc: "", img: "feature1.png", items: [{ title: "", desc: "", note: "" }] })
+  },
+  steps: {
+    label: "STEP 가이드", page: "lp",
+    fields: [
+      { k: "heading", l: "소제목", t: "html" },
+      { k: "items", l: "STEP", t: "items", sub: [{ k: "badge", l: "배지", t: "text" }, { k: "title", l: "제목", t: "text" }, { k: "img", l: "이미지 파일", t: "mono" }], newItem: n => ({ badge: "STEP" + n, title: "", img: "step" + n + ".png" }) }
+    ],
+    make: () => ({ heading: "이용 방법 안내", items: [{ badge: "STEP1", title: "", img: "step1.png" }] })
+  },
+  twocol: {
+    label: "좌우 2단", page: "lp",
+    fields: [{ k: "img", l: "이미지 파일", t: "mono" }, { k: "heading", l: "소제목", t: "html" }, { k: "body", l: "본문", t: "html" }],
+    make: () => ({ img: "info4.png", heading: "", body: "" })
+  },
+  cta: {
+    label: "CTA 버튼", page: "lp",
+    fields: [{ k: "text", l: "버튼 문구", t: "text" }, { k: "url", l: "링크", t: "mono" }],
+    make: () => ({ text: "기능 바로가기 →", url: "https://kr.misumi-ec.com/" })
+  },
+  hubcard: {
+    label: "최신 개선 카드", page: "hub",
+    fields: [
+      { k: "heading", l: "섹션 제목", t: "text" }, { k: "icon", l: "카테고리 아이콘 파일", t: "mono" }, { k: "category", l: "카테고리명", t: "text" },
+      { k: "linkText", l: "LP 제목", t: "text" }, { k: "linkUrl", l: "LP 링크", t: "mono" },
+      { k: "voice", l: "고객 목소리", t: "html" }, { k: "improve", l: "개선 내용", t: "html" }
+    ],
+    make: () => ({ heading: "미스미를 더 쉽게 사용하기 위한 최신 개선점", icon: "ic_la4.png", category: "", linkText: "", linkUrl: "", voice: "", improve: "" })
+  },
+  hublist: {
+    label: "카테고리 리스트", page: "hub",
+    fields: [
+      { k: "heading", l: "섹션 제목", t: "text" },
+      { k: "items", l: "카테고리", t: "items", sub: [{ k: "icon", l: "아이콘 파일", t: "mono" }, { k: "title", l: "카테고리", t: "text" }, { k: "sub", l: "보조 설명", t: "text" }, { k: "links", l: "LP 목록 (한 줄에 \"제목|링크\")", t: "html" }], newItem: () => ({ icon: "ic_la1.png", title: "", sub: "", links: "" }) }
+    ],
+    make: () => ({ heading: "지난 개선점", items: [{ icon: "ic_la1.png", title: "", sub: "", links: "" }] })
+  }
+};
+
+export function evolutionBlockDefaults(type) {
+  return Object.assign({ id: "eb" + Date.now() + Math.random().toString(16).slice(2), type }, EVOLUTION_BLOCK_TYPES[type].make());
+}
+
+function evolutionParseLinks(txt) {
+  return String(txt || "").split("\n").map(l => l.trim()).filter(Boolean).map(l => {
+    const p = l.split("|");
+    return { text: (p[0] || "").trim(), url: (p[1] || "#").trim() };
+  });
+}
+
+/** 블록 1개 → 실제 배포용 HTML 조각. LP_템플릿_생성기_dc.html의 blockHtml()과
+ *  1:1 대응 — class명·구조를 그대로 유지해야 lp-common.css가 그대로 먹습니다. */
+function evolutionBlockHtml(b, indent) {
+  const t = indent, n = "\n";
+  switch (b.type) {
+    case "hero":
+      return t + `<h1 class="first"><span>${b.eyebrow}</span><br />${b.title}</h1>`;
+    case "arrow":
+      return t + `<h1 class="downarrow">${b.title}</h1>`;
+    case "ba":
+      return t + `<div class="whitebox sect1">${n}` +
+        `${t}\t<div class="before">${n}${t}\t\t<h5>BEFORE</h5>${n}${t}\t\t<img src="./images/${b.beforeImg}" alt="" />${n}${t}\t\t<p>${b.before}</p>${n}${t}\t</div>${n}` +
+        `${t}\t<div class="ing"><img src="./images/${b.arrowImg}" alt="" /></div>${n}` +
+        `${t}\t<div class="after">${n}${t}\t\t<h5>AFTER</h5>${n}${t}\t\t<img src="./images/${b.afterImg}" alt="" />${n}${t}\t\t<p>${b.after}</p>${n}${t}\t</div>${n}` +
+        `${t}</div>`;
+    case "summary":
+      return t + `<div class="whitebox sect3">${n}${t}\t<h2>${b.heading}</h2>${n}${t}\t<p>${b.body}</p>${n}` +
+        (b.ctaText ? `${t}\t<a href="${b.ctaUrl}" class="landingbtn" target="_blank">${b.ctaText}</a>${n}` : "") +
+        `${t}</div>`;
+    case "improve":
+      return t + `<div class="whitebox sect3">${n}${t}\t<h2>${b.heading}</h2>${n}` +
+        (b.body ? `${t}\t<p>${b.body}</p>${n}` : "") +
+        `${t}\t<div class="improve_list">${n}` +
+        b.items.map(it => `${t}\t\t<div class="improve_item">${n}${t}\t\t\t<div class="improve_head">${n}${t}\t\t\t\t<div class="improve_label">${it.label}</div>${n}${t}\t\t\t\t<div class="improve_title">${it.title}</div>${n}${t}\t\t\t</div>${n}${t}\t\t\t<div class="improve_desc">${it.desc}</div>${n}${t}\t\t</div>`).join(n) + n +
+        `${t}\t</div>${n}` +
+        (b.ctaText ? `${t}\t<a href="${b.ctaUrl}" class="landingbtn" target="_blank">${b.ctaText}</a>${n}` : "") +
+        `${t}</div>`;
+    case "num":
+      return t + `<div class="whitebox sectcont">${n}${t}\t<h2>${b.heading}</h2>${n}` +
+        (b.desc ? `${t}\t<p class="desc">${b.desc}</p>${n}` : "") +
+        `${t}\t<img src="./images/${b.img}" alt="${esc(String(b.heading || "").replace(/<[^>]+>/g, ""))}" class="contimg" />${n}` +
+        b.items.map((it, i) => `${t}\t<div class="numbox">${n}${t}\t\t<h6>${i + 1}</h6>${n}${t}\t\t<div class="numtxt">${n}${t}\t\t\t<h3>${it.title}</h3>${n}${t}\t\t\t<p>${it.desc}</p>${n}` + (it.note ? `${t}\t\t\t<span>${it.note}</span>${n}` : "") + `${t}\t\t</div>${n}${t}\t</div>`).join(n) + n +
+        `${t}</div>`;
+    case "steps":
+      return t + `<div class="whitebox sectcont">${n}${t}\t<h2>${b.heading}</h2>${n}${t}\t<div class="step_guide">${n}` +
+        b.items.map(it => `${t}\t\t<div class="step_card">${n}${t}\t\t\t<div class="step_textbox">${n}${t}\t\t\t\t<div class="step_badge">${it.badge}</div>${n}${t}\t\t\t\t<div class="step_title">${it.title}</div>${n}${t}\t\t\t</div>${n}${t}\t\t\t<div class="step_imagebox"><img src="./images/${it.img}" alt="${esc(it.badge)} ${esc(it.title)}" /></div>${n}${t}\t\t</div>`).join(n) + n +
+        `${t}\t</div>${n}${t}</div>`;
+    case "twocol":
+      return t + `<div class="whitebox sect4">${n}${t}\t<div class="sectbox">${n}${t}\t\t<div><img src="./images/${b.img}" alt="" /></div>${n}${t}\t\t<div class="txtbox">${n}${t}\t\t\t<h2>${b.heading}</h2>${n}${t}\t\t\t<p>${b.body}</p>${n}${t}\t\t</div>${n}${t}\t</div>${n}${t}</div>`;
+    case "cta":
+      return t + `<div class="whitebox">${n}${t}\t<div class="btnbox"><a href="${b.url}" class="landingbtn" target="_blank">${b.text}</a></div>${n}${t}</div>`;
+    case "hubcard":
+      return t + `<h2 class="h2-tit">${b.heading}</h2>${n}${t}<div class="con_box">${n}${t}\t<div class="item">${n}${t}\t\t<div class="icon">${n}${t}\t\t\t<img src="./images/${b.icon}" alt="${esc(b.category)}" />${n}${t}\t\t\t<div>${b.category}</div>${n}${t}\t\t</div>${n}${t}\t\t<div class="desc">${n}${t}\t\t\t<a href="${b.linkUrl}" class="hd-tx">${b.linkText}</a>${n}${t}\t\t\t<ul>${n}${t}\t\t\t\t<li><p>고객 목소리</p><div>${b.voice}</div></li>${n}${t}\t\t\t\t<li><p>개선 내용</p><div>${b.improve}</div></li>${n}${t}\t\t\t</ul>${n}${t}\t\t</div>${n}${t}\t</div>${n}${t}</div>`;
+    case "hublist":
+      return t + `<h2 class="h2-tit">${b.heading}</h2>${n}${t}<div class="con_box">${n}${t}\t<ul class="tx-bx01">${n}` +
+        b.items.map(it => `${t}\t\t<li>${n}${t}\t\t\t<div class="hd">${n}${t}\t\t\t\t<div class="ic"><img src="./images/${it.icon}" alt="" /></div>${n}${t}\t\t\t\t<div class="txt"><b>${it.title}</b><span>${it.sub}</span></div>${n}${t}\t\t\t</div>${n}` +
+          evolutionParseLinks(it.links).map(l => `${t}\t\t\t<a href="${esc(l.url)}" class="link">${esc(l.text)}</a>`).join(n) + n +
+          `${t}\t\t</li>`).join(n) + n +
+        `${t}\t</ul>${n}${t}\t<!--#include virtual="/pr/common/evolution/list.html" -->${n}${t}</div>`;
+    default: return "";
+  }
+}
+
+/** "미스미는 진화중!" 페이지 전체 조립. draft.evolutionPage가 "lp"면 개별 기능
+ *  안내 페이지, "hub"면 허브(목록) 페이지를 만듭니다.
+ *  ⚠️ SSI include를 그대로 유지합니다 — 이벤트 LP·경제형 라인업과 같은 이유로
+ *  S3 업로드/배포는 막고 다운로드만 지원해야 합니다(generatorLP.js에서 처리). */
+export function assembleEvolutionHtml(draft) {
+  const isLp = draft.evolutionPage === "lp";
+  const m = isLp ? draft.evolutionMetaLp : draft.evolutionMetaHub;
+  const blocks = isLp ? draft.evolutionBlocksLp : draft.evolutionBlocksHub;
+  const n = "\n";
+  const indent = isLp ? "\t\t\t\t\t\t" : "\t\t\t\t\t";
+  const inner = blocks.map(b => evolutionBlockHtml(b, indent)).join(n);
+
+  const canonical = isLp
+    ? `https://kr.misumi-ec.com/pr/misumi_evolution/pr/new_feature/${m.slug}/`
+    : `https://kr.misumi-ec.com/pr/misumi_evolution/`;
+  const crumb = isLp
+    ? `\t\t\t\t<li><a href="/">MISUMI HOME</a>&gt;</li>${n}\t\t\t\t<li><a href="/pr/misumi_evolution/">미스미는 진화중 !</a>&gt;</li>${n}\t\t\t\t<li><strong>${m.title}</strong></li>`
+    : `\t\t\t\t<li><a href="/">MISUMI HOME</a>&gt;</li>${n}\t\t\t\t<li><strong>${m.title}</strong></li>`;
+  const body = isLp
+    ? `\t\t\t\t\t<div class="mainwrap">${n}${inner}${n}\t\t\t\t\t\t<!--#include virtual="/pr/common/evolution/list.html" -->${n}\t\t\t\t\t</div>`
+    : inner;
+
+  return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${DEPLOYMENT_LANG}" lang="${DEPLOYMENT_LANG}">
+<head>
+<!--#config errmsg="" -->
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${esc(m.title)} | MISUMI｜미스미 종합 Web 카탈로그</title>
+<meta name="description" content="${esc(m.desc)}" />
+<meta name="keywords" content="${esc(m.keywords)}" />
+<link rel="icon" href="/favicon.ico" type="image/x-icon" />
+<link rel="canonical" href="${canonical}" />
+<!--#include virtual="/vcommon/common/include/import_head_css.html" -->
+<!-- /import_head_css -->
+<!--▼공통 LP 스타일 (전 LP 공용 · 수정 금지)▼-->
+<link href="/pr/common/evolution/css/lp-common.css" rel="stylesheet" type="text/css" media="all" />
+<!--▼이 LP 전용 추가분만 아래 파일에 작성▼-->
+<!-- <link href="./css/local.css" rel="stylesheet" type="text/css" media="all" /> -->
+</head>
+
+<body class="page2">
+	<!--#include virtual="/vcommon/common/include/import_head_js.html" -->
+	<div class="l-wrapper">
+		<!--#include virtual="/vcommon/common/include/head_navi.html" -->
+		<div class="l-main">
+			<div data-user="attention">
+				<!--#include virtual="/vcommon/common/include/attention_all.html" -->
+			</div>
+			<ul class="l-breadcrumb">
+${crumb}
+			</ul>
+			<div class="l-contentWrap">
+				<div class="l-content">
+					<!--▼콘텐츠영역 여기부터▼-->
+${body}
+					<!--▲콘텐츠영역 여기까지▲-->
+				</div><!-- /.l-content -->
+				<div class="l-nav">
+					<!--#include virtual="/vcommon/common/include/side_user_menu.html" -->
+				</div><!-- /.l-nav -->
+			</div><!-- /.l-contentWrap -->
+		</div><!-- /.l-main -->
+		<!--#include virtual="/vcommon/common/include/foot.html" -->
+	</div><!-- /.l-wrapper -->
+	<!--#include virtual="/vcommon/common/include/import_foot.html" -->
+	<!--#include virtual="/vcommon/common/include/analyze.html" -->
+</body>
+</html>
+`;
+}
+
+/** "미스미는 진화중!" 미리보기 전용 CSS — 실제 운영 lp-common.css를 그대로 담았습니다.
+ *  ⚠️ 실제 배포 시엔 <link href="/pr/common/evolution/css/lp-common.css">로 참조만 하고
+ *  (assembleEvolutionHtml 참고), 이 상수는 미리보기 iframe에서만 인라인으로 씁니다 —
+ *  이벤트 LP의 buildEventLpCss()와 같은 이유입니다. */
+export const EVOLUTION_PREVIEW_CSS = `
+@charset "UTF-8";
+/* ============================================================
+   미스미는 진화중! — LP 공통 스타일 (템플릿용 단일 CSS)
+   - pr/misumi_evolution/ 허브 + pr/new_feature/** LP 공용
+   - LP별 추가분은 각 LP 폴더의 css/local.css 에만 작성
+   ============================================================ */
+
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/variable/pretendardvariable.css");
+@font-face {
+  font-family: "GmarketSansBold";
+  src: url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff") format("woff");
+  font-weight: normal;
+  font-style: normal;
+}
+
+:root {
+  --lp-navy: #0f218b;
+  --lp-navy-dark: #00319e;
+  --lp-blue: #154acb;
+  --lp-link: #004bb1;
+  --lp-yellow: #ffcc00;
+  --lp-gray: #bfbfbf;
+  --lp-text: #333333;
+  --lp-red: #cc0000;
+  --lp-width: 930px;
+  --lp-font: "Pretendard Variable", Pretendard, "Nanum Gothic", dotum, sans-serif;
+}
+
+/* ------------------------------------------------------------
+   LP 본문
+   ------------------------------------------------------------ */
+.mainwrap { font-family: var(--lp-font); background: var(--lp-navy); box-sizing: border-box; }
+.mainwrap * { box-sizing: border-box; }
+.mainwrap h1 { font-family: "GmarketSansBold", var(--lp-font); position: relative; text-align: center; width: 100%; padding: 24px 0; font-size: 40px; letter-spacing: -0.025em; color: #fff; font-weight: bold; line-height: 1.2; }
+.mainwrap h1 span { font-family: var(--lp-font); font-weight: 600; font-size: 18px; }
+.mainwrap h1.first { background: url(../images/headbg.png) no-repeat center center / cover; }
+.mainwrap h1.downarrow::after { content: ''; position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); border-left: 20px solid transparent; border-right: 20px solid transparent; border-top: 20px solid var(--lp-navy); }
+.mainwrap .whitebox { width: var(--lp-width); margin: 0 auto; padding: 50px 30px; background: #fff; border-bottom: 10px solid var(--lp-navy); }
+.mainwrap .whitebox > div { text-align: center; }
+
+/* BEFORE / AFTER */
+.mainwrap .sect1 { display: flex; justify-content: center; align-items: center; column-gap: 15px; border-bottom: none; }
+.mainwrap .sect1 .before,
+.mainwrap .sect1 .after { width: 407px; min-height: 336px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-bottom: 20px; border: 8px solid var(--lp-gray); }
+.mainwrap .sect1 .after { border-color: var(--lp-yellow); }
+.mainwrap .sect1 h5 { width: 100%; height: 37px; display: flex; justify-content: center; align-items: center; background: var(--lp-gray); font-size: 24px; font-weight: bold; color: var(--lp-text); }
+.mainwrap .sect1 .after h5 { background: var(--lp-yellow); }
+.mainwrap .sect1 .before img, .mainwrap .sect1 .after img { margin: 13px 0 20px; }
+.mainwrap .sect1 p { text-align: center; font-size: 16px; font-weight: 500; line-height: 1.4; letter-spacing: -0.05em; padding: 0 12px; }
+.mainwrap .sect1 p strong { font-weight: bold; }
+.mainwrap .sect1 .ing { width: auto; flex: 0 0 auto; }
+
+/* 요약 / 개선내용 리스트 */
+.mainwrap .sect3 { padding-top: 30px; color: var(--lp-text); text-align: center; }
+.mainwrap .sect3 h2 { color: var(--lp-navy); display: inline-block; font-size: 24px; font-weight: bold; line-height: 1.6; border-bottom: 4px solid var(--lp-yellow); }
+.mainwrap .sect3 p { text-align: center; font-size: 18px; line-height: 1.5; font-weight: 500; margin-top: 30px; }
+.mainwrap .sect3 .improve_list { margin: 30px auto 0; display: inline-flex; flex-direction: column; align-items: flex-start; row-gap: 15px; }
+.mainwrap .sect3 .improve_item { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.mainwrap .sect3 .improve_head { display: flex; align-items: center; gap: 5px; }
+.mainwrap .sect3 .improve_label { padding: 4px 10px; background: var(--lp-navy); color: #fff; font-size: 20px; font-weight: bold; line-height: 1.2; }
+.mainwrap .sect3 .improve_title { color: var(--lp-navy); font-size: 20px; font-weight: bold; line-height: 1.2; }
+.mainwrap .sect3 .improve_desc { color: var(--lp-text); font-size: 18px; font-weight: 500; line-height: 1.35; text-align: left; }
+
+/* 기능 소개 (이미지 + 번호 설명 / STEP) */
+.mainwrap .sectcont { color: var(--lp-text); text-align: center; }
+.mainwrap .sectcont h2 { display: inline-block; color: var(--lp-navy); font-size: 24px; font-weight: bold; line-height: 1.2; padding-bottom: 7px; border-bottom: 4px solid var(--lp-yellow); }
+.mainwrap .sectcont img.contimg { display: block; width: 100%; height: auto; margin: 20px 0; }
+.mainwrap .sectcont p { font-size: 18px; font-weight: 500; line-height: 1.5; margin: 10px 0 38px; }
+.mainwrap .sectcont p.desc { text-align: center; }
+.mainwrap .sectcont h3 { font-size: 20px; font-weight: bold; text-align: left; }
+.mainwrap .sectcont h3 strong { color: #ee0d0d; }
+
+.mainwrap .numbox { width: 100%; margin: 20px auto 0; display: flex; justify-content: flex-start; align-items: flex-start; gap: 15px; }
+.mainwrap .numbox h6 { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; width: 25px; height: 25px; background: var(--lp-red); color: #fff; font-size: 15px; font-weight: 800; border-radius: 100%; }
+.mainwrap .numbox .numtxt { text-align: left; }
+.mainwrap .numbox .numtxt h3 { line-height: 1.2; font-size: 18px; font-weight: 800; margin-bottom: 10px; }
+.mainwrap .numbox .numtxt p { line-height: 1.55; font-size: 16px; font-weight: 500; margin: 0; }
+.mainwrap .numbox .numtxt ul li { line-height: 1.55; font-size: 16px; font-weight: 500; list-style: disc inside; }
+.mainwrap .numbox .numtxt strong { font-weight: 800; }
+.mainwrap .numbox .numtxt span { display: block; margin-top: 6px; font-size: 14px; color: #666; }
+
+.mainwrap .sectcont .step_guide { margin: 40px auto 0; display: flex; flex-direction: column; row-gap: 40px; }
+.mainwrap .sectcont .step_card { border: 2px solid var(--lp-navy); padding-top: 20px; text-align: center; }
+.mainwrap .sectcont .step_textbox { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 0 20px 20px; }
+.mainwrap .sectcont .step_badge { display: inline-flex; align-items: center; justify-content: center; min-width: 93px; padding: 8px 15px; border-radius: 50px; background: var(--lp-blue); color: #fff; font-size: 20px; font-weight: 700; line-height: 1; }
+.mainwrap .sectcont .step_title { font-size: 24px; font-weight: 700; line-height: 1.3; letter-spacing: -0.05em; color: #111; }
+.mainwrap .sectcont .step_imagebox { border-top: 1px solid #ddd; }
+.mainwrap .sectcont .step_imagebox img { display: block; width: 100%; height: auto; }
+
+/* 좌우 2단 */
+.mainwrap .sect4 .sectbox { display: flex; align-items: center; column-gap: 30px; text-align: left; }
+.mainwrap .sect4 .sectbox > div { flex: 1 1 0; }
+.mainwrap .sect4 .sectbox img { max-width: 100%; height: auto; }
+.mainwrap .sect4 .sectbox h2 { display: inline-block; color: var(--lp-navy); font-size: 24px; font-weight: bold; line-height: 1.4; border-bottom: 4px solid var(--lp-yellow); }
+.mainwrap .sect4 .sectbox p { font-size: 16px; font-weight: 500; line-height: 1.6; margin-top: 16px; }
+
+/* CTA */
+.mainwrap .btnbox { text-align: center; margin: 50px auto 0; }
+.mainwrap .landingbtn,
+.mainwrap .sect3 a.landingbtn { width: 350px; height: 54px; margin: 0 auto; display: flex; justify-content: center; align-items: center; background: var(--lp-navy-dark); color: #fff; font-size: 20px; font-weight: 600; text-decoration: none; }
+.mainwrap .landingbtn:hover { background: var(--lp-navy); color: #fff; }
+
+/* ------------------------------------------------------------
+   허브 (pr/misumi_evolution/)
+   ------------------------------------------------------------ */
+.l-content .mainVisual { width: 950px; height: 390px; }
+.l-content .h2-tit { margin: 40px 0 0; padding: 14px 20px; background: var(--lp-navy); color: #fff; font-size: 22px; font-weight: bold; letter-spacing: -0.03em; }
+.con_box { position: relative; border-left: 10px solid var(--lp-navy); border-right: 10px solid var(--lp-navy); border-bottom: 10px solid var(--lp-navy); padding: 0 50px; }
+.con_box .item { display: flex; padding: 30px 0; width: 100%; align-items: center; }
+.con_box .item + .item { border-top: 1px solid #010232; }
+.con_box .item .icon { width: 170px; text-align: center; font-size: 14px; }
+.con_box .item .desc { flex: 1; }
+.con_box .item .hd-tx { font-size: 18px; color: var(--lp-link); display: block; text-decoration: underline; font-weight: 900; }
+.con_box .item ul { margin: 25px 0 0; display: flex; font-size: 14px; width: 100%; }
+.con_box .item ul li { position: relative; letter-spacing: -0.05em; flex: 1; }
+.con_box .item ul li + li { margin-left: 70px; }
+.con_box .item ul li p { position: relative; color: #000; font-weight: 600; font-size: 16px; margin: 0 0 15px; display: inline-block; }
+.con_box .item ul li + li::before { content: ""; position: absolute; top: 53px; left: -59px; display: block; width: 30px; height: 30px; border-top: 3px solid var(--lp-navy); border-right: 3px solid var(--lp-navy); transform: rotate(45deg); }
+
+.tx-bx01 { display: flex; flex-wrap: wrap; }
+.tx-bx01 > li { width: 50%; margin: 30px 0 0; letter-spacing: -0.05em; }
+.tx-bx01 > li .hd { display: flex; align-items: center; margin: 0 0 20px; }
+.tx-bx01 > li .hd .ic { width: 100px; }
+.tx-bx01 > li .hd .txt { font-size: 14px; }
+.tx-bx01 > li .hd .txt b { display: block; font-size: 18px; }
+.tx-bx01 > li .link { color: var(--lp-link); font-size: 14px; display: block; text-decoration: underline; text-indent: -10px; padding-left: 10px; }
+.tx-bx01 > li .link::before { content: ""; display: inline-block; width: 4px; height: 4px; background-color: #000; margin: 0 5px 0 0; border-radius: 50%; vertical-align: 4px; }
+
+/* ------------------------------------------------------------
+   반응형 (LP / 허브 공통) — 기존 PC 고정폭을 유동폭으로 전환
+   ------------------------------------------------------------ */
+@media screen and (max-width: 980px) {
+  .mainwrap .whitebox { width: 100%; padding: 40px 20px; }
+  .l-content .mainVisual { width: 100%; height: auto; }
+  .con_box { padding: 0 20px; }
+}
+
+@media screen and (max-width: 768px) {
+  .mainwrap h1 { font-size: 26px; padding: 20px 16px; }
+  .mainwrap h1 span { font-size: 15px; }
+  .mainwrap .whitebox { padding: 30px 16px; }
+
+  .mainwrap .sect1 { flex-direction: column; row-gap: 12px; }
+  .mainwrap .sect1 .before,
+  .mainwrap .sect1 .after { width: 100%; min-height: 0; padding-bottom: 16px; border-width: 5px; }
+  .mainwrap .sect1 h5 { font-size: 18px; height: 32px; }
+  .mainwrap .sect1 .ing img { transform: rotate(90deg); }
+
+  .mainwrap .sect3 h2,
+  .mainwrap .sectcont h2,
+  .mainwrap .sect4 .sectbox h2 { font-size: 19px; }
+  .mainwrap .sect3 p,
+  .mainwrap .sectcont p { font-size: 16px; margin-top: 20px; }
+  .mainwrap .sect3 .improve_label,
+  .mainwrap .sect3 .improve_title { font-size: 17px; }
+  .mainwrap .sect3 .improve_desc { font-size: 15px; }
+
+  .mainwrap .sectcont .step_title { font-size: 18px; }
+  .mainwrap .sectcont .step_badge { min-width: 78px; font-size: 16px; padding: 6px 12px; }
+  .mainwrap .numbox .numtxt h3 { font-size: 16px; }
+  .mainwrap .numbox .numtxt p,
+  .mainwrap .numbox .numtxt ul li { font-size: 14px; }
+
+  .mainwrap .sect4 .sectbox { flex-direction: column; row-gap: 20px; }
+  .mainwrap .landingbtn,
+  .mainwrap .sect3 a.landingbtn { width: 100%; max-width: 350px; height: 48px; font-size: 17px; }
+
+  .con_box { padding: 0 14px; border-width: 6px; }
+  .con_box .item { flex-direction: column; align-items: flex-start; row-gap: 14px; }
+  .con_box .item .icon { width: auto; display: flex; align-items: center; gap: 10px; }
+  .con_box .item ul { flex-direction: column; row-gap: 24px; }
+  .con_box .item ul li + li { margin-left: 0; }
+  .con_box .item ul li + li::before { display: none; }
+  .tx-bx01 > li { width: 100%; }
+}
+
+`;

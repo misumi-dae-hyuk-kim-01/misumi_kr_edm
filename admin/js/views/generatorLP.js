@@ -2,7 +2,7 @@ import { store } from "../state.js";
 import { el, toast, esc } from "../lib/dom.js";
 import { generateCopyLP } from "../lib/copyGeneratorLP.js";
 import { generateSeoMeta } from "../lib/seoMetaGenerator.js";
-import { assembleLpHtml, assembleLpCatalogGroupHtml, resolveCatalogGroups, resolveCatalogSeoMeta, CATALOG_STYLE, CATALOG_SCRIPT, assembleEventLpHtml, buildEventLpCss, detectBenefitType, benefitLayoutRule, enforceSingleEmphasis, NOTICE_COMMON_MASTER, EVENT_LP_TEMPLATE_ID, assembleEconomyLineupHtml, economyBid, economyLineupIssues, economySampleData, ECONOMY_LINEUP_TEMPLATE_ID, ECONOMY_LINEUP_PREVIEW_CSS } from "../lib/blocksLP.js";
+import { assembleLpHtml, assembleLpCatalogGroupHtml, resolveCatalogGroups, resolveCatalogSeoMeta, CATALOG_STYLE, CATALOG_SCRIPT, assembleEventLpHtml, buildEventLpCss, detectBenefitType, benefitLayoutRule, enforceSingleEmphasis, NOTICE_COMMON_MASTER, EVENT_LP_TEMPLATE_ID, assembleEconomyLineupHtml, economyBid, economyLineupIssues, economySampleData, ECONOMY_LINEUP_TEMPLATE_ID, ECONOMY_LINEUP_PREVIEW_CSS, assembleEvolutionHtml, evolutionBlockDefaults, EVOLUTION_BLOCK_TYPES, EVOLUTION_PREVIEW_CSS, EVOLUTION_TEMPLATE_ID } from "../lib/blocksLP.js";
 import { seedLpTemplates } from "../data/lpTemplates.js";
 import { checkGuidelinesLP, summarizeGuidelineIssuesLP, LP_WIDTH_PATTERNS, LP_ECONOMY_LAYOUT, DEPLOYMENT_COUNTRY } from "../lib/guidelineCheckLP.js";
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
@@ -140,6 +140,7 @@ export function renderGeneratorLP(root, params) {
     const isCatalog = draft.templateId === CATALOG_TEMPLATE_ID;
     const isEventLp = draft.templateId === EVENT_LP_TEMPLATE_ID;
     const isEconomyLineup = draft.templateId === ECONOMY_LINEUP_TEMPLATE_ID;
+    const isEvolution = draft.templateId === EVOLUTION_TEMPLATE_ID;
     renderFooterActions(isCatalog);
 
     formBody.appendChild(groupHeader("콘텐츠"));
@@ -174,6 +175,15 @@ export function renderGeneratorLP(root, params) {
       formBody.appendChild(sectionEconomyBasic());
       formBody.appendChild(sectionEconomyUpload());
       formBody.appendChild(sectionEconomyView());
+      return;
+    }
+    if (isEvolution) {
+      // ⚠️ 다른 템플릿과 달리 "블록 조합형"입니다 — 고정된 필드 목록이 아니라
+      // 담당자가 블록을 골라 추가/삭제/순서변경합니다. 기본정보 → 페이지 종류(LP/허브)
+      // 전환 → 블록 팔레트+편집 순서.
+      formBody.appendChild(sectionEvolutionBasic());
+      formBody.appendChild(sectionEvolutionPalette());
+      formBody.appendChild(sectionEvolutionBlocks());
       return;
     }
     formBody.appendChild(sectionPageType());
@@ -778,7 +788,7 @@ export function renderGeneratorLP(root, params) {
   // ---------- 폼 섹션 ----------
 
   function resolveTemplate() {
-    if (draft.templateId === CATALOG_TEMPLATE_ID || draft.templateId === EVENT_LP_TEMPLATE_ID || draft.templateId === ECONOMY_LINEUP_TEMPLATE_ID) return null;
+    if ([CATALOG_TEMPLATE_ID, EVENT_LP_TEMPLATE_ID, ECONOMY_LINEUP_TEMPLATE_ID, EVOLUTION_TEMPLATE_ID].includes(draft.templateId)) return null;
     return LP_TEMPLATES.find(t => t.id === draft.templateId) || LP_TEMPLATES[0] || null;
   }
 
@@ -787,6 +797,7 @@ export function renderGeneratorLP(root, params) {
     const isCatalog = draft.templateId === CATALOG_TEMPLATE_ID;
     const isEventLp = draft.templateId === EVENT_LP_TEMPLATE_ID;
     const isEconomyLineup = draft.templateId === ECONOMY_LINEUP_TEMPLATE_ID;
+    const isEvolution = draft.templateId === EVOLUTION_TEMPLATE_ID;
     return el("div", { class: "sec" }, [
       el("div", { class: "sec-hd" }, [
         el("div", { class: "sec-hd-left" }, [
@@ -802,7 +813,8 @@ export function renderGeneratorLP(root, params) {
           ),
           el("option", { value: CATALOG_TEMPLATE_ID, ...(isCatalog ? { selected: "selected" } : {}) }, "신상품카탈로그"),
           el("option", { value: EVENT_LP_TEMPLATE_ID, ...(isEventLp ? { selected: "selected" } : {}) }, "이벤트 LP"),
-          el("option", { value: ECONOMY_LINEUP_TEMPLATE_ID, ...(isEconomyLineup ? { selected: "selected" } : {}) }, "경제형 전체상품 라인업")
+          el("option", { value: ECONOMY_LINEUP_TEMPLATE_ID, ...(isEconomyLineup ? { selected: "selected" } : {}) }, "경제형 전체상품 라인업"),
+          el("option", { value: EVOLUTION_TEMPLATE_ID, ...(isEvolution ? { selected: "selected" } : {}) }, "미스미는 진화중! (기능 개선 안내)")
         ]),
         current ? el("p", { class: "hint" }, "블록: " + current.blocks.join(" → ")) : null,
         isEventLp ? el("p", { class: "hint hint-danger" },
@@ -810,6 +822,9 @@ export function renderGeneratorLP(root, params) {
         ) : null,
         isEconomyLineup ? el("p", { class: "hint hint-warn" },
           "⚠ 신상품카탈로그와 마찬가지로 상시 운영(계속 갱신)되는 페이지입니다. 다른 점은 구조 — 카탈로그는 그룹별 개별 페이지인 반면, 이건 PC메인/전체라인업/모바일/데이터(QA) 4개 뷰가 하나의 사이트를 이룹니다. 모바일은 SP 전용 CSS 미확보로 자리만 잡아둔 상태입니다. 이 페이지도 실제로는 SSI 셸에 얹히는 걸로 확인된 바 있어(경제형 실물 소스 검증 완료), 헤더/푸터 배포 방식은 이벤트 LP와 같은 사안입니다."
+        ) : null,
+        isEvolution ? el("p", { class: "hint hint-warn" },
+          "⚠ 이 템플릿도 SSI 셸(헤더/푸터)에 얹히는 구조입니다 — 이벤트 LP·경제형 라인업과 같은 이유로 S3 배포는 막혀있고 다운로드만 지원합니다. 블록을 자유롭게 추가·삭제·순서변경할 수 있는 조합형 템플릿입니다."
         ) : null
       ])
     ]);
@@ -1148,6 +1163,125 @@ export function renderGeneratorLP(root, params) {
     ]);
   }
 
+  // ==========================================================================
+  // "미스미는 진화중!" — LP_템플릿_생성기_dc.html 기준. 블록 조합형이라 다른
+  // 템플릿과 달리 필드가 고정돼 있지 않고, EVOLUTION_BLOCK_TYPES 정의를 그대로
+  // 읽어서 폼을 그립니다(범용 필드 렌더러). 새 블록 타입이 추가돼도 이 파일을
+  // 다시 고칠 필요 없이 blocksLP.js의 레지스트리만 늘리면 됩니다.
+  // ==========================================================================
+
+  function sectionEvolutionBasic() {
+    const isLp = draft.evolutionPage === "lp";
+    const m = isLp ? draft.evolutionMetaLp : draft.evolutionMetaHub;
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "페이지 종류 · 기본 정보")])]),
+      el("div", { class: "sec-body" }, [
+        el("div", { class: "row2", style: "margin-bottom:10px;" }, [
+          el("div", { class: "opt-btn" + (isLp ? " active" : ""), onclick: () => { draft.evolutionPage = "lp"; renderForm(); renderPreview(); } }, "LP 페이지"),
+          el("div", { class: "opt-btn" + (!isLp ? " active" : ""), onclick: () => { draft.evolutionPage = "hub"; renderForm(); renderPreview(); } }, "허브 페이지")
+        ]),
+        el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, ["제목 (title / 브레드크럼) ", el("span", { class: "req-tag" }, "· 필수")]),
+          el("input", { type: "text", value: m.title || "", oninput: e => { m.title = e.target.value; renderPreview(); } })
+        ]),
+        isLp ? el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, ["폴더명 (pr/new_feature/____/) ", el("span", { class: "req-tag" }, "· 필수")]),
+          el("input", { type: "text", value: m.slug || "", placeholder: "예: stock_list", oninput: e => { m.slug = e.target.value; renderPreview(); } })
+        ]) : null,
+        el("div", { class: "field", style: "margin-bottom:10px;" }, [
+          el("label", {}, "description"),
+          el("textarea", { oninput: e => { m.desc = e.target.value; renderPreview(); } }, m.desc || "")
+        ]),
+        el("div", { class: "field" }, [
+          el("label", {}, "keywords"),
+          el("input", { type: "text", value: m.keywords || "", oninput: e => { m.keywords = e.target.value; } })
+        ])
+      ])
+    ]);
+  }
+
+  function sectionEvolutionPalette() {
+    const isLp = draft.evolutionPage === "lp";
+    const types = Object.keys(EVOLUTION_BLOCK_TYPES).filter(k => EVOLUTION_BLOCK_TYPES[k].page === (isLp ? "lp" : "hub"));
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "블록 추가")])]),
+      el("div", { class: "sec-body" }, [
+        el("div", { style: "display:flex;flex-wrap:wrap;gap:6px;" }, types.map(type =>
+          el("button", {
+            class: "btn btn-sm ghost",
+            onclick: () => {
+              const list = isLp ? draft.evolutionBlocksLp : draft.evolutionBlocksHub;
+              list.push(evolutionBlockDefaults(type));
+              renderForm(); renderPreview();
+            }
+          }, "+ " + EVOLUTION_BLOCK_TYPES[type].label)
+        ))
+      ])
+    ]);
+  }
+
+  /** 필드 정의(t: text/html/mono/items) 하나를 실제 입력 엘리먼트로 그립니다.
+   *  items 타입은 하위 항목(sub) 배열이라 sectionEvolutionBlocks에서 별도 처리합니다. */
+  function evolutionFieldInput(field, value, onChange) {
+    if (field.t === "text" || field.t === "mono") {
+      return el("input", { type: "text", value: value || "", style: field.t === "mono" ? "font-family:ui-monospace,monospace;" : "", oninput: e => onChange(e.target.value) });
+    }
+    if (field.t === "html") {
+      return el("textarea", { oninput: e => onChange(e.target.value) }, value || "");
+    }
+    return null;
+  }
+
+  function sectionEvolutionBlocks() {
+    const isLp = draft.evolutionPage === "lp";
+    const list = isLp ? draft.evolutionBlocksLp : draft.evolutionBlocksHub;
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [
+        el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "블록 편집")]),
+        el("span", { style: "font-size:11px;color:#999;font-family:ui-monospace,monospace;" }, `${list.length} blocks`)
+      ]),
+      el("div", { class: "sec-body" }, list.length ? list.map((b, i) => {
+        const def = EVOLUTION_BLOCK_TYPES[b.type];
+        return el("div", { style: "border:1px solid #e3e5ea;border-radius:6px;margin-bottom:10px;overflow:hidden;" }, [
+          el("div", { style: "display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fcfcfd;border-bottom:1px solid #eef0f3;" }, [
+            el("span", { style: "width:20px;height:20px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#0f218b;color:#fff;border-radius:3px;font-size:11px;font-weight:700;" }, String(i + 1)),
+            el("span", { style: "flex:1;font-size:13px;font-weight:700;" }, def.label),
+            el("button", { class: "btn btn-sm ghost", disabled: i === 0 ? "disabled" : null, onclick: () => { [list[i - 1], list[i]] = [list[i], list[i - 1]]; renderForm(); renderPreview(); } }, "↑"),
+            el("button", { class: "btn btn-sm ghost", disabled: i === list.length - 1 ? "disabled" : null, onclick: () => { [list[i], list[i + 1]] = [list[i + 1], list[i]]; renderForm(); renderPreview(); } }, "↓"),
+            el("button", { class: "btn btn-sm ghost", onclick: () => { list.splice(i, 1); renderForm(); renderPreview(); } }, "✕")
+          ]),
+          el("div", { style: "padding:10px;display:flex;flex-direction:column;gap:9px;" }, def.fields.map(f => {
+            if (f.t !== "items") {
+              return el("div", {}, [
+                el("div", { class: "hint", style: "margin-bottom:4px;" }, f.l),
+                evolutionFieldInput(f, b[f.k], v => { b[f.k] = v; renderPreview(); })
+              ]);
+            }
+            const items = b[f.k] || [];
+            return el("div", {}, [
+              el("div", { class: "hint", style: "margin-bottom:4px;" }, f.l),
+              el("div", { style: "display:flex;flex-direction:column;gap:8px;" }, items.map((it, idx) =>
+                el("div", { style: "border:1px dashed #d7dae1;border-radius:4px;padding:8px;background:#fff;" }, [
+                  el("div", { style: "display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;" }, [
+                    el("span", { style: "font-size:11px;font-weight:700;color:#0f218b;" }, String(idx + 1)),
+                    el("button", { class: "btn btn-sm ghost", onclick: () => { items.splice(idx, 1); renderForm(); renderPreview(); } }, "삭제")
+                  ]),
+                  el("div", { style: "display:flex;flex-direction:column;gap:6px;" }, f.sub.map(sf =>
+                    el("div", {}, [
+                      el("div", { style: "font-size:10px;color:#8a90a0;margin-bottom:3px;" }, sf.l),
+                      evolutionFieldInput(sf, it[sf.k], v => { it[sf.k] = v; renderPreview(); })
+                    ])
+                  ))
+                ])
+              )),
+              el("button", { class: "btn btn-sm ghost", style: "align-self:flex-start;", onclick: () => { items.push(f.newItem(items.length + 1)); renderForm(); renderPreview(); } }, "+ 항목 추가")
+            ]);
+          }))
+        ]);
+      }) : [el("p", { class: "hint" }, "위에서 블록을 추가해주세요.")])
+    ]);
+  }
+
   function sectionSeriesCodesLP() {
     const slots = draft.seriesCodes;
     const grid = el("div", { class: "series-grid" }, slots.map((code, i) =>
@@ -1483,6 +1617,10 @@ export function renderGeneratorLP(root, params) {
       renderEconomyLineupPreview();
       return;
     }
+    if (draft.templateId === EVOLUTION_TEMPLATE_ID) {
+      renderEvolutionPreview();
+      return;
+    }
     const html = assembleLpHtml(draft, resolveTemplate(), currentSeoMeta());
     previewFrame.innerHTML = "";
     previewFrame.appendChild(el("iframe", { srcdoc: html }));
@@ -1530,6 +1668,27 @@ export function renderGeneratorLP(root, params) {
           ? "⚠ 데이터 품질 문제 있음 — '데이터(QA)' 뷰에서 확인하세요"
           : "✅ 데이터 검증 통과 (카테고리/bid/이미지/중복 URL 이상 없음)";
       }
+    } catch (e) {
+      previewFrame.appendChild(el("p", { class: "preview-error" }, e.message));
+    }
+  }
+
+  /** Evolution 미리보기 — 실제 lp-common.css를 인라인 삽입(다운로드 산출물은
+   *  <link>만 유지 — 이벤트 LP·경제형 라인업과 같은 이유). */
+  function renderEvolutionPreview() {
+    previewFrame.innerHTML = "";
+    const isLp = draft.evolutionPage === "lp";
+    const list = isLp ? draft.evolutionBlocksLp : draft.evolutionBlocksHub;
+    if (!list.length) {
+      previewFrame.appendChild(el("p", { class: "hint", style: "padding:40px;text-align:center;" }, "블록을 추가하면 미리보기가 나타납니다."));
+      return;
+    }
+    try {
+      const html = assembleEvolutionHtml(draft);
+      const previewHtml = html.replace("</head>", `<style>${EVOLUTION_PREVIEW_CSS}</style></head>`);
+      previewFrame.appendChild(el("iframe", { srcdoc: previewHtml }));
+      const badge = root.querySelector("#genlp-guideline-badge");
+      if (badge) { badge.className = "guideline-badge badge-pass"; badge.textContent = "✅ 조립 성공 (SSI 헤더/푸터는 실제 배포 서버에서만 채워짐 — 개발팀 확인 중)"; }
     } catch (e) {
       previewFrame.appendChild(el("p", { class: "preview-error" }, e.message));
     }
@@ -1772,6 +1931,23 @@ export function renderGeneratorLP(root, params) {
       log("경제형 라인업 다운로드 완료 (index.html + economy_all.html, zip) — SSI 헤더/푸터는 별도 처리 필요");
       return;
     }
+    if (draft.templateId === EVOLUTION_TEMPLATE_ID) {
+      const isLp = draft.evolutionPage === "lp";
+      const list = isLp ? draft.evolutionBlocksLp : draft.evolutionBlocksHub;
+      if (!list.length) {
+        toast("블록을 먼저 추가해주세요");
+        return;
+      }
+      if (!confirm("이 페이지도 SSI include를 포함합니다 — S3에 그냥 올리면 헤더/푸터가 안 붙거나 업로드 자체가 막힐 수 있습니다. 웹서버(SSI 처리 가능)에 배치할 용도로만 사용하세요. 계속할까요?")) return;
+      const html = assembleEvolutionHtml(draft);
+      const blob = new Blob([html], { type: "text/html" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = (isLp ? (draft.evolutionMetaLp.slug || "evolution-lp") : "evolution-hub") + ".html";
+      a.click();
+      log("Evolution 페이지 다운로드 완료 (SSI include 포함 — 웹서버용)");
+      return;
+    }
     if (draft.templateId === EVENT_LP_TEMPLATE_ID) {
       let html;
       try {
@@ -1817,6 +1993,10 @@ export function renderGeneratorLP(root, params) {
       // ⚠️ 경제형 라인업도 실물 소스(경제형 구매혜택 이벤트 페이지) 검증 결과
       // SSI 셸에 얹히는 구조로 확인됐습니다 — 이벤트 LP와 같은 이유로 S3 배포를 막습니다.
       toast("경제형 라인업은 S3 배포를 지원하지 않습니다 — 이 페이지도 SSI 셸(헤더/사이드네비/푸터)에 얹히는 것으로 확인됐습니다. '내보내기 ▾'의 다운로드로 받아 웹서버에 직접 배치해주세요.");
+      return;
+    }
+    if (draft.templateId === EVOLUTION_TEMPLATE_ID) {
+      toast("이 템플릿도 S3 배포를 지원하지 않습니다 — SSI 셸(헤더/푸터)에 얹히는 구조입니다. '내보내기 ▾'의 다운로드로 받아 웹서버에 직접 배치해주세요.");
       return;
     }
     if (draft.templateId === EVENT_LP_TEMPLATE_ID) {
@@ -1947,7 +2127,13 @@ function buildInitialDraftLP(existing) {
     economyNews: [],
     economyLeadCards: [],
     economyLnbLinks: [],
-    economyView: "main"
+    economyView: "main",
+    // ---- 미스미는 진화중! (Evolution, 블록 조합형) ----
+    evolutionPage: "lp",
+    evolutionMetaLp: { title: "", slug: "", desc: "", keywords: "" },
+    evolutionMetaHub: { title: "미스미는 진화중!", slug: "", desc: "미스미를 더 사용하기 쉽게. 고객님의 목소리를 바탕으로 개선한 내용을 안내해 드리고 있습니다.", keywords: "미스미 진화 중, 개선, 고객의 목소리" },
+    evolutionBlocksLp: [],
+    evolutionBlocksHub: []
   };
   if (existing?.draftData) {
     return {
