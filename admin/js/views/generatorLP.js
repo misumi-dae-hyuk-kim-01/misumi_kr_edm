@@ -10,6 +10,7 @@ import { fetchSeriesInfo, fetchSeriesInfoBatch } from "../lib/seriesApi.js";
 import { deployLpToS3, deployLpFilesToS3 } from "../lib/lpDeploy.js";
 import { resizeImage } from "../lib/imageResize.js";
 import { uploadToS3 } from "../lib/s3Upload.js";
+import { generateImage } from "../lib/imageProcessApi.js";
 
 const LP_TEMPLATES = seedLpTemplates();
 // ⚠️ 신상품카탈로그는 다른 LP 템플릿과 완전히 다른 화면(캐치카피 등 타이핑 폼이 아니라
@@ -266,34 +267,79 @@ export function renderGeneratorLP(root, params) {
    *  플레이스홀더를 대신 넣습니다. */
   function sectionCatalogBanners() {
     const banners = draft.catalogBanners;
-    const rows = banners.map((b, i) => el("div", { class: "field", style: "margin-bottom:10px;border-bottom:1px solid #f0f0f0;padding-bottom:10px;" }, [
-      el("label", {}, `배너 ${i + 1}`),
-      el("input", {
-        type: "text", value: b.img, placeholder: "이미지 URL (또는 아래에서 업로드)",
-        oninput: e => { banners[i].img = e.target.value; },
-        onblur: () => rebuildCatalogHtml()
-      }),
-      el("div", { class: "image-upload-row", style: "margin-top:6px;" }, [
-        el("label", { class: "btn btn-sm upload-label" }, [
-          draft.catalogBannerUploading === i ? "업로드 중..." : "이미지 업로드",
-          el("input", {
-            type: "file", accept: "image/*", style: "display:none;", disabled: draft.catalogBannerUploading === i ? "disabled" : null,
-            onchange: e => { if (e.target.files[0]) handleCatalogBannerUpload(i, e.target.files[0]); }
-          })
+    const rows = banners.map((b, i) => {
+      const materials = b.materialUrls || [];
+      const uploading = draft.catalogBannerUploading === i;
+      return el("div", { class: "field", style: "margin-bottom:10px;border-bottom:1px solid #f0f0f0;padding-bottom:10px;" }, [
+        el("label", {}, `배너 ${i + 1}`),
+        el("input", {
+          type: "text", value: b.img, placeholder: "이미지 URL (또는 아래에서 업로드/AI 생성)",
+          oninput: e => { banners[i].img = e.target.value; },
+          onblur: () => rebuildCatalogHtml()
+        }),
+        el("div", { class: "image-upload-row", style: "margin-top:6px;" }, [
+          el("label", { class: "btn btn-sm upload-label" }, [
+            uploading ? "처리 중..." : "이미지 업로드",
+            el("input", {
+              type: "file", accept: "image/*", style: "display:none;", disabled: uploading ? "disabled" : null,
+              onchange: e => { if (e.target.files[0]) handleCatalogBannerGenerate(i, e.target.files[0]); }
+            })
+          ]),
+          b.img ? el("img", { src: b.img, alt: "", style: "width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid #e0e0e0;" }) : null
         ]),
-        b.img ? el("img", { src: b.img, alt: "", style: "width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid #e0e0e0;" }) : null
-      ]),
-      el("input", {
-        type: "text", value: b.href, placeholder: "클릭 시 이동할 링크 (선택)", style: "margin-top:6px;",
-        oninput: e => { banners[i].href = e.target.value; },
-        onblur: () => rebuildCatalogHtml()
-      }),
-      el("input", {
-        type: "text", value: b.label, placeholder: "배너 이름 (버튼에 표시)", style: "margin-top:6px;",
-        oninput: e => { banners[i].label = e.target.value; },
-        onblur: () => rebuildCatalogHtml()
-      })
-    ]));
+        // ⚠️ EDM 생성기의 generateImage() 통합 방식과 동일 — 편집인지 합성인지는
+        // 코드가 미리 안 가르고, 소재(참고 이미지)와 지시문을 그대로 AI에 넘겨서
+        // 판단하게 합니다. 지시문 없이 업로드만 하면 예전처럼 그냥 업로드만 됩니다.
+        el("div", { style: "margin-top:8px;padding:8px;background:#fafafa;border-radius:6px;" }, [
+          el("p", { class: "hint", style: "margin:0 0 6px;" }, "AI로 배너 만들기 (선택) — 소재를 올리고/또는 프롬프트만으로 요청할 수 있습니다."),
+          materials.length ? el("div", { style: "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;" }, materials.map((url, mi) =>
+            el("span", { style: "display:inline-flex;align-items:center;gap:4px;background:#eef0f8;border-radius:12px;padding:2px 8px 2px 2px;font-size:11px;" }, [
+              el("img", { src: url, style: "width:18px;height:18px;object-fit:cover;border-radius:50%;" }),
+              `소재${mi + 1}`,
+              el("span", { style: "cursor:pointer;color:#999;font-weight:700;", onclick: () => { materials.splice(mi, 1); renderForm(); } }, "×")
+            ])
+          )) : null,
+          el("label", { class: "btn btn-sm ghost", style: "margin-bottom:6px;" }, [
+            "소재 업로드 (여러 장 가능)",
+            el("input", {
+              type: "file", accept: "image/*", multiple: true, style: "display:none;",
+              onchange: async e => {
+                const files = [...e.target.files];
+                if (!files.length) return;
+                log(`배너 소재 업로드 중... (${files.length}장)`);
+                for (const file of files) {
+                  try {
+                    const url = await uploadToS3(file, file.name, "LP");
+                    materials.push(url);
+                  } catch (err) { log(`오류(${file.name}): ` + err.message); }
+                }
+                renderForm();
+              }
+            })
+          ]),
+          el("textarea", {
+            placeholder: "예: 이 제품 사진들을 참고해서, 파란 배경에 '신상품 20% 할인'이라는 문구가 들어간 배너를 만들어줘",
+            value: b.instruction || "",
+            oninput: e => { banners[i].instruction = e.target.value; },
+            style: "margin-bottom:6px;"
+          }),
+          el("button", {
+            class: "btn btn-sm", disabled: uploading ? "disabled" : null,
+            onclick: () => handleCatalogBannerGenerate(i, null)
+          }, uploading ? "생성 중..." : "AI로 생성")
+        ]),
+        el("input", {
+          type: "text", value: b.href, placeholder: "클릭 시 이동할 링크 (선택)", style: "margin-top:6px;",
+          oninput: e => { banners[i].href = e.target.value; },
+          onblur: () => rebuildCatalogHtml()
+        }),
+        el("input", {
+          type: "text", value: b.label, placeholder: "배너 이름 (버튼에 표시)", style: "margin-top:6px;",
+          oninput: e => { banners[i].label = e.target.value; },
+          onblur: () => rebuildCatalogHtml()
+        })
+      ]);
+    });
 
     return el("div", { class: "sec" }, [
       el("div", { class: "sec-hd" }, [
@@ -305,7 +351,7 @@ export function renderGeneratorLP(root, params) {
         ...rows,
         banners.length < 4 ? el("button", {
           class: "btn btn-sm ghost", style: "width:100%;",
-          onclick: () => { banners.push({ img: "", href: "", label: "" }); renderForm(); }
+          onclick: () => { banners.push({ img: "", href: "", label: "", instruction: "", materialUrls: [] }); renderForm(); }
         }, "+ 배너 추가") : null,
         // ⚠️ 예전 문구("다시 배포하면 반영됩니다")는 사실이 아니었습니다 — 배포는 이미
         // 만들어진 HTML을 그대로 올릴 뿐이라 재배포만으로는 반영되지 않았습니다.
@@ -342,19 +388,38 @@ export function renderGeneratorLP(root, params) {
   /** 배너 이미지는 그냥 정적 이미지라 AI 보정이 필요 없어서, EDM 이미지 필드처럼
    *  리사이징 + 순수 업로드만 합니다(카피/보정 요청 없음). 배너는 가로로 넓은 형태라
    *  1200px 기준으로 리사이징합니다(배너 슬라이드 폭이 520px 이상이라 여유 있게). */
-  async function handleCatalogBannerUpload(index, file) {
+  /** 배너 통합 핸들러 — file(직접 업로드)과 소재(materialUrls)/지시문 중 있는 대로
+   *  조합해서 generateImage()에 넘깁니다. 지시문이 없고 file만 있으면(예전 동작
+   *  그대로) AI 호출 없이 리사이즈+업로드만 합니다. */
+  async function handleCatalogBannerGenerate(index, file) {
+    const b = draft.catalogBanners[index];
+    const materials = b.materialUrls || [];
+    const instruction = b.instruction || "";
+    if (!file && !materials.length) {
+      toast("이미지를 업로드하거나, 소재를 하나 이상 추가해주세요");
+      return;
+    }
     draft.catalogBannerUploading = index;
     renderForm();
     try {
-      const resized = await resizeImage(file, 1200);
-      const url = await uploadToS3(resized, file.name, "LP");
+      let resultBlob;
+      if (!instruction.trim() && file) {
+        log(`배너 ${index + 1} 이미지 업로드 중... (${file.name})`);
+        resultBlob = file;
+      } else {
+        log(`배너 ${index + 1} AI 생성 중... (소재 ${materials.length}개)`);
+        resultBlob = await generateImage({ file, referenceUrls: materials, instruction, purpose: draft.seoTitle || "신상품카탈로그" });
+      }
+      const resized = await resizeImage(resultBlob, 1200);
+      const filename = file?.name || `banner_${index + 1}.png`;
+      const url = await uploadToS3(resized, filename, "LP");
       draft.catalogBanners[index].img = url;
-      registerBannerAsset(file.name, url, resized);
-      log(`배너 ${index + 1} 이미지 업로드 완료: ${file.name}`);
-      rebuildCatalogHtml(); // 업로드 직후 바로 완료된 그룹들에 반영
+      registerBannerAsset(filename, url, resized);
+      log(`배너 ${index + 1} 완료: ${filename}`);
+      rebuildCatalogHtml(); // 완료된 그룹들에 즉시 반영
     } catch (e) {
       log("오류: " + e.message);
-      toast("배너 업로드에 실패했습니다");
+      toast("배너 생성에 실패했습니다");
     } finally {
       draft.catalogBannerUploading = null;
       renderForm();
@@ -2090,7 +2155,7 @@ function buildInitialDraftLP(existing) {
     catalogImporting: false,
     catalogProgress: null,
     catalogDeployedUrls: [],
-    catalogBanners: [{ img: "", href: "", label: "" }],
+    catalogBanners: [{ img: "", href: "", label: "", instruction: "", materialUrls: [] }],
     catalogBannerUploading: null,
     catchcopy: "",
     cta: "",
