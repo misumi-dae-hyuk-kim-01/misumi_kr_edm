@@ -23,7 +23,7 @@ function heroBlock(draft) {
   return `
   <section class="lp-hero">
     <div class="lp-hero__eyebrow">MISUMI</div>
-    <h1 class="lp-hero__catchcopy">${esc(draft.catchcopy || "")}</h1>
+    <h1 class="lp-hero__catchcopy" data-field="catchcopy">${esc(draft.catchcopy || "")}</h1>
     ${heroImageSlot(draft)}
   </section>`;
 }
@@ -81,7 +81,7 @@ function bodyBlock(draft) {
   return `
   <main class="lp-body">
     ${bodyImageSlot(draft)}
-    <p>${esc(draft.bodyText || "")}</p>
+    <p data-field="bodyText" data-multiline="true">${esc(draft.bodyText || "")}</p>
   </main>`;
 }
 
@@ -170,6 +170,36 @@ const STYLE = `
 function economySideBlock(draft) {
   return `<aside class="lp-economy__side">${breadcrumbBlock(draft)}</aside>`;
 }
+
+/** ⚠️ 미리보기 전용입니다 — 다운로드/배포 산출물엔 절대 포함하면 안 됩니다.
+ *  data-field 마커가 붙은 요소(캐치카피, 본문텍스트 등 "순수 텍스트" 필드)를
+ *  iframe 안에서 직접 편집 가능하게 만들고, blur 시점에 postMessage로 부모
+ *  창(generatorLP.js)에 알려서 draft와 폼 입력창을 동기화합니다.
+ *  입력할 때마다가 아니라 blur(포커스 벗어날 때)에만 보내는 이유: 매 키입력마다
+ *  부모가 iframe을 다시 그리면 커서 위치가 튀는 문제가 생기기 때문입니다. */
+export const LP_PREVIEW_EDIT_STYLE = `
+  [data-field]{outline:1px dashed transparent;cursor:text;transition:outline-color .15s;border-radius:2px;}
+  [data-field]:hover{outline-color:rgba(15,33,139,0.35);}
+  [data-field]:focus{outline:2px solid #0f218b;outline-offset:2px;}
+`;
+export const LP_PREVIEW_EDIT_SCRIPT = `
+(function(){
+  document.querySelectorAll('[data-field]').forEach(function(el){
+    el.setAttribute('contenteditable', 'true');
+    el.addEventListener('blur', function(){
+      window.parent.postMessage({ source: 'lp-preview-edit', field: el.getAttribute('data-field'), value: el.innerText }, '*');
+    });
+    el.addEventListener('keydown', function(e){
+      // 캐치카피처럼 한 줄짜리 필드는 Enter로 줄바꿈 대신 편집 종료(blur)하게 해서
+      // 실수로 <br>이 들어가는 걸 막습니다. 여러 줄이 정상인 필드는 data-multiline로 예외 처리.
+      if (e.key === 'Enter' && el.getAttribute('data-multiline') !== 'true') {
+        e.preventDefault();
+        el.blur();
+      }
+    });
+  });
+})();
+`;
 
 export function assembleLpHtml(draft, template, seoMeta = {}) {
   const isEconomy = draft.pageType === LP_ECONOMY_LAYOUT.pageType;
@@ -448,6 +478,82 @@ export function resolveCatalogSeoMeta(group, totalCount, seoMeta = {}) {
  * @param {{img: string, href: string, label: string}[]} banners 상단 배너 (비어있으면 안내 문구로 대체)
  * @returns {string} 완성된 그룹 페이지 HTML (style.css/script.js는 별도 파일로 같이 배포해야 함)
  */
+/** 사이트 공통 헤더/푸터를 SSI가 아니라 브라우저 JS가 fetch해서 채워 넣는 방식 —
+ *  일본 사이트의 common.js와 같은 역할입니다. SSI 주석(<!--#include...) 방식은
+ *  S3 업로드 시점에 보안 스캐너가 막는 걸 실증 확인했고(2026-08-21), 이 방식은
+ *  평범한 div+script라 그 문제가 없습니다.
+ *
+ *  ⚠️⚠️ fetch 경로는 SSI가 참조하던 것과 동일한 경로를 그대로 씁니다 — 실제로 그
+ *  경로에서 순수 HTML을 내려주는지, 그리고 이 페이지가 서빙되는 도메인(S3+CloudFront)
+ *  에서 CORS로 접근 가능한지는 개발팀 확인이 필요합니다(관련 문의 진행 중). 확인되면
+ *  SLOTS의 url만 실제 경로로 바꾸면 됩니다 — 나머지 조립 로직은 안 바뀝니다.
+ *
+ *  사용법: 페이지 HTML에 <div id="lp-shell-header"></div> / <div id="lp-shell-footer"></div>
+ *  등의 자리를 두고, 이 스크립트를 <script> 태그로 삽입하면 로드 시 자동으로 채워집니다. */
+export const LP_SHELL_SCRIPT = `(function(){
+  var baseURL = location.origin; // 상대경로로 요청 — 이 페이지와 같은 도메인으로 감(CORS 회피 전제)
+  var SLOTS = [
+    { id: "lp-shell-head-css", url: baseURL + "/vcommon/common/include/import_head_css.html" },
+    { id: "lp-shell-head-js", url: baseURL + "/vcommon/common/include/import_head_js.html" },
+    { id: "lp-shell-header", url: baseURL + "/vcommon/common/include/head_navi.html" },
+    { id: "lp-shell-attention", url: baseURL + "/vcommon/common/include/attention_all.html" },
+    { id: "lp-shell-sidenav", url: baseURL + "/vcommon/common/include/side_user_menu.html" },
+    { id: "lp-shell-footer", url: baseURL + "/vcommon/common/include/foot.html" },
+    { id: "lp-shell-foot-js", url: baseURL + "/vcommon/common/include/import_foot.html" },
+    { id: "lp-shell-analyze", url: baseURL + "/vcommon/common/include/analyze.html" },
+    { id: "lp-shell-contact", url: baseURL + "/pr/common/contact/event.html" },
+    { id: "lp-shell-evolution-list", url: baseURL + "/pr/common/evolution/list.html" }
+  ];
+  // ⚠️ 슬롯이 이렇게 많은 이유: 이벤트LP·경제형라인업·Evolution·카탈로그가 원래
+  // 쓰던 SSI include 전부를 커버하는 "공용 목록"입니다. 페이지에 해당 id의
+  // <div>가 없으면 loadSlot()이 조용히 건너뛰므로(아래 참고), 템플릿마다 실제로
+  // 쓰는 자리만 HTML에 넣으면 되고 이 목록 자체는 건드릴 필요 없습니다.
+
+  function injectFragment(el, html) {
+    el.innerHTML = html;
+    // innerHTML로 넣은 <script>는 브라우저가 자동 실행 안 해줍니다 — 헤더 내부에
+    // 장바구니 개수 표시 같은 스크립트가 있다면 직접 다시 만들어서 실행해야 합니다.
+    var scripts = el.querySelectorAll("script");
+    for (var i = 0; i < scripts.length; i++) {
+      var old = scripts[i];
+      var fresh = document.createElement("script");
+      for (var j = 0; j < old.attributes.length; j++) {
+        fresh.setAttribute(old.attributes[j].name, old.attributes[j].value);
+      }
+      fresh.text = old.text;
+      old.parentNode.replaceChild(fresh, old);
+    }
+  }
+
+  function loadSlot(slot) {
+    var el = document.getElementById(slot.id);
+    if (!el) return; // 이 페이지엔 없는 슬롯이면 조용히 스킵
+    fetch(slot.url, { credentials: "same-origin" })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.text();
+      })
+      .then(function (html) { injectFragment(el, html); })
+      .catch(function (err) {
+        // 하나 실패해도 나머지 콘텐츠는 정상 노출되어야 하므로, 여기서 막지 않고
+        // 그 슬롯만 조용히 빈 채로 둡니다(Promise.all을 안 쓰는 이유 — 일본 실제
+        // 코드는 Promise.all을 써서 하나 실패하면 전부 안 붙는 약점이 있었습니다).
+        el.setAttribute("data-shell-load-failed", "true");
+        if (window.console) console.warn("[lp-shell] " + slot.id + " 로드 실패:", err);
+      });
+  }
+
+  function init() {
+    for (var i = 0; i < SLOTS.length; i++) loadSlot(SLOTS[i]);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();`;
+
 export function assembleLpCatalogGroupHtml(group, allGroups, categories, seoMeta = {}, banners = []) {
   const groupKey = group.file.replace(/\.html$/, "");
   const totalCount = categories.reduce((sum, c) => sum + c.items.length, 0);
@@ -467,6 +573,10 @@ export function assembleLpCatalogGroupHtml(group, allGroups, categories, seoMeta
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
+<!-- ⚠️ 사이트 공통 헤더 — SSI가 아니라 common.js(아래 스크립트)가 fetch해서 채웁니다.
+     아래 <header class="lp-head">는 이거랑 다른 자리입니다 — 그건 이 페이지 고유의
+     타이틀 영역(실제 사이트의 .new_info에 해당)이라 그대로 콘텐츠로 남겨둡니다. -->
+<div id="lp-shell-header"></div>
 <div class="lp" data-group="${esc(groupKey)}">
 
   <header class="lp-head">
@@ -492,6 +602,8 @@ ${sectionsHtml}
     </div>
   </div>
 </div>
+<div id="lp-shell-footer"></div>
+<script>${LP_SHELL_SCRIPT}</script>
 <script src="./script.js"></script>
 </body>
 </html>`;
@@ -1194,12 +1306,9 @@ function eventNoticeBlock(draft, skin) {
   </div>`;
 }
 
-/** ⚠️ 실제 배포본에서는 이 자리에 직접 렌더링하지 않고
- *  `<!--#include virtual="/pr/common/contact/event.html" -->` 한 줄만 넣습니다
- *  (이벤트별로 다른 연락처를 쓸 일이 없으므로 입력 필드를 두지 않음). */
-function eventContactIncludeTag() {
-  return `<!--#include virtual="/pr/common/contact/event.html" -->`;
-}
+/** ⚠️ 2026-08-31: SSI에서 common.js 방식으로 전환하면서, "문의 블록"도 이제
+ *  LP_SHELL_SCRIPT의 lp-shell-contact 슬롯이 처리합니다 — 이 함수는 더 이상
+ *  쓰이지 않습니다(assembleEventLpHtml 참고). */
 
 const EVENT_LP_STYLE = `
   /* ⚠️ 사이트 공통 CSS(import_head_css.html, SSI)에 기대지 않는 독립 기본값 —
@@ -1272,14 +1381,14 @@ ${EVENT_LP_STYLE}`;
  *  head_navi.html / foot.html 등 SSI include로 진짜 헤더·푸터가 치환되어야 하고,
  *  지금은 그 부분이 안 되어 있어 미리보기/시연용으로만 씁니다(개발팀 확인 중인 사안).
  *
- *  ⚠️⚠️ 2026-08-21 실제로 확인됨: 헤더/푸터가 안 붙는 문제보다 앞서서, 이 SSI
- *  include 구문(`<!--#include virtual="..." -->`) 자체가 S3 업로드 시점에
- *  403으로 차단됩니다(회사 S3 버킷의 보안 스캐너로 추정 — SSI 인젝션 공격의
- *  표준 시그니처라 이런 필터링이 흔함). 콘솔에서 직접 재현 테스트 완료:
- *  이 include 줄이 없는 HTML은 업로드 성공, 있으면 실패. 그래서 이 함수의
- *  결과물은 S3에 "잘못 배포되어 헤더가 안 보이는" 정도가 아니라, **애초에
- *  업로드 자체가 안 될 가능성이 높습니다** — generatorLP.js가 다운로드/S3배포
- *  버튼에 이 사실을 명시하는 이유입니다.
+ *  ⚠️⚠️ 2026-08-31 업데이트: 이전엔 SSI include를 그대로 유지하고 S3 배포를
+ *  차단했었습니다(2026-08-21 실증 확인 — SSI 구문이 S3 업로드 시점에 403으로
+ *  차단됨). 신상품카탈로그에 먼저 적용해본 "common.js 방식"(SSI 대신 브라우저 JS가
+ *  fetch로 헤더/푸터를 가져와 채우는 방식, LP_SHELL_SCRIPT 참고)으로 이 템플릿도
+ *  전환했습니다 — SSI 주석이 아예 없으니 업로드 차단 문제 자체가 없고, S3 배포도
+ *  다시 가능합니다. ⚠️ 다만 이건 여전히 "common.js가 실제로 구현된다"는 전제
+ *  하의 작업입니다 — fetch 경로(head_navi.html 등)에 대한 CORS 허용이 아직
+ *  백엔드팀 확인 전이라, 실제 배포 후에도 헤더/푸터 자리가 비어있을 수 있습니다.
  *  @param {object} draft
  *  @param {{title?:string, description?:string, keywords?:string[]}} [seoMeta] */
 export function assembleEventLpHtml(draft, seoMeta = {}) {
@@ -1293,8 +1402,7 @@ export function assembleEventLpHtml(draft, seoMeta = {}) {
     eventBenefitsBlock(draft, skin),
     eventStepsBlock(draft),
     eventCtaBlock(draft),
-    eventNoticeBlock(draft, skin),
-    eventContactIncludeTag()
+    eventNoticeBlock(draft, skin)
   ].filter(Boolean).join("\n");
 
   const title = esc((seoMeta.title || draft.title || "") + " ｜ MISUMI｜미스미 종합 Web 카탈로그");
@@ -1303,15 +1411,13 @@ export function assembleEventLpHtml(draft, seoMeta = {}) {
   return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${DEPLOYMENT_LANG}" lang="${DEPLOYMENT_LANG}">
 <head>
-<!--#config errmsg="" -->
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
 <meta name="description" content="${description}" />
 <link rel="canonical" href="https://kr.misumi-ec.com/pr/vona/${esc(draft.slug || "")}/" />
-<!--#include virtual="/vcommon/common/include/import_head_css.html" -->
-<!-- ⚠️ 폰트는 SSI와 무관하게 CDN에서 직접 로드 — 원본 프로토타입(이벤트LP-일반형_dc.html)
-     그대로. 이걸 빠뜨리면 SSI 해결 여부와 상관없이 브라우저 기본 서체로 보입니다. -->
+<!-- ⚠️ 폰트는 SSI/common.js와 무관하게 CDN에서 직접 로드 — 원본 프로토타입(이벤트LP-일반형_dc.html)
+     그대로. 이걸 빠뜨리면 헤더/푸터 로딩 여부와 상관없이 브라우저 기본 서체로 보입니다. -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
 <style>
 @font-face{font-family:"GmarketSansMedium";src:url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff") format("woff");font-weight:normal;font-style:normal}
@@ -1329,13 +1435,12 @@ if (navigator.platform) {
 </script>
 </head>
 <body class="page2 ${skinClass}">
-	<!--#include virtual="/vcommon/common/include/import_head_js.html" -->
+	<div id="lp-shell-head-css"></div>
+	<div id="lp-shell-head-js"></div>
 	<div class="l-wrapper">
-		<!--#include virtual="/vcommon/common/include/head_navi.html" -->
+		<div id="lp-shell-header"></div>
 		<div class="l-main">
-			<div data-user="attention">
-				<!--#include virtual="/vcommon/common/include/attention_all.html" -->
-			</div>
+			<div id="lp-shell-attention" data-user="attention"></div>
 			<ul class="l-breadcrumb">
 				<li><a href="/">MISUMI HOME</a>&gt;</li>
 				<li><strong>${esc(draft.breadcrumbLabel || draft.title || "")}</strong></li>
@@ -1343,17 +1448,19 @@ if (navigator.platform) {
 			<div class="l-contentWrap">
 				<div class="l-content" style="max-width:${wrapperWidth}px;margin:0 auto;">
 					${bodyHtml}
+					<div id="lp-shell-contact"></div>
 				</div>
 				<div class="l-nav">
-					<!--#include virtual="/vcommon/common/include/side_user_menu.html" -->
+					<div id="lp-shell-sidenav"></div>
 					<div class="r-wingRight"><ul class="r-banner"></ul></div>
 				</div>
 			</div>
 		</div>
-		<!--#include virtual="/vcommon/common/include/foot.html" -->
+		<div id="lp-shell-footer"></div>
 	</div>
-	<!--#include virtual="/vcommon/common/include/import_foot.html" -->
-	<!--#include virtual="/vcommon/common/include/analyze.html" -->
+	<div id="lp-shell-foot-js"></div>
+	<div id="lp-shell-analyze"></div>
+	<script>${LP_SHELL_SCRIPT}</script>
 </body>
 </html>`;
 }
@@ -1596,19 +1703,30 @@ export function economySampleData() {
 /** 경제형 전체상품 라인업 페이지 조립. view는 "main"(PC메인) | "all"(전체라인업) |
  *  "mobile"(SP, placeholder) | "data"(QA검증) 중 하나 — 실제로는 뷰별로 각각
  *  별도 파일(index.html/economy_all.html/모바일용)로 배포하게 됩니다.
- *  ⚠️ 신상품카탈로그와 마찬가지로 이 페이지도 실제 사이트에서는 SSI 셸에
- *  얹히는 걸로 확인된 바 있어(경제형 실물 소스 검증 완료), 헤더/푸터는
- *  여기서 안 만듭니다 — 개발팀 확인 후 처리 방식이 정해질 부분입니다. */
-export function assembleEconomyLineupHtml(data, view = "main") {
+ *  ⚠️ 2026-08-31 업데이트: SSI include 대신 "common.js 방식"(브라우저 JS가
+ *  fetch로 헤더/푸터를 가져와 채우는 방식, LP_SHELL_SCRIPT 참고)으로 전환했습니다
+ *  — 신상품카탈로그에 먼저 적용해본 것과 동일한 패턴입니다. SSI가 없으니 S3
+ *  업로드 차단 문제가 없고, 배포도 다시 가능합니다. ⚠️ 다만 "common.js가 실제로
+ *  구현된다"는 전제 하의 작업이라, fetch 경로 CORS 확인 전까지는 실제 배포 후에도
+ *  헤더/푸터 자리가 비어있을 수 있습니다.
+ *  @param {object} data
+ *  @param {string} [view]
+ *  @param {{title?:string, description?:string, keywords?:string[]}} [seoMeta] */
+export function assembleEconomyLineupHtml(data, view = "main", seoMeta = {}) {
   const bodyHtml = view === "all" ? economyAllView(data)
     : view === "mobile" ? economyMobileView(data)
     : view === "data" ? economyDataView(data)
     : economyMainView(data);
 
-  return `<div class="tmpl-wrap">
+  const crumbLabel = view === "main" ? "경제형 전상품 분류" : "경제형 전체 라인업";
+  const title = esc((seoMeta.title || "경제형 전체상품") + " ｜ MISUMI｜미스미 종합 Web 카탈로그");
+  const description = esc(seoMeta.description || "");
+  const keywords = esc((seoMeta.keywords || []).join(", "));
+
+  const content = `<div class="tmpl-wrap">
     <ul class="l-breadcrumb" style="list-style:none;margin:0 0 12px;padding:0;display:flex;gap:6px;font-size:11px;color:#666;">
       <li>MISUMI HOME &gt;</li>
-      <li><strong>${view === "main" ? "경제형 전상품 분류" : "경제형 전체 라인업"}</strong></li>
+      <li><strong>${crumbLabel}</strong></li>
     </ul>
     <div class="container">
       <div class="nav">
@@ -1630,6 +1748,44 @@ export function assembleEconomyLineupHtml(data, view = "main") {
       </div>
     </div>
   </div>`;
+
+  return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${DEPLOYMENT_LANG}" lang="${DEPLOYMENT_LANG}">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${title}</title>
+<meta name="description" content="${description}" />
+<meta name="keywords" content="${keywords}" />
+<link rel="icon" href="/favicon.ico" type="image/x-icon" />
+<link rel="canonical" href="${esc(data.meta.canonical)}${view === "all" ? "economy_all" : ""}" />
+<link href="/pr/common/economy/css/style.css" rel="stylesheet" type="text/css" media="all" />
+<link href="/pr/common/economy/css/all_20250910.css" rel="stylesheet" type="text/css" media="all" />
+<link href="/pr/common/economy/css/left_nav.css" rel="stylesheet" type="text/css" media="all" />
+<link href="/pr/common/economy/css/event.css" rel="stylesheet" type="text/css" media="all" />
+</head>
+<body class="page2">
+	<div id="lp-shell-head-css"></div>
+	<div id="lp-shell-head-js"></div>
+	<div class="l-wrapper">
+		<div id="lp-shell-header"></div>
+		<div class="l-main">
+			<div id="lp-shell-attention" data-user="attention"></div>
+			<div class="l-contentWrap">
+				<div class="l-content">
+${content}
+				</div><!-- /.l-content -->
+			</div><!-- /.l-contentWrap -->
+		</div><!-- /.l-main -->
+		<div id="lp-shell-footer"></div>
+	</div><!-- /.l-wrapper -->
+	<div id="lp-shell-foot-js"></div>
+	<div id="lp-shell-analyze"></div>
+	<script>${LP_SHELL_SCRIPT}</script>
+</body>
+</html>
+`;
 }
 
 
@@ -3589,15 +3745,19 @@ function evolutionBlockHtml(b, indent) {
         b.items.map(it => `${t}\t\t<li>${n}${t}\t\t\t<div class="hd">${n}${t}\t\t\t\t<div class="ic"><img src="./images/${it.icon}" alt="" /></div>${n}${t}\t\t\t\t<div class="txt"><b>${it.title}</b><span>${it.sub}</span></div>${n}${t}\t\t\t</div>${n}` +
           evolutionParseLinks(it.links).map(l => `${t}\t\t\t<a href="${esc(l.url)}" class="link">${esc(l.text)}</a>`).join(n) + n +
           `${t}\t\t</li>`).join(n) + n +
-        `${t}\t</ul>${n}${t}\t<!--#include virtual="/pr/common/evolution/list.html" -->${n}${t}</div>`;
+        `${t}\t</ul>${n}${t}\t<div id="lp-shell-evolution-list"></div>${n}${t}</div>`;
     default: return "";
   }
 }
 
 /** "미스미는 진화중!" 페이지 전체 조립. draft.evolutionPage가 "lp"면 개별 기능
  *  안내 페이지, "hub"면 허브(목록) 페이지를 만듭니다.
- *  ⚠️ SSI include를 그대로 유지합니다 — 이벤트 LP·경제형 라인업과 같은 이유로
- *  S3 업로드/배포는 막고 다운로드만 지원해야 합니다(generatorLP.js에서 처리). */
+ *  ⚠️ 2026-08-31 업데이트: SSI include 대신 "common.js 방식"(브라우저 JS가
+ *  fetch로 헤더/푸터를 가져와 채우는 방식, LP_SHELL_SCRIPT 참고)으로 전환했습니다
+ *  — 신상품카탈로그·이벤트LP·경제형 라인업과 동일한 패턴입니다. SSI가 없으니 S3
+ *  업로드 차단 문제가 없고, 배포도 다시 가능합니다. ⚠️ 다만 "common.js가 실제로
+ *  구현된다"는 전제 하의 작업이라, fetch 경로 CORS 확인 전까지는 실제 배포 후에도
+ *  헤더/푸터 자리가 비어있을 수 있습니다. */
 export function assembleEvolutionHtml(draft) {
   const isLp = draft.evolutionPage === "lp";
   const m = isLp ? draft.evolutionMetaLp : draft.evolutionMetaHub;
@@ -3613,23 +3773,20 @@ export function assembleEvolutionHtml(draft) {
     ? `\t\t\t\t<li><a href="/">MISUMI HOME</a>&gt;</li>${n}\t\t\t\t<li><a href="/pr/misumi_evolution/">미스미는 진화중 !</a>&gt;</li>${n}\t\t\t\t<li><strong>${m.title}</strong></li>`
     : `\t\t\t\t<li><a href="/">MISUMI HOME</a>&gt;</li>${n}\t\t\t\t<li><strong>${m.title}</strong></li>`;
   const body = isLp
-    ? `\t\t\t\t\t<div class="mainwrap">${n}${inner}${n}\t\t\t\t\t\t<!--#include virtual="/pr/common/evolution/list.html" -->${n}\t\t\t\t\t</div>`
+    ? `\t\t\t\t\t<div class="mainwrap">${n}${inner}${n}\t\t\t\t\t\t<div id="lp-shell-evolution-list"></div>${n}\t\t\t\t\t</div>`
     : inner;
 
   return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${DEPLOYMENT_LANG}" lang="${DEPLOYMENT_LANG}">
 <head>
-<!--#config errmsg="" -->
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${esc(m.title)} | MISUMI｜미스미 종합 Web 카탈로그</title>
 <meta name="description" content="${esc(m.desc)}" />
-<meta name="keywords" content="${esc(m.keywords)}" />
+<meta name="keywords" content="${esc((m.keywords || []).join(", "))}" />
 <link rel="icon" href="/favicon.ico" type="image/x-icon" />
 <link rel="canonical" href="${canonical}" />
-<!--#include virtual="/vcommon/common/include/import_head_css.html" -->
-<!-- /import_head_css -->
 <!--▼공통 LP 스타일 (전 LP 공용 · 수정 금지)▼-->
 <link href="/pr/common/evolution/css/lp-common.css" rel="stylesheet" type="text/css" media="all" />
 <!--▼이 LP 전용 추가분만 아래 파일에 작성▼-->
@@ -3637,13 +3794,12 @@ export function assembleEvolutionHtml(draft) {
 </head>
 
 <body class="page2">
-	<!--#include virtual="/vcommon/common/include/import_head_js.html" -->
+	<div id="lp-shell-head-css"></div>
+	<div id="lp-shell-head-js"></div>
 	<div class="l-wrapper">
-		<!--#include virtual="/vcommon/common/include/head_navi.html" -->
+		<div id="lp-shell-header"></div>
 		<div class="l-main">
-			<div data-user="attention">
-				<!--#include virtual="/vcommon/common/include/attention_all.html" -->
-			</div>
+			<div id="lp-shell-attention" data-user="attention"></div>
 			<ul class="l-breadcrumb">
 ${crumb}
 			</ul>
@@ -3654,14 +3810,15 @@ ${body}
 					<!--▲콘텐츠영역 여기까지▲-->
 				</div><!-- /.l-content -->
 				<div class="l-nav">
-					<!--#include virtual="/vcommon/common/include/side_user_menu.html" -->
+					<div id="lp-shell-sidenav"></div>
 				</div><!-- /.l-nav -->
 			</div><!-- /.l-contentWrap -->
 		</div><!-- /.l-main -->
-		<!--#include virtual="/vcommon/common/include/foot.html" -->
+		<div id="lp-shell-footer"></div>
 	</div><!-- /.l-wrapper -->
-	<!--#include virtual="/vcommon/common/include/import_foot.html" -->
-	<!--#include virtual="/vcommon/common/include/analyze.html" -->
+	<div id="lp-shell-foot-js"></div>
+	<div id="lp-shell-analyze"></div>
+	<script>${LP_SHELL_SCRIPT}</script>
 </body>
 </html>
 `;

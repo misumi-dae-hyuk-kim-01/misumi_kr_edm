@@ -2,7 +2,7 @@ import { store } from "../state.js";
 import { el, toast, esc } from "../lib/dom.js";
 import { generateCopyLP } from "../lib/copyGeneratorLP.js";
 import { generateSeoMeta } from "../lib/seoMetaGenerator.js";
-import { assembleLpHtml, assembleLpCatalogGroupHtml, resolveCatalogGroups, resolveCatalogSeoMeta, CATALOG_STYLE, CATALOG_SCRIPT, assembleEventLpHtml, buildEventLpCss, detectBenefitType, benefitLayoutRule, enforceSingleEmphasis, NOTICE_COMMON_MASTER, EVENT_LP_TEMPLATE_ID, assembleEconomyLineupHtml, economyBid, economyLineupIssues, economySampleData, ECONOMY_LINEUP_TEMPLATE_ID, ECONOMY_LINEUP_PREVIEW_CSS, assembleEvolutionHtml, evolutionBlockDefaults, EVOLUTION_BLOCK_TYPES, EVOLUTION_PREVIEW_CSS, EVOLUTION_TEMPLATE_ID } from "../lib/blocksLP.js";
+import { assembleLpHtml, assembleLpCatalogGroupHtml, resolveCatalogGroups, resolveCatalogSeoMeta, CATALOG_STYLE, CATALOG_SCRIPT, assembleEventLpHtml, buildEventLpCss, detectBenefitType, benefitLayoutRule, enforceSingleEmphasis, NOTICE_COMMON_MASTER, EVENT_LP_TEMPLATE_ID, assembleEconomyLineupHtml, economyBid, economyLineupIssues, economySampleData, ECONOMY_LINEUP_TEMPLATE_ID, ECONOMY_LINEUP_PREVIEW_CSS, assembleEvolutionHtml, evolutionBlockDefaults, EVOLUTION_BLOCK_TYPES, EVOLUTION_PREVIEW_CSS, EVOLUTION_TEMPLATE_ID, LP_PREVIEW_EDIT_STYLE, LP_PREVIEW_EDIT_SCRIPT } from "../lib/blocksLP.js";
 import { seedLpTemplates } from "../data/lpTemplates.js";
 import { checkGuidelinesLP, summarizeGuidelineIssuesLP, LP_WIDTH_PATTERNS, LP_ECONOMY_LAYOUT, DEPLOYMENT_COUNTRY } from "../lib/guidelineCheckLP.js";
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
@@ -77,6 +77,19 @@ export function renderGeneratorLP(root, params) {
   const previewFrame = root.querySelector("#genlp-preview-frame-wrap");
   let latestGuidelineIssues = [];
   let logHistory = [];
+
+  // ⚠️ 미리보기 iframe 안에서 data-field 요소를 편집하고 blur하면 이 리스너로
+  // 값이 전달됩니다. renderPreview() 안에 두면 호출될 때마다 리스너가 중복
+  // 등록되므로, 반드시 여기(초기화 시점)에서 딱 한 번만 등록해야 합니다.
+  window.addEventListener("message", e => {
+    if (e.data?.source !== "lp-preview-edit") return;
+    const { field, value } = e.data;
+    if (!(field in draft)) return;
+    draft[field] = value;
+    const formInput = formBody.querySelector(`[data-form-field="${field}"]`);
+    if (formInput) formInput.value = value;
+    log(`미리보기에서 "${field}" 수정됨`);
+  });
 
   renderForm();
   renderPreview();
@@ -165,6 +178,7 @@ export function renderGeneratorLP(root, params) {
       formBody.appendChild(sectionEventLpSteps());
       formBody.appendChild(sectionEventLpCta());
       formBody.appendChild(sectionEventLpNotice());
+      formBody.appendChild(sectionSeoMeta());
       return;
     }
     if (isEconomyLineup) {
@@ -176,6 +190,7 @@ export function renderGeneratorLP(root, params) {
       formBody.appendChild(sectionEconomyBasic());
       formBody.appendChild(sectionEconomyUpload());
       formBody.appendChild(sectionEconomyView());
+      formBody.appendChild(sectionSeoMeta());
       return;
     }
     if (isEvolution) {
@@ -183,6 +198,7 @@ export function renderGeneratorLP(root, params) {
       // 담당자가 블록을 골라 추가/삭제/순서변경합니다. 기본정보 → 페이지 종류(LP/허브)
       // 전환 → 블록 팔레트+편집 순서.
       formBody.appendChild(sectionEvolutionBasic());
+      formBody.appendChild(sectionEvolutionSeoMeta());
       formBody.appendChild(sectionEvolutionPalette());
       formBody.appendChild(sectionEvolutionBlocks());
       return;
@@ -882,14 +898,14 @@ export function renderGeneratorLP(root, params) {
           el("option", { value: EVOLUTION_TEMPLATE_ID, ...(isEvolution ? { selected: "selected" } : {}) }, "미스미는 진화중! (기능 개선 안내)")
         ]),
         current ? el("p", { class: "hint" }, "블록: " + current.blocks.join(" → ")) : null,
-        isEventLp ? el("p", { class: "hint hint-danger" },
-          "🚫 실제로 확인됨: 이 페이지의 SSI include 구문(<!--#include virtual=...-->) 때문에 S3에 업로드 자체가 차단됩니다(보안 스캐너로 추정, 2026.08.21 콘솔에서 직접 재현 확인). 헤더/푸터가 안 붙는 문제 이전에, 업로드 시도 자체가 403으로 막힙니다. 개발팀이 웹서버 배치 방식을 확정하기 전까지 다운로드만 사용하세요."
+        isEventLp ? el("p", { class: "hint hint-warn" },
+          "⚠ 사이트 공통 헤더/푸터는 SSI가 아니라 common.js 방식(브라우저가 fetch로 가져와 채움)으로 채워집니다 — common.js가 실제로 구현되고, fetch 경로에 CORS가 허용되어야 정상 동작합니다(개발팀 확인 중). 그 전까지는 미리보기·다운로드에서 헤더/푸터 자리가 비어있을 수 있습니다."
         ) : null,
         isEconomyLineup ? el("p", { class: "hint hint-warn" },
-          "⚠ 신상품카탈로그와 마찬가지로 상시 운영(계속 갱신)되는 페이지입니다. 다른 점은 구조 — 카탈로그는 그룹별 개별 페이지인 반면, 이건 PC메인/전체라인업/모바일/데이터(QA) 4개 뷰가 하나의 사이트를 이룹니다. 모바일은 SP 전용 CSS 미확보로 자리만 잡아둔 상태입니다. 이 페이지도 실제로는 SSI 셸에 얹히는 걸로 확인된 바 있어(경제형 실물 소스 검증 완료), 헤더/푸터 배포 방식은 이벤트 LP와 같은 사안입니다."
+          "⚠ 신상품카탈로그와 마찬가지로 상시 운영(계속 갱신)되는 페이지입니다. 다른 점은 구조 — 카탈로그는 그룹별 개별 페이지인 반면, 이건 PC메인/전체라인업/모바일/데이터(QA) 4개 뷰가 하나의 사이트를 이룹니다. 모바일은 SP 전용 CSS 미확보로 자리만 잡아둔 상태입니다. 사이트 공통 헤더/푸터는 common.js 방식으로 채워지며(개발팀 확인 중), 확정 전까지는 자리가 비어있을 수 있습니다."
         ) : null,
         isEvolution ? el("p", { class: "hint hint-warn" },
-          "⚠ 이 템플릿도 SSI 셸(헤더/푸터)에 얹히는 구조입니다 — 이벤트 LP·경제형 라인업과 같은 이유로 S3 배포는 막혀있고 다운로드만 지원합니다. 블록을 자유롭게 추가·삭제·순서변경할 수 있는 조합형 템플릿입니다."
+          "⚠ 사이트 공통 헤더/푸터는 common.js 방식으로 채워집니다(개발팀 확인 중) — 확정 전까지는 자리가 비어있을 수 있습니다. 블록을 자유롭게 추가·삭제·순서변경할 수 있는 조합형 템플릿입니다."
         ) : null
       ])
     ]);
@@ -1249,17 +1265,45 @@ export function renderGeneratorLP(root, params) {
           el("label", {}, ["제목 (title / 브레드크럼) ", el("span", { class: "req-tag" }, "· 필수")]),
           el("input", { type: "text", value: m.title || "", oninput: e => { m.title = e.target.value; renderPreview(); } })
         ]),
-        isLp ? el("div", { class: "field", style: "margin-bottom:10px;" }, [
+        isLp ? el("div", { class: "field" }, [
           el("label", {}, ["폴더명 (pr/new_feature/____/) ", el("span", { class: "req-tag" }, "· 필수")]),
           el("input", { type: "text", value: m.slug || "", placeholder: "예: stock_list", oninput: e => { m.slug = e.target.value; renderPreview(); } })
-        ]) : null,
+        ]) : null
+      ])
+    ]);
+  }
+
+  /** Evolution용 SEO 메타 — sectionSeoMeta()와 똑같은 형태(글자수 표시, AI 자동생성
+   *  버튼)이지만, 공용 draft.seoTitle이 아니라 evolutionMetaLp/Hub별로 따로 저장합니다.
+   *  LP/허브가 서로 다른 title/description이 필요하기 때문입니다(공용 필드 하나면
+   *  페이지 전환 시 값이 섞이거나 덮어써짐). */
+  function sectionEvolutionSeoMeta() {
+    const isLp = draft.evolutionPage === "lp";
+    const m = isLp ? draft.evolutionMetaLp : draft.evolutionMetaHub;
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "SEO 메타")])]),
+      el("div", { class: "sec-body" }, [
+        el("button", {
+          class: "ai-btn", style: "margin-bottom:10px;",
+          onclick: async () => {
+            log("SEO 메타 생성 요청 중...");
+            const result = await generateSeoMeta({ contentName: m.title || "미스미는 진화중", parentCategory: "" });
+            m.desc = result.description;
+            m.keywords = result.keywords;
+            log("SEO 메타 생성 완료");
+            renderForm(); renderPreview();
+          }
+        }, "✨ AI 자동생성"),
         el("div", { class: "field", style: "margin-bottom:10px;" }, [
-          el("label", {}, "description"),
+          el("label", {}, `디스크립션 (${(m.desc || "").length}/100자)`),
           el("textarea", { oninput: e => { m.desc = e.target.value; renderPreview(); } }, m.desc || "")
         ]),
         el("div", { class: "field" }, [
-          el("label", {}, "keywords"),
-          el("input", { type: "text", value: m.keywords || "", oninput: e => { m.keywords = e.target.value; } })
+          el("label", {}, "키워드"),
+          el("input", {
+            type: "text", value: (m.keywords || []).join(", "), placeholder: "쉼표로 구분",
+            oninput: e => { m.keywords = e.target.value.split(",").map(s => s.trim()).filter(Boolean); renderPreview(); }
+          })
         ])
       ])
     ]);
@@ -1508,6 +1552,7 @@ export function renderGeneratorLP(root, params) {
       el("div", { class: "sec-body" }, [
         el("div", { class: "field" }, [
           el("textarea", {
+            "data-form-field": "catchcopy",
             oninput: e => { draft.catchcopy = e.target.value; renderPreview(); }
           }, draft.catchcopy || "")
         ])
@@ -1595,6 +1640,7 @@ export function renderGeneratorLP(root, params) {
     return el("div", { class: "field" }, [
       el("label", {}, "본문"),
       el("textarea", {
+        "data-form-field": "bodyText",
         oninput: e => { draft.bodyText = e.target.value; renderPreview(); }
       }, draft.bodyText || "")
     ]);
@@ -1688,7 +1734,12 @@ export function renderGeneratorLP(root, params) {
     }
     const html = assembleLpHtml(draft, resolveTemplate(), currentSeoMeta());
     previewFrame.innerHTML = "";
-    previewFrame.appendChild(el("iframe", { srcdoc: html }));
+    // ⚠️ 편집 브릿지는 미리보기 전용입니다 — checkGuidelinesLP는 원본 html(주입 전)로
+    // 계속 돌려야, "미리보기에서만 붙는 편집용 스타일"이 실제 가이드라인 검사 결과를
+    // 오염시키지 않습니다.
+    const previewHtml = html.replace("</head>", `<style>${LP_PREVIEW_EDIT_STYLE}</style></head>`)
+      .replace("</body>", `<script>${LP_PREVIEW_EDIT_SCRIPT}</script></body>`);
+    previewFrame.appendChild(el("iframe", { srcdoc: previewHtml }));
 
     latestGuidelineIssues = checkGuidelinesLP(html, {
       ...currentSeoMeta(),
@@ -1713,12 +1764,17 @@ export function renderGeneratorLP(root, params) {
         leadCards: draft.economyLeadCards,
         lnbLinks: draft.economyLnbLinks
       };
-      const bodyHtml = assembleEconomyLineupHtml(data, draft.economyView);
+      const fullHtml = assembleEconomyLineupHtml(data, draft.economyView, currentSeoMeta());
       const sampleBanner = usingSample
         ? `<div style="position:sticky;top:0;z-index:999;background:#fff3cd;color:#7a5c00;padding:8px 16px;font-size:12px;text-align:center;">샘플 데이터 미리보기입니다 — 실제 상품 데이터를 엑셀로 업로드하면 이 자리가 실제 내용으로 바뀝니다</div>`
         : "";
-      const previewHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${ECONOMY_LINEUP_PREVIEW_CSS}</style></head><body>${sampleBanner}${bodyHtml}</body></html>`;
-      previewFrame.appendChild(el("iframe", { srcdoc: previewHtml }));
+      // ⚠️ assembleEconomyLineupHtml()이 이제 완성된 문서(전체 <html>)를 반환하므로,
+      // 예전처럼 별도 <html>로 다시 감싸면 안 됩니다 — 이벤트 LP와 같은 방식으로
+      // 기존 </head>에 미리보기 전용 CSS만 끼워 넣습니다(다운로드 산출물은 <link>만 유지).
+      const previewHtml = fullHtml
+        .replace("</head>", `<style>${ECONOMY_LINEUP_PREVIEW_CSS}</style></head>`)
+        .replace("<body class=\"page2\">", `<body class="page2">${sampleBanner}`);
+    appendAutoHeightIframe(previewFrame, previewHtml); // 카탈로그와 동일하게 콘텐츠 높이만큼 자동으로 늘어남
 
       const badge = root.querySelector("#genlp-guideline-badge");
       if (usingSample) {
@@ -1751,9 +1807,9 @@ export function renderGeneratorLP(root, params) {
     try {
       const html = assembleEvolutionHtml(draft);
       const previewHtml = html.replace("</head>", `<style>${EVOLUTION_PREVIEW_CSS}</style></head>`);
-      previewFrame.appendChild(el("iframe", { srcdoc: previewHtml }));
+    appendAutoHeightIframe(previewFrame, previewHtml); // 카탈로그와 동일하게 콘텐츠 높이만큼 자동으로 늘어남
       const badge = root.querySelector("#genlp-guideline-badge");
-      if (badge) { badge.className = "guideline-badge badge-pass"; badge.textContent = "✅ 조립 성공 (SSI 헤더/푸터는 실제 배포 서버에서만 채워짐 — 개발팀 확인 중)"; }
+      if (badge) { badge.className = "guideline-badge badge-pass"; badge.textContent = "✅ 조립 성공 (사이트 공통 헤더/푸터는 common.js가 채움 — 개발팀 확인 중)"; }
     } catch (e) {
       previewFrame.appendChild(el("p", { class: "preview-error" }, e.message));
     }
@@ -1773,12 +1829,12 @@ export function renderGeneratorLP(root, params) {
       // 눈으로 확인 가능하게 합니다.
       const previewCss = buildEventLpCss(draft.eventSkin);
       const previewHtml = html.replace("</head>", `<style>${previewCss}</style></head>`);
-      previewFrame.appendChild(el("iframe", { srcdoc: previewHtml }));
+    appendAutoHeightIframe(previewFrame, previewHtml); // 카탈로그와 동일하게 콘텐츠 높이만큼 자동으로 늘어남
       latestGuidelineIssues = [];
       const badge = root.querySelector("#genlp-guideline-badge");
       if (badge) {
         badge.className = "guideline-badge badge-pass";
-        badge.textContent = "✅ 조립 성공 (SSI 헤더/푸터는 실제 배포 서버에서만 채워짐 — 개발팀 확인 중)";
+        badge.textContent = "✅ 조립 성공 (사이트 공통 헤더/푸터는 common.js가 채움 — 개발팀 확인 중)";
       }
     } catch (e) {
       previewFrame.appendChild(el("p", { class: "preview-error" }, e.message));
@@ -1985,15 +2041,15 @@ export function renderGeneratorLP(root, params) {
       // ⚠️ "데이터"/"모바일" 뷰는 QA·placeholder 용도라 배포 대상이 아니고,
       // 실제 사이트에 나가는 건 "PC메인"(index.html)과 "전체라인업"(economy_all.html) 뿐입니다.
       const files = [
-        { name: "index.html", content: assembleEconomyLineupHtml(data, "main") },
-        { name: "economy_all.html", content: assembleEconomyLineupHtml(data, "all") }
+        { name: "index.html", content: assembleEconomyLineupHtml(data, "main", currentSeoMeta()) },
+        { name: "economy_all.html", content: assembleEconomyLineupHtml(data, "all", currentSeoMeta()) }
       ];
       const blob = buildZip(files);
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = "economy-lineup.zip";
       a.click();
-      log("경제형 라인업 다운로드 완료 (index.html + economy_all.html, zip) — SSI 헤더/푸터는 별도 처리 필요");
+      log("경제형 라인업 다운로드 완료 (index.html + economy_all.html, zip) — 사이트 공통 헤더/푸터는 common.js가 채움(개발팀 확인 중)");
       return;
     }
     if (draft.templateId === EVOLUTION_TEMPLATE_ID) {
@@ -2003,14 +2059,13 @@ export function renderGeneratorLP(root, params) {
         toast("블록을 먼저 추가해주세요");
         return;
       }
-      if (!confirm("이 페이지도 SSI include를 포함합니다 — S3에 그냥 올리면 헤더/푸터가 안 붙거나 업로드 자체가 막힐 수 있습니다. 웹서버(SSI 처리 가능)에 배치할 용도로만 사용하세요. 계속할까요?")) return;
       const html = assembleEvolutionHtml(draft);
       const blob = new Blob([html], { type: "text/html" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = (isLp ? (draft.evolutionMetaLp.slug || "evolution-lp") : "evolution-hub") + ".html";
       a.click();
-      log("Evolution 페이지 다운로드 완료 (SSI include 포함 — 웹서버용)");
+      log("Evolution 페이지 다운로드 완료 — 사이트 공통 헤더/푸터는 common.js가 fetch로 채웁니다(개발팀 확인 중, 확정 전까지는 자리가 비어있을 수 있음)");
       return;
     }
     if (draft.templateId === EVENT_LP_TEMPLATE_ID) {
@@ -2021,7 +2076,6 @@ export function renderGeneratorLP(root, params) {
         toast(e.message);
         return;
       }
-      if (!confirm("⚠ 실제로 확인된 문제: 이 HTML의 SSI include 구문 때문에 S3에 그냥 업로드하면 (보안 스캐너로 추정) 업로드 자체가 403으로 차단됩니다 — 헤더/푸터가 안 붙는 것과는 별개로, 업로드 시도 자체가 막힙니다. 반드시 웹서버(SSI 처리 가능)에 배치하세요. 계속할까요?")) return;
       const css = buildEventLpCss(draft.eventSkin);
       // ⚠️ README "Target output" 규정: index.html은 css/style_<날짜>.css를 <link>로
       // 참조만 하고, 실제 CSS 규칙은 별도 파일이어야 합니다. 그래서 html 하나만
@@ -2036,7 +2090,7 @@ export function renderGeneratorLP(root, params) {
       a.href = URL.createObjectURL(blob);
       a.download = (draft.slug || "event-lp") + ".zip";
       a.click();
-      log("이벤트 LP 다운로드 완료 (index.html + style.css, zip) — SSI include 포함, 웹서버용");
+      log("이벤트 LP 다운로드 완료 (index.html + style.css, zip) — 사이트 공통 헤더/푸터는 common.js가 채움(개발팀 확인 중)");
       return;
     }
     const html = assembleLpHtml(draft, resolveTemplate(), currentSeoMeta());
@@ -2055,21 +2109,75 @@ export function renderGeneratorLP(root, params) {
       return;
     }
     if (draft.templateId === ECONOMY_LINEUP_TEMPLATE_ID) {
-      // ⚠️ 경제형 라인업도 실물 소스(경제형 구매혜택 이벤트 페이지) 검증 결과
-      // SSI 셸에 얹히는 구조로 확인됐습니다 — 이벤트 LP와 같은 이유로 S3 배포를 막습니다.
-      toast("경제형 라인업은 S3 배포를 지원하지 않습니다 — 이 페이지도 SSI 셸(헤더/사이드네비/푸터)에 얹히는 것으로 확인됐습니다. '내보내기 ▾'의 다운로드로 받아 웹서버에 직접 배치해주세요.");
+      if (!draft.economyProducts.length) {
+        toast("상품 데이터를 먼저 업로드해주세요");
+        return;
+      }
+      const issues = economyLineupIssues(draft.economyProducts);
+      if (issues.some(i => i.count > 0) && !confirm("데이터 품질 문제가 있습니다. 그래도 배포할까요?")) return;
+      const data = {
+        meta: draft.economyMeta, products: draft.economyProducts, categories: draft.economyCategories,
+        news: draft.economyNews, leadCards: draft.economyLeadCards, lnbLinks: draft.economyLnbLinks
+      };
+      const files = [
+        { name: "index.html", content: assembleEconomyLineupHtml(data, "main", currentSeoMeta()), contentType: "text/html" },
+        { name: "economy_all.html", content: assembleEconomyLineupHtml(data, "all", currentSeoMeta()), contentType: "text/html" }
+      ];
+      log("배포 중...");
+      try {
+        const results = await deployLpFilesToS3(files, draft.id, (done, total, name) => log(`배포 중... (${done}/${total}) ${name}`));
+        const failed = results.filter(r => r.error);
+        log(`배포 완료 — 성공 ${results.length - failed.length}건${failed.length ? ` · 실패 ${failed.length}건` : ""} — 사이트 공통 헤더/푸터는 common.js가 채움(개발팀 확인 중)`);
+        toast(failed.length ? "일부 파일 배포에 실패했습니다" : "배포가 완료됐습니다");
+      } catch (e) {
+        log("배포 실패: " + e.message);
+        toast("배포에 실패했습니다");
+      }
       return;
     }
     if (draft.templateId === EVOLUTION_TEMPLATE_ID) {
-      toast("이 템플릿도 S3 배포를 지원하지 않습니다 — SSI 셸(헤더/푸터)에 얹히는 구조입니다. '내보내기 ▾'의 다운로드로 받아 웹서버에 직접 배치해주세요.");
+      const isLp = draft.evolutionPage === "lp";
+      const list = isLp ? draft.evolutionBlocksLp : draft.evolutionBlocksHub;
+      if (!list.length) {
+        toast("블록을 먼저 추가해주세요");
+        return;
+      }
+      const html = assembleEvolutionHtml(draft);
+      log("배포 중...");
+      try {
+        const url = await deployLpToS3(html, draft.id);
+        log(`배포 완료: ${url} — 사이트 공통 헤더/푸터는 common.js가 채움(개발팀 확인 중)`);
+        toast("배포가 완료됐습니다");
+        renderDeployResult(url);
+      } catch (e) {
+        log("배포 실패: " + e.message);
+        toast("배포에 실패했습니다");
+      }
       return;
     }
     if (draft.templateId === EVENT_LP_TEMPLATE_ID) {
-      // ⚠️ 이벤트 LP는 SSI로 공통 셸(헤더/푸터/사이드바)을 상속받는 부분 문서라,
-      // S3에 단독으로 올리면 그 부분이 통째로 빠집니다. 실제 웹서버(SSI 처리 가능)에
-      // 올려야 하는데 이 생성기는 그 배포 대상을 모릅니다 — 개발팀 확인 전까지는
-      // "다운로드"만 지원하고 S3 배포는 막습니다.
-      toast("이벤트 LP는 S3 배포를 지원하지 않습니다 — SSI include가 있으면 S3 업로드 자체가 차단되는 것을 실제로 확인했습니다(개발팀 확인 중). '내보내기 ▾'의 다운로드로 받아 웹서버에 직접 배치해주세요.");
+      let html;
+      try {
+        html = assembleEventLpHtml(draft, currentSeoMeta());
+      } catch (e) {
+        toast(e.message);
+        return;
+      }
+      const css = buildEventLpCss(draft.eventSkin);
+      const files = [
+        { name: "index.html", content: html, contentType: "text/html" },
+        { name: `style_${draft.cssVersion || "latest"}.css`, content: css, contentType: "text/css" }
+      ];
+      log("배포 중...");
+      try {
+        const results = await deployLpFilesToS3(files, draft.id, (done, total, name) => log(`배포 중... (${done}/${total}) ${name}`));
+        const failed = results.filter(r => r.error);
+        log(`배포 완료 — 성공 ${results.length - failed.length}건${failed.length ? ` · 실패 ${failed.length}건` : ""} — 사이트 공통 헤더/푸터는 common.js가 채움(개발팀 확인 중)`);
+        toast(failed.length ? "일부 파일 배포에 실패했습니다" : "배포가 완료됐습니다");
+      } catch (e) {
+        log("배포 실패: " + e.message);
+        toast("배포에 실패했습니다");
+      }
       return;
     }
     const html = assembleLpHtml(draft, resolveTemplate(), currentSeoMeta());
@@ -2195,8 +2303,8 @@ function buildInitialDraftLP(existing) {
     economyView: "main",
     // ---- 미스미는 진화중! (Evolution, 블록 조합형) ----
     evolutionPage: "lp",
-    evolutionMetaLp: { title: "", slug: "", desc: "", keywords: "" },
-    evolutionMetaHub: { title: "미스미는 진화중!", slug: "", desc: "미스미를 더 사용하기 쉽게. 고객님의 목소리를 바탕으로 개선한 내용을 안내해 드리고 있습니다.", keywords: "미스미 진화 중, 개선, 고객의 목소리" },
+    evolutionMetaLp: { title: "", slug: "", desc: "", keywords: [] },
+    evolutionMetaHub: { title: "미스미는 진화중!", slug: "", desc: "미스미를 더 사용하기 쉽게. 고객님의 목소리를 바탕으로 개선한 내용을 안내해 드리고 있습니다.", keywords: ["미스미 진화 중", "개선", "고객의 목소리"] },
     evolutionBlocksLp: [],
     evolutionBlocksHub: []
   };
