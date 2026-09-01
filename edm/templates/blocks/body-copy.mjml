@@ -1,7 +1,0 @@
-<mj-section background-color="#ffffff" padding="26px 30px">
-  <mj-column>
-    <mj-text align="center" font-size="14px" line-height="1.8" color="#333333">
-      {{body}}
-    </mj-text>
-  </mj-column>
-</mj-section>

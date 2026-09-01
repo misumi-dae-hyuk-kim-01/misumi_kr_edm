@@ -1,9 +1,0 @@
-{{#if relatedProducts}}
-<mj-section background-color="#f7f8fa" padding="12px 24px 24px">
-  <mj-column>
-    <mj-button href="{{relatedDetailUrl}}" background-color="#ffffff" color="#0F218B" border="1.5px solid #0F218B" font-size="12.5px" inner-padding="10px 24px">
-      더 자세히 살펴보기 →
-    </mj-button>
-  </mj-column>
-</mj-section>
-{{/if}}
