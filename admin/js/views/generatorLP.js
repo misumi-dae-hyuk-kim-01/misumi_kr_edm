@@ -2,12 +2,12 @@ import { store } from "../state.js";
 import { el, toast, esc } from "../lib/dom.js";
 import { generateCopyLP } from "../lib/copyGeneratorLP.js";
 import { generateSeoMeta } from "../lib/seoMetaGenerator.js";
-import { assembleLpHtml, assembleLpCatalogGroupHtml, resolveCatalogGroups, resolveCatalogSeoMeta, CATALOG_STYLE, CATALOG_SCRIPT, assembleEventLpHtml, buildEventLpCss, detectBenefitType, benefitLayoutRule, enforceSingleEmphasis, NOTICE_COMMON_MASTER, EVENT_LP_TEMPLATE_ID, assembleEconomyLineupHtml, economyBid, economyLineupIssues, economySampleData, ECONOMY_LINEUP_TEMPLATE_ID, ECONOMY_LINEUP_PREVIEW_CSS, assembleEvolutionHtml, evolutionBlockDefaults, EVOLUTION_BLOCK_TYPES, EVOLUTION_PREVIEW_CSS, EVOLUTION_TEMPLATE_ID, LP_PREVIEW_EDIT_STYLE, LP_PREVIEW_EDIT_SCRIPT } from "../lib/blocksLP.js";
+import { assembleLpHtml, assembleLpCatalogGroupHtml, resolveCatalogGroups, resolveCatalogSeoMeta, CATALOG_STYLE, CATALOG_SCRIPT, assembleEventLpHtml, buildEventLpCss, detectBenefitType, benefitLayoutRule, enforceSingleEmphasis, NOTICE_COMMON_MASTER, EVENT_LP_TEMPLATE_ID, assembleEconomyLineupHtml, economyBid, economyLineupIssues, economySampleData, ECONOMY_LINEUP_TEMPLATE_ID, ECONOMY_LINEUP_PREVIEW_CSS, assembleEvolutionHtml, evolutionBlockDefaults, EVOLUTION_BLOCK_TYPES, EVOLUTION_PREVIEW_CSS, EVOLUTION_TEMPLATE_ID, LP_PREVIEW_EDIT_STYLE, LP_PREVIEW_EDIT_SCRIPT, LP_SHELL_SCRIPT, LP_SHELL_SCRIPT_VERSION } from "../lib/blocksLP.js";
 import { seedLpTemplates } from "../data/lpTemplates.js";
 import { checkGuidelinesLP, summarizeGuidelineIssuesLP, LP_WIDTH_PATTERNS, LP_ECONOMY_LAYOUT, DEPLOYMENT_COUNTRY } from "../lib/guidelineCheckLP.js";
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
 import { fetchSeriesInfo, fetchSeriesInfoBatch } from "../lib/seriesApi.js";
-import { deployLpToS3, deployLpFilesToS3 } from "../lib/lpDeploy.js";
+import { deployLpToS3, deployLpFilesToS3, deploySharedAssetsToS3, resolveCampaignKey, buildCampaignKey, currentYYMM } from "../lib/lpDeploy.js";
 import { resizeImage } from "../lib/imageResize.js";
 import { uploadToS3 } from "../lib/s3Upload.js";
 import { generateImage } from "../lib/imageProcessApi.js";
@@ -150,6 +150,7 @@ export function renderGeneratorLP(root, params) {
     formBody.appendChild(groupHeader("캠페인 설정"));
     formBody.appendChild(sectionCampaignSettings());
     formBody.appendChild(sectionTemplate());
+    formBody.appendChild(sectionCampaignSlug());
 
     const isCatalog = draft.templateId === CATALOG_TEMPLATE_ID;
     const isEventLp = draft.templateId === EVENT_LP_TEMPLATE_ID;
@@ -445,10 +446,41 @@ export function renderGeneratorLP(root, params) {
   /** 배포 파일은 style.css/script.js를 외부 참조(공유용)로 두지만, 미리보기(iframe srcdoc)는
    *  실제 파일이 옆에 없어서 그 참조가 그냥 깨집니다 — 미리보기에서만 실제 CSS/JS 내용을
    *  그 자리에 바꿔 넣어서 배포본과 똑같이 보이게 합니다. 배포되는 파일 자체는 안 건드립니다. */
+  /** 이벤트LP/경제형라인업/Evolution/카탈로그가 공용으로 참조하는
+   *  /lp/shared/common/js/common.js는 실제 배포본에선 <script src="...">로 외부
+   *  참조하지만, 미리보기(iframe srcdoc)에서는 그 상대/절대경로가 실제 S3
+   *  도메인으로 안 나가서 그냥 두면 헤더/푸터가 절대 안 채워집니다(카탈로그가
+   *  이미 안고 있던 것과 같은 문제 — 개발 서버 없이도 "구조"는 확인할 수 있게
+   *  일단 인라인으로 되돌려 끼웁니다. 실제 fetch 성공 여부는 어차피 CORS 확인
+   *  전까진 실제 배포 후에도 장담 못 하는 부분이라, 미리보기에서 완전히 똑같이
+   *  동작하길 기대하는 용도는 아닙니다). */
+  function inlineShellScriptForPreview(html) {
+    return html.replace('<script src="/lp/shared/common/js/common.js"></script>', `<script>${LP_SHELL_SCRIPT}</script>`);
+  }
+
+  /** 이벤트LP/경제형라인업/Evolution/카탈로그가 공용으로 참조하는 common.js를
+   *  lp/shared/common/에 배포합니다. deploySharedAssetsToS3가 버전이 같으면
+   *  알아서 스킵하므로, 매 배포마다 그냥 호출해도 안전합니다(캠페인 100개를
+   *  배포해도 이 파일은 딱 1벌만 유지됨 — 카탈로그 style.css/script.js와 동일 원칙). */
+  async function deploySharedShellScript() {
+    try {
+      const results = await deploySharedAssetsToS3(
+        "common",
+        [{ name: "js/common.js", content: LP_SHELL_SCRIPT, contentType: "application/javascript" }],
+        LP_SHELL_SCRIPT_VERSION
+      );
+      log(results[0]?.skipped ? "공용 common.js는 이미 최신이라 재업로드를 건너뜁니다" : "공용 common.js 배포 완료");
+    } catch (e) {
+      log("공용 common.js 배포 실패: " + e.message);
+    }
+  }
+
   function buildCatalogPreviewHtml(html) {
-    return html
-      .replace('<link rel="stylesheet" href="./style.css">', `<style>${CATALOG_STYLE}</style>`)
-      .replace('<script src="./script.js"></script>', `<script>${CATALOG_SCRIPT}</script>`);
+    // ⚠️ campaignKey가 draft마다 달라지는 동적 값이라 정적 문자열 매칭이 안 됩니다 —
+    // 정규식으로 경로 전체(캠페인 키 부분 포함)를 찾아서 인라인으로 치환합니다.
+    return inlineShellScriptForPreview(html)
+      .replace(/<link rel="stylesheet" href="\/lp\/campaigns\/[^"]*\/css\/style\.css">/, `<style>${CATALOG_STYLE}</style>`)
+      .replace(/<script src="\/lp\/campaigns\/[^"]*\/js\/script\.js"><\/script>/, `<script>${CATALOG_SCRIPT}</script>`);
   }
 
   /** iframe이 고정 높이만 갖고 있으면 내용이 길 때 안에서 스크롤이 생겨 "짧아 보이는"
@@ -597,7 +629,7 @@ export function renderGeneratorLP(root, params) {
    *  rebuildCatalogHtml()이 이 categories로 HTML만 재조립할 수 있게 하기 위함입니다. */
   function buildAndStoreGroupHtml(group, allGroups, categories) {
     const validBanners = (draft.catalogBanners || []).filter(b => b.img && b.img.trim());
-    const html = assembleLpCatalogGroupHtml(group, allGroups, categories, currentSeoMeta(), validBanners);
+    const html = assembleLpCatalogGroupHtml(group, allGroups, categories, currentSeoMeta(), validBanners, previewCampaignKey());
     const totalCount = categories.reduce((sum, c) => sum + c.items.length, 0);
     const effectiveSeoMeta = resolveCatalogSeoMeta(group, totalCount, currentSeoMeta());
     // ⚠️ HTML에 박힌 것과 검사기에 넘기는 메타가 어긋나면 "타이틀이 비어있습니다" 같은
@@ -801,10 +833,20 @@ export function renderGeneratorLP(root, params) {
    *  deployCatalog()가 S3에 올리는 파일 목록과 동일한 구성입니다 — 배포 전에 로컬에서
    *  실제 파일들을 한 번 열어보고 싶을 때 씁니다(일반 LP의 downloadHtml()과 같은 역할). */
   async function downloadCatalogZip() {
+    // ⚠️ 다운로드도 배포와 마찬가지로 URL이 고정되어야 하므로, 여기서도
+    // 캠페인 키를 확정합니다(deployCatalog()/downloadHtml()과 동일 원칙).
+    if (!draft.campaignKey && !draft.slug?.trim()) {
+      toast("캠페인 URL 슬러그를 먼저 입력해주세요");
+      return;
+    }
+    await resolveCampaignKey(draft);
+    renderForm();
     if (!(await confirmCatalogExportGuards())) return;
+    // ⚠️ v2 폴더구조: css/js 하위폴더로 분리 — deployCatalog()의 파일 목록과
+    // 정확히 같은 구성이어야 합니다(둘 다 lp/campaigns/{key}/ 밑에 나란히 배치).
     const files = [
-      { name: "style.css", content: CATALOG_STYLE },
-      { name: "script.js", content: CATALOG_SCRIPT },
+      { name: "css/style.css", content: CATALOG_STYLE },
+      { name: "js/script.js", content: CATALOG_SCRIPT },
       ...(draft.catalogGroupsMeta || [])
         .filter(g => draft.catalogGroups?.[g.label]?.status === "done")
         .map(g => ({ name: g.file, content: draft.catalogGroups[g.label].html }))
@@ -813,12 +855,21 @@ export function renderGeneratorLP(root, params) {
     const blob = buildZip(files);
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `catalog-${draft.id}.zip`;
+    a.download = `${draft.campaignKey}.zip`;
     a.click();
     log(`카탈로그 zip 다운로드 완료 (${files.length}개 파일)`);
   }
 
   async function deployCatalog() {
+    // ⚠️ 캠페인 키 확정을 가장 먼저 합니다 — rebuildCatalogHtml()이 내부적으로
+    // previewCampaignKey()를 통해 draft.campaignKey를 참조하므로, 이게 먼저
+    // 확정되어 있어야 실제 배포 URL이 그룹 HTML 안에 정확히 반영됩니다.
+    if (!draft.campaignKey && !draft.slug?.trim()) {
+      toast("캠페인 URL 슬러그를 먼저 입력해주세요");
+      return;
+    }
+    await resolveCampaignKey(draft);
+    renderForm(); // 슬러그 입력창이 잠긴 상태로 다시 그려지도록
     // ⚠️ 배포 직전에 한 번 더 재조립합니다 — 사용자가 배너를 바꾼 뒤 rebuildCatalogHtml
     // 호출을 놓쳤어도(예: 수동 URL 입력 필드에서 blur 없이 바로 배포 클릭), 배포되는
     // 파일이 항상 최신 배너 상태를 반영하도록 하는 안전장치입니다.
@@ -826,16 +877,22 @@ export function renderGeneratorLP(root, params) {
     // 일반 LP의 downloadHtml()/deployLp()가 confirmExportGuards()를 거치는 것과 동일하게,
     // 카탈로그도 배포 직전에 가이드라인/링크 확인 가드를 거칩니다.
     if (!(await confirmCatalogExportGuards())) return;
+    // ⚠️ v2(2026-09) 폴더구조 확정: style.css/script.js를 shared/catalog/에
+    // 공유 자산으로 두던 걸 되돌리고, 다시 캠페인 전용 파일 목록에 포함시킵니다 —
+    // "배포된 페이지는 재배포 전까지 안 바뀐다"는 원칙과 shared 방식이 어긋나서
+    // (shared를 고치면 예전 캠페인들도 같이 바뀜) v2에서 되돌리기로 확정했습니다.
+    // css/js 하위폴더로 분리하는 것도 v2 규칙입니다(LP_S3_최종확정.md 참고).
     const files = [
-      { name: "style.css", content: CATALOG_STYLE, contentType: "text/css" },
-      { name: "script.js", content: CATALOG_SCRIPT, contentType: "application/javascript" },
+      { name: "css/style.css", content: CATALOG_STYLE, contentType: "text/css" },
+      { name: "js/script.js", content: CATALOG_SCRIPT, contentType: "application/javascript" },
       ...(draft.catalogGroupsMeta || [])
         .filter(g => draft.catalogGroups?.[g.label]?.status === "done")
         .map(g => ({ name: g.file, content: draft.catalogGroups[g.label].html, contentType: "text/html" }))
     ];
+    await deploySharedShellScript();
     log("배포 중...");
     try {
-      const results = await deployLpFilesToS3(files, draft.id, (done, total, name) => {
+      const results = await deployLpFilesToS3(files, draft.campaignKey, (done, total, name) => {
         log(`배포 중... (${done}/${total}) ${name}`);
       });
       const failed = results.filter(r => r.error);
@@ -887,13 +944,27 @@ export function renderGeneratorLP(root, params) {
       ]),
       el("div", { class: "sec-body" }, [
         el("select", {
-          onchange: e => { draft.templateId = e.target.value; renderForm(); renderPreview(); }
+          // ⚠️ 이벤트 LP는 이제 "일반형"/"경제형"이 완전히 분리된 별도 선택지입니다
+          // (예전엔 하나의 템플릿 안에서 폼으로 스킨을 바꿀 수 있었는데, 그러면
+          // 같은 캠페인 폴더 안에서 CSS 내용이 바뀔 수 있어 캐시 무효화 문제가
+          // 생겼습니다 — 처음 선택한 스킨으로 캠페인 생성 시점에 고정시켜서
+          // 이 문제 자체를 없앴습니다). select의 value 자체는 draft.templateId와
+          // 다를 수 있어서(이벤트 LP 두 옵션 다 내부적으론 EVENT_LP_TEMPLATE_ID),
+          // onchange에서 별도로 매핑합니다.
+          onchange: e => {
+            const val = e.target.value;
+            if (val === "event-lp-normal") { draft.templateId = EVENT_LP_TEMPLATE_ID; draft.eventSkin = "normal"; }
+            else if (val === "event-lp-economy") { draft.templateId = EVENT_LP_TEMPLATE_ID; draft.eventSkin = "economy"; }
+            else { draft.templateId = val; }
+            renderForm(); renderPreview();
+          }
         }, [
           ...LP_TEMPLATES.map(t =>
             el("option", { value: t.id, ...(t.id === draft.templateId ? { selected: "selected" } : {}) }, t.name)
           ),
           el("option", { value: CATALOG_TEMPLATE_ID, ...(isCatalog ? { selected: "selected" } : {}) }, "신상품카탈로그"),
-          el("option", { value: EVENT_LP_TEMPLATE_ID, ...(isEventLp ? { selected: "selected" } : {}) }, "이벤트 LP"),
+          el("option", { value: "event-lp-normal", ...(isEventLp && draft.eventSkin !== "economy" ? { selected: "selected" } : {}) }, "이벤트 LP (일반형)"),
+          el("option", { value: "event-lp-economy", ...(isEventLp && draft.eventSkin === "economy" ? { selected: "selected" } : {}) }, "이벤트 LP (경제형)"),
           el("option", { value: ECONOMY_LINEUP_TEMPLATE_ID, ...(isEconomyLineup ? { selected: "selected" } : {}) }, "경제형 전체상품 라인업"),
           el("option", { value: EVOLUTION_TEMPLATE_ID, ...(isEvolution ? { selected: "selected" } : {}) }, "미스미는 진화중! (기능 개선 안내)")
         ]),
@@ -909,6 +980,40 @@ export function renderGeneratorLP(root, params) {
         ) : null
       ])
     ]);
+  }
+
+  /** 캠페인 URL 슬러그 — 한 번 배포되면(draft.campaignKey가 생기면) 잠깁니다.
+   *  "배포된 페이지는 재배포 전까지 절대 안 바뀐다"는 원칙 때문입니다 — 슬러그를
+   *  바꾸면 URL 자체가 바뀌는 것과 같아서, 이미 나간 링크가 깨집니다. 잠긴 뒤에
+   *  꼭 바꿔야 하면 새 캠페인으로 다시 시작해야 합니다. */
+  function sectionCampaignSlug() {
+    const locked = !!draft.campaignKey;
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "캠페인 URL")])]),
+      el("div", { class: "sec-body" }, [
+        el("div", { class: "field" }, [
+          el("label", {}, ["슬러그(영문 소문자·숫자·하이픈) ", locked ? null : el("span", { class: "req-tag" }, "· 필수")]),
+          el("input", {
+            type: "text", value: locked ? draft.campaignKey : (draft.slug || ""),
+            placeholder: "예: summer-sale", disabled: locked ? "disabled" : null,
+            oninput: e => { draft.slug = e.target.value; renderPreview(); }
+          }),
+          locked
+            ? el("p", { class: "hint" }, "✅ 이미 배포되어 URL이 고정됐습니다 — 바꾸려면 새 캠페인으로 다시 시작해야 합니다.")
+            : el("p", { class: "hint" }, "처음 배포/다운로드하는 순간 확정되고, 그 뒤엔 못 바꿉니다. 최종 경로: lp/campaigns/{슬러그}_{연월}_{순번}/")
+        ])
+      ])
+    ]);
+  }
+
+  /** 미리보기 전용 — 실제 배포처럼 findNextAvailableSeq()로 서버에 물어보지 않고
+   *  (미리보기를 렌더링할 때마다 네트워크 호출이 생기면 안 되니까), 이미 확정된
+   *  키가 있으면 그걸 쓰고 없으면 "지금 슬러그로 배포하면 대략 이런 모양이 된다"는
+   *  걸 순번 자리에 물음표를 넣어 보여줍니다. 실제 배포 시점엔 resolveCampaignKey()가
+   *  진짜 순번으로 확정합니다. */
+  function previewCampaignKey() {
+    if (draft.campaignKey) return draft.campaignKey;
+    return buildCampaignKey(draft.slug || "", currentYYMM(), "?");
   }
 
 
@@ -934,10 +1039,11 @@ export function renderGeneratorLP(root, params) {
         ]),
         el("div", { class: "field" }, [
           el("label", {}, "스킨"),
-          el("div", { class: "row2" }, [
-            el("div", { class: "opt-btn" + (draft.eventSkin !== "economy" ? " active" : ""), onclick: () => { draft.eventSkin = "normal"; renderForm(); renderPreview(); } }, "일반형 (950px)"),
-            el("div", { class: "opt-btn" + (draft.eventSkin === "economy" ? " active" : ""), onclick: () => { draft.eventSkin = "economy"; renderForm(); renderPreview(); } }, "경제형 (920px, 컬러 다름)")
-          ]),
+          // ⚠️ 더 이상 여기서 못 바꿉니다 — 위 "템플릿" 드롭다운에서 "이벤트 LP (일반형)"/
+          // "(경제형)" 중 뭘 골랐는지로 캠페인 생성 시점에 고정됩니다. 여기선 그냥
+          // 지금 어느 쪽인지만 읽기 전용으로 보여줍니다(스킨을 바꾸려면 처음부터
+          // 다른 템플릿을 다시 선택해서 새 캠페인으로 시작해야 함).
+          el("p", { class: "hint" }, `${draft.eventSkin === "economy" ? "경제형 (920px, 컬러 다름)" : "일반형 (950px)"} — 위 템플릿 선택에서 고정됩니다`),
           draft.eventSkin === "economy" ? el("p", { class: "hint hint-warn" }, "⚠ 경제형 스킨은 실제 사이트에서 카테고리 사이드 네비게이션(.ec-lnb)이 같이 붙는 것으로 확인됐습니다 — 이 생성기는 아직 그 블록을 안 만듭니다(개발팀 확인 중).") : null
         ])
       ])
@@ -1764,14 +1870,14 @@ export function renderGeneratorLP(root, params) {
         leadCards: draft.economyLeadCards,
         lnbLinks: draft.economyLnbLinks
       };
-      const fullHtml = assembleEconomyLineupHtml(data, draft.economyView, currentSeoMeta());
+      const fullHtml = assembleEconomyLineupHtml(data, draft.economyView, currentSeoMeta(), previewCampaignKey());
       const sampleBanner = usingSample
         ? `<div style="position:sticky;top:0;z-index:999;background:#fff3cd;color:#7a5c00;padding:8px 16px;font-size:12px;text-align:center;">샘플 데이터 미리보기입니다 — 실제 상품 데이터를 엑셀로 업로드하면 이 자리가 실제 내용으로 바뀝니다</div>`
         : "";
       // ⚠️ assembleEconomyLineupHtml()이 이제 완성된 문서(전체 <html>)를 반환하므로,
       // 예전처럼 별도 <html>로 다시 감싸면 안 됩니다 — 이벤트 LP와 같은 방식으로
       // 기존 </head>에 미리보기 전용 CSS만 끼워 넣습니다(다운로드 산출물은 <link>만 유지).
-      const previewHtml = fullHtml
+      const previewHtml = inlineShellScriptForPreview(fullHtml)
         .replace("</head>", `<style>${ECONOMY_LINEUP_PREVIEW_CSS}</style></head>`)
         .replace("<body class=\"page2\">", `<body class="page2">${sampleBanner}`);
     appendAutoHeightIframe(previewFrame, previewHtml); // 카탈로그와 동일하게 콘텐츠 높이만큼 자동으로 늘어남
@@ -1806,7 +1912,7 @@ export function renderGeneratorLP(root, params) {
     }
     try {
       const html = assembleEvolutionHtml(draft);
-      const previewHtml = html.replace("</head>", `<style>${EVOLUTION_PREVIEW_CSS}</style></head>`);
+      const previewHtml = inlineShellScriptForPreview(html).replace("</head>", `<style>${EVOLUTION_PREVIEW_CSS}</style></head>`);
     appendAutoHeightIframe(previewFrame, previewHtml); // 카탈로그와 동일하게 콘텐츠 높이만큼 자동으로 늘어남
       const badge = root.querySelector("#genlp-guideline-badge");
       if (badge) { badge.className = "guideline-badge badge-pass"; badge.textContent = "✅ 조립 성공 (사이트 공통 헤더/푸터는 common.js가 채움 — 개발팀 확인 중)"; }
@@ -1828,7 +1934,7 @@ export function renderGeneratorLP(root, params) {
       // 유지하고, 이 미리보기 iframe에만 실제 CSS를 <style>로 끼워 넣어서
       // 눈으로 확인 가능하게 합니다.
       const previewCss = buildEventLpCss(draft.eventSkin);
-      const previewHtml = html.replace("</head>", `<style>${previewCss}</style></head>`);
+      const previewHtml = inlineShellScriptForPreview(html).replace("</head>", `<style>${previewCss}</style></head>`);
     appendAutoHeightIframe(previewFrame, previewHtml); // 카탈로그와 동일하게 콘텐츠 높이만큼 자동으로 늘어남
       latestGuidelineIssues = [];
       const badge = root.querySelector("#genlp-guideline-badge");
@@ -1898,7 +2004,7 @@ export function renderGeneratorLP(root, params) {
     return assembleLpCatalogGroupHtml(
       sampleGroup, [sampleGroup], [sampleCategory],
       { title: "샘플 미리보기", description: "샘플 미리보기입니다." },
-      validBanners
+      validBanners, draft.id
     );
   }
 
@@ -2026,6 +2132,15 @@ export function renderGeneratorLP(root, params) {
       toast("신상품카탈로그는 위 '전체 배포' 버튼을 사용하세요");
       return;
     }
+    // ⚠️ 다운로드도 배포와 마찬가지로 "URL이 한 번 정해지면 안 바뀐다" 원칙이
+    // 적용됩니다 — 다운로드한 zip을 나중에 웹서버에 그대로 올릴 걸 전제하므로,
+    // 여기서도 캠페인 키를 확정해서 잠급니다(배포와 동일한 resolveCampaignKey).
+    if (!draft.campaignKey && !draft.slug?.trim()) {
+      toast("캠페인 URL 슬러그를 먼저 입력해주세요");
+      return;
+    }
+    await resolveCampaignKey(draft);
+    renderForm();
     if (draft.templateId === ECONOMY_LINEUP_TEMPLATE_ID) {
       if (!draft.economyProducts.length) {
         toast("상품 데이터를 먼저 업로드해주세요");
@@ -2041,8 +2156,9 @@ export function renderGeneratorLP(root, params) {
       // ⚠️ "데이터"/"모바일" 뷰는 QA·placeholder 용도라 배포 대상이 아니고,
       // 실제 사이트에 나가는 건 "PC메인"(index.html)과 "전체라인업"(economy_all.html) 뿐입니다.
       const files = [
-        { name: "index.html", content: assembleEconomyLineupHtml(data, "main", currentSeoMeta()) },
-        { name: "economy_all.html", content: assembleEconomyLineupHtml(data, "all", currentSeoMeta()) }
+        { name: "index.html", content: assembleEconomyLineupHtml(data, "main", currentSeoMeta(), draft.campaignKey) },
+        { name: "economy_all.html", content: assembleEconomyLineupHtml(data, "all", currentSeoMeta(), draft.campaignKey) },
+        { name: "css/style.css", content: ECONOMY_LINEUP_PREVIEW_CSS }
       ];
       const blob = buildZip(files);
       const a = document.createElement("a");
@@ -2060,12 +2176,18 @@ export function renderGeneratorLP(root, params) {
         return;
       }
       const html = assembleEvolutionHtml(draft);
-      const blob = new Blob([html], { type: "text/html" });
+      // ⚠️ v2 폴더구조: CSS가 캠페인 전용 파일이 되면서, 단일 html 다운로드로는
+      // CSS를 같이 못 담아서 zip 방식으로 바꿨습니다(다른 템플릿들과 동일 패턴).
+      const files = [
+        { name: "index.html", content: html },
+        { name: "css/style.css", content: EVOLUTION_PREVIEW_CSS }
+      ];
+      const blob = buildZip(files);
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = (isLp ? (draft.evolutionMetaLp.slug || "evolution-lp") : "evolution-hub") + ".html";
+      a.download = (isLp ? (draft.evolutionMetaLp.slug || "evolution-lp") : "evolution-hub") + ".zip";
       a.click();
-      log("Evolution 페이지 다운로드 완료 — 사이트 공통 헤더/푸터는 common.js가 fetch로 채웁니다(개발팀 확인 중, 확정 전까지는 자리가 비어있을 수 있음)");
+      log("Evolution 페이지 다운로드 완료 (index.html + css/style.css, zip) — 사이트 공통 헤더/푸터는 common.js가 fetch로 채웁니다(개발팀 확인 중, 확정 전까지는 자리가 비어있을 수 있음)");
       return;
     }
     if (draft.templateId === EVENT_LP_TEMPLATE_ID) {
@@ -2083,7 +2205,7 @@ export function renderGeneratorLP(root, params) {
       // 같이 내려줍니다(신상품카탈로그의 buildZip()과 동일한 방식).
       const files = [
         { name: "index.html", content: html },
-        { name: `style_${draft.cssVersion || "latest"}.css`, content: css }
+        { name: "css/style.css", content: css }
       ];
       const blob = buildZip(files);
       const a = document.createElement("a");
@@ -2108,6 +2230,15 @@ export function renderGeneratorLP(root, params) {
       toast("신상품카탈로그는 위 '전체 배포' 버튼을 사용하세요");
       return;
     }
+    // ⚠️ 카탈로그를 제외한 모든 템플릿이 여기 이후로 지나가므로, 캠페인 키 확정을
+    // 여기 한 번만 해두면 아래 모든 분기(경제형라인업/Evolution/이벤트LP/일반형)가
+    // 공통으로 혜택을 봅니다 — 분기마다 따로 안 넣어도 됩니다.
+    if (!draft.campaignKey && !draft.slug?.trim()) {
+      toast("캠페인 URL 슬러그를 먼저 입력해주세요");
+      return;
+    }
+    await resolveCampaignKey(draft);
+    renderForm(); // 슬러그 입력창이 잠긴 상태로 다시 그려지도록
     if (draft.templateId === ECONOMY_LINEUP_TEMPLATE_ID) {
       if (!draft.economyProducts.length) {
         toast("상품 데이터를 먼저 업로드해주세요");
@@ -2120,12 +2251,16 @@ export function renderGeneratorLP(root, params) {
         news: draft.economyNews, leadCards: draft.economyLeadCards, lnbLinks: draft.economyLnbLinks
       };
       const files = [
-        { name: "index.html", content: assembleEconomyLineupHtml(data, "main", currentSeoMeta()), contentType: "text/html" },
-        { name: "economy_all.html", content: assembleEconomyLineupHtml(data, "all", currentSeoMeta()), contentType: "text/html" }
+        { name: "index.html", content: assembleEconomyLineupHtml(data, "main", currentSeoMeta(), draft.campaignKey), contentType: "text/html" },
+        { name: "economy_all.html", content: assembleEconomyLineupHtml(data, "all", currentSeoMeta(), draft.campaignKey), contentType: "text/html" },
+        // ⚠️ v2 폴더구조: CSS를 shared/economy-lineup/에 공유 자산으로 두던 걸
+        // 되돌리고, 다시 캠페인 전용 파일 목록(css/ 하위폴더)에 포함시킵니다.
+        { name: "css/style.css", content: ECONOMY_LINEUP_PREVIEW_CSS, contentType: "text/css" }
       ];
+      await deploySharedShellScript();
       log("배포 중...");
       try {
-        const results = await deployLpFilesToS3(files, draft.id, (done, total, name) => log(`배포 중... (${done}/${total}) ${name}`));
+        const results = await deployLpFilesToS3(files, draft.campaignKey, (done, total, name) => log(`배포 중... (${done}/${total}) ${name}`));
         const failed = results.filter(r => r.error);
         log(`배포 완료 — 성공 ${results.length - failed.length}건${failed.length ? ` · 실패 ${failed.length}건` : ""} — 사이트 공통 헤더/푸터는 common.js가 채움(개발팀 확인 중)`);
         toast(failed.length ? "일부 파일 배포에 실패했습니다" : "배포가 완료됐습니다");
@@ -2143,12 +2278,22 @@ export function renderGeneratorLP(root, params) {
         return;
       }
       const html = assembleEvolutionHtml(draft);
+      // ⚠️ v2 폴더구조: CSS를 shared/evolution/에 공유 자산으로 두던 걸 되돌리고,
+      // 캠페인 전용 파일 목록(css/ 하위폴더)에 포함시킵니다. 그래서 단일 파일
+      // 배포(deployLpToS3)에서 다중 파일 배포(deployLpFilesToS3)로 바뀝니다.
+      const files = [
+        { name: "index.html", content: html, contentType: "text/html" },
+        { name: "css/style.css", content: EVOLUTION_PREVIEW_CSS, contentType: "text/css" }
+      ];
+      await deploySharedShellScript();
       log("배포 중...");
       try {
-        const url = await deployLpToS3(html, draft.id);
-        log(`배포 완료: ${url} — 사이트 공통 헤더/푸터는 common.js가 채움(개발팀 확인 중)`);
-        toast("배포가 완료됐습니다");
-        renderDeployResult(url);
+        const results = await deployLpFilesToS3(files, draft.campaignKey, (done, total, name) => log(`배포 중... (${done}/${total}) ${name}`));
+        const failed = results.filter(r => r.error);
+        const indexResult = results.find(r => r.name === "index.html");
+        log(`배포 완료 — 성공 ${results.length - failed.length}건${failed.length ? ` · 실패 ${failed.length}건` : ""} — 사이트 공통 헤더/푸터는 common.js가 채움(개발팀 확인 중)`);
+        toast(failed.length ? "일부 파일 배포에 실패했습니다" : "배포가 완료됐습니다");
+        if (indexResult?.url) renderDeployResult(indexResult.url);
       } catch (e) {
         log("배포 실패: " + e.message);
         toast("배포에 실패했습니다");
@@ -2166,11 +2311,12 @@ export function renderGeneratorLP(root, params) {
       const css = buildEventLpCss(draft.eventSkin);
       const files = [
         { name: "index.html", content: html, contentType: "text/html" },
-        { name: `style_${draft.cssVersion || "latest"}.css`, content: css, contentType: "text/css" }
+        { name: "css/style.css", content: css, contentType: "text/css" }
       ];
+      await deploySharedShellScript();
       log("배포 중...");
       try {
-        const results = await deployLpFilesToS3(files, draft.id, (done, total, name) => log(`배포 중... (${done}/${total}) ${name}`));
+        const results = await deployLpFilesToS3(files, draft.campaignKey, (done, total, name) => log(`배포 중... (${done}/${total}) ${name}`));
         const failed = results.filter(r => r.error);
         log(`배포 완료 — 성공 ${results.length - failed.length}건${failed.length ? ` · 실패 ${failed.length}건` : ""} — 사이트 공통 헤더/푸터는 common.js가 채움(개발팀 확인 중)`);
         toast(failed.length ? "일부 파일 배포에 실패했습니다" : "배포가 완료됐습니다");
@@ -2184,7 +2330,7 @@ export function renderGeneratorLP(root, params) {
     if (!(await confirmExportGuards(html))) return;
     log("배포 중...");
     try {
-      const url = await deployLpToS3(html, draft.id);
+      const url = await deployLpToS3(html, draft.campaignKey);
       draft.deployedUrl = url;
       log(`배포 완료: ${url}`);
       toast("배포가 완료됐습니다");
@@ -2248,6 +2394,8 @@ export function renderGeneratorLP(root, params) {
 function buildInitialDraftLP(existing) {
   const base = {
     id: existing?.id || "lp-" + crypto.randomUUID(),
+    slug: existing?.slug || "",
+    campaignKey: existing?.campaignKey || "", // 배포 전엔 빈 문자열, 첫 배포 시 resolveCampaignKey()가 확정해서 잠금
     campaignName: "",
     author: "",
     promotionName: "",

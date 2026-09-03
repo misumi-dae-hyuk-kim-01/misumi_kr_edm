@@ -490,6 +490,15 @@ export function resolveCatalogSeoMeta(group, totalCount, seoMeta = {}) {
  *
  *  사용법: 페이지 HTML에 <div id="lp-shell-header"></div> / <div id="lp-shell-footer"></div>
  *  등의 자리를 두고, 이 스크립트를 <script> 태그로 삽입하면 로드 시 자동으로 채워집니다. */
+/** ⚠️ 이 값이 바뀌면(=LP_SHELL_SCRIPT 코드 내용이 실제로 바뀌면) 배포 시 강제로
+ *  재업로드됩니다. 일본 사이트의 `lp_common/assets_v1/`처럼 버전 번호를 붙여서,
+ *  나중에 이 스크립트를 크게 갈아엎어도 이미 배포된 예전 페이지들이 안 깨지게
+ *  하려면 여기서 v1→v2로 올리는 대신 파일명 자체를 common_v2.js처럼 분리하는
+ *  방안도 고려할 수 있습니다 — 지금은 캠페인 전용 CSS와 달리 이 스크립트가
+ *  "무엇을 fetch할지"만 다루고 페이지별 콘텐츠와 무관해서, 우선 버전 문자열
+ *  하나로 충분하다고 판단했습니다. */
+export const LP_SHELL_SCRIPT_VERSION = "v1";
+
 export const LP_SHELL_SCRIPT = `(function(){
   var baseURL = location.origin; // 상대경로로 요청 — 이 페이지와 같은 도메인으로 감(CORS 회피 전제)
   var SLOTS = [
@@ -554,7 +563,7 @@ export const LP_SHELL_SCRIPT = `(function(){
   }
 })();`;
 
-export function assembleLpCatalogGroupHtml(group, allGroups, categories, seoMeta = {}, banners = []) {
+export function assembleLpCatalogGroupHtml(group, allGroups, categories, seoMeta = {}, banners = [], campaignKey = "") {
   const groupKey = group.file.replace(/\.html$/, "");
   const totalCount = categories.reduce((sum, c) => sum + c.items.length, 0);
   const effectiveSeoMeta = resolveCatalogSeoMeta(group, totalCount, seoMeta);
@@ -570,7 +579,7 @@ export function assembleLpCatalogGroupHtml(group, allGroups, categories, seoMeta
   <meta name="description" content="${esc(effectiveSeoMeta.description)}">
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="/lp/campaigns/${esc(campaignKey)}/css/style.css">
 </head>
 <body>
 <!-- ⚠️ 사이트 공통 헤더 — SSI가 아니라 common.js(아래 스크립트)가 fetch해서 채웁니다.
@@ -603,8 +612,8 @@ ${sectionsHtml}
   </div>
 </div>
 <div id="lp-shell-footer"></div>
-<script>${LP_SHELL_SCRIPT}</script>
-<script src="./script.js"></script>
+<script src="/lp/shared/common/js/common.js"></script>
+<script src="/lp/campaigns/${esc(campaignKey)}/js/script.js"></script>
 </body>
 </html>`;
 }
@@ -1423,7 +1432,11 @@ export function assembleEventLpHtml(draft, seoMeta = {}) {
 @font-face{font-family:"GmarketSansMedium";src:url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansMedium.woff") format("woff");font-weight:normal;font-style:normal}
 @font-face{font-family:"GmarketSansBold";src:url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff") format("woff");font-weight:normal;font-style:normal}
 </style>
-<link href="${esc(draft.assetBaseUrl || "")}/${esc(draft.slug || "")}/css/style_${esc(draft.cssVersion || "")}.css" rel="stylesheet" type="text/css" media="all" />
+<link href="/lp/campaigns/${esc(draft.campaignKey || draft.id || "")}/css/style.css" rel="stylesheet" type="text/css" media="all" />
+<!-- ⚠️ 캠페인 키 체계({slug}_{YYMM}_{seq})가 draft.id에 아직 연동 전이라, 지금은
+     draft.id(예: lp-uuid)를 그대로 씁니다 — 캠페인 키 연동 작업이 끝나면 이 자리도
+     자동으로 새 키를 참조하게 됩니다(폴더 구조 자체는 이미 lp/campaigns/{key}/css/
+     로 확정되어 있어 이 부분만 나중에 값이 바뀝니다). -->
 <script type="text/javascript">
 <!--
 var agentType = "win16|win32|win64|mac|macintel";
@@ -1460,7 +1473,7 @@ if (navigator.platform) {
 	</div>
 	<div id="lp-shell-foot-js"></div>
 	<div id="lp-shell-analyze"></div>
-	<script>${LP_SHELL_SCRIPT}</script>
+	<script src="/lp/shared/common/js/common.js"></script>
 </body>
 </html>`;
 }
@@ -1712,7 +1725,7 @@ export function economySampleData() {
  *  @param {object} data
  *  @param {string} [view]
  *  @param {{title?:string, description?:string, keywords?:string[]}} [seoMeta] */
-export function assembleEconomyLineupHtml(data, view = "main", seoMeta = {}) {
+export function assembleEconomyLineupHtml(data, view = "main", seoMeta = {}, campaignKey = "") {
   const bodyHtml = view === "all" ? economyAllView(data)
     : view === "mobile" ? economyMobileView(data)
     : view === "data" ? economyDataView(data)
@@ -1760,10 +1773,10 @@ export function assembleEconomyLineupHtml(data, view = "main", seoMeta = {}) {
 <meta name="keywords" content="${keywords}" />
 <link rel="icon" href="/favicon.ico" type="image/x-icon" />
 <link rel="canonical" href="${esc(data.meta.canonical)}${view === "all" ? "economy_all" : ""}" />
-<link href="/pr/common/economy/css/style.css" rel="stylesheet" type="text/css" media="all" />
-<link href="/pr/common/economy/css/all_20250910.css" rel="stylesheet" type="text/css" media="all" />
-<link href="/pr/common/economy/css/left_nav.css" rel="stylesheet" type="text/css" media="all" />
-<link href="/pr/common/economy/css/event.css" rel="stylesheet" type="text/css" media="all" />
+<link href="/lp/campaigns/${esc(campaignKey)}/css/style.css" rel="stylesheet" type="text/css" media="all" />
+<!-- ⚠️ 2026-09 v2 폴더구조 확정: shared/economy-lineup/ 방식(캠페인 간 공유)에서
+     campaigns/{key}/css/ 방식(캠페인별 격리)으로 되돌렸습니다 — "배포된 페이지는
+     재배포 전까지 안 바뀐다"는 원칙과 shared 방식이 어긋났기 때문입니다. -->
 </head>
 <body class="page2">
 	<div id="lp-shell-head-css"></div>
@@ -1782,7 +1795,7 @@ ${content}
 	</div><!-- /.l-wrapper -->
 	<div id="lp-shell-foot-js"></div>
 	<div id="lp-shell-analyze"></div>
-	<script>${LP_SHELL_SCRIPT}</script>
+	<script src="/lp/shared/common/js/common.js"></script>
 </body>
 </html>
 `;
@@ -1790,10 +1803,10 @@ ${content}
 
 
 /** 경제형 전체상품 라인업 — 실제 운영 중인 4개 CSS 파일(style.css, all_20250910.css,
- *  left_nav.css, event.css)을 그대로 합친 것입니다. ⚠️ 실제 배포 시엔 이 4개 파일을
- *  각각 <link>로 참조하는 게 맞고(원본 프로토타입도 그렇게 되어 있음), 이 상수는
- *  "미리보기 iframe에서 실제 스타일을 확인하기 위한 용도"로만 씁니다 — 이벤트 LP의
- *  buildEventLpCss()와 같은 이유입니다.
+ *  left_nav.css, event.css)을 그대로 합친 것입니다. ⚠️ 2026-09 v2 변경: 이제 미리보기
+ *  전용이 아니라, 실제 배포 시 lp/campaigns/{campaignKey}/css/style.css로 캠페인마다
+ *  올라가는 "진짜 배포 파일" 겸용입니다(assembleEconomyLineupHtml의
+ *  <link href="/lp/campaigns/{campaignKey}/css/style.css"> 참고).
  */
 export const ECONOMY_LINEUP_PREVIEW_CSS = `
 /* ===== style.css ===== */
@@ -3708,9 +3721,9 @@ function evolutionBlockHtml(b, indent) {
       return t + `<h1 class="downarrow">${b.title}</h1>`;
     case "ba":
       return t + `<div class="whitebox sect1">${n}` +
-        `${t}\t<div class="before">${n}${t}\t\t<h5>BEFORE</h5>${n}${t}\t\t<img src="./images/${b.beforeImg}" alt="" />${n}${t}\t\t<p>${b.before}</p>${n}${t}\t</div>${n}` +
+        `${t}\t<div class="before">${n}${t}\t\t<h5>BEFORE</h5>${n}${t}\t\t<img src="./images/${b.beforeImg}" alt="${esc(String(b.before || "").replace(/<[^>]+>/g, "") || "BEFORE 화면")}" />${n}${t}\t\t<p>${b.before}</p>${n}${t}\t</div>${n}` +
         `${t}\t<div class="ing"><img src="./images/${b.arrowImg}" alt="" /></div>${n}` +
-        `${t}\t<div class="after">${n}${t}\t\t<h5>AFTER</h5>${n}${t}\t\t<img src="./images/${b.afterImg}" alt="" />${n}${t}\t\t<p>${b.after}</p>${n}${t}\t</div>${n}` +
+        `${t}\t<div class="after">${n}${t}\t\t<h5>AFTER</h5>${n}${t}\t\t<img src="./images/${b.afterImg}" alt="${esc(String(b.after || "").replace(/<[^>]+>/g, "") || "AFTER 화면")}" />${n}${t}\t\t<p>${b.after}</p>${n}${t}\t</div>${n}` +
         `${t}</div>`;
     case "summary":
       return t + `<div class="whitebox sect3">${n}${t}\t<h2>${b.heading}</h2>${n}${t}\t<p>${b.body}</p>${n}` +
@@ -3735,7 +3748,7 @@ function evolutionBlockHtml(b, indent) {
         b.items.map(it => `${t}\t\t<div class="step_card">${n}${t}\t\t\t<div class="step_textbox">${n}${t}\t\t\t\t<div class="step_badge">${it.badge}</div>${n}${t}\t\t\t\t<div class="step_title">${it.title}</div>${n}${t}\t\t\t</div>${n}${t}\t\t\t<div class="step_imagebox"><img src="./images/${it.img}" alt="${esc(it.badge)} ${esc(it.title)}" /></div>${n}${t}\t\t</div>`).join(n) + n +
         `${t}\t</div>${n}${t}</div>`;
     case "twocol":
-      return t + `<div class="whitebox sect4">${n}${t}\t<div class="sectbox">${n}${t}\t\t<div><img src="./images/${b.img}" alt="" /></div>${n}${t}\t\t<div class="txtbox">${n}${t}\t\t\t<h2>${b.heading}</h2>${n}${t}\t\t\t<p>${b.body}</p>${n}${t}\t\t</div>${n}${t}\t</div>${n}${t}</div>`;
+      return t + `<div class="whitebox sect4">${n}${t}\t<div class="sectbox">${n}${t}\t\t<div><img src="./images/${b.img}" alt="${esc(String(b.heading || "").replace(/<[^>]+>/g, ""))}" /></div>${n}${t}\t\t<div class="txtbox">${n}${t}\t\t\t<h2>${b.heading}</h2>${n}${t}\t\t\t<p>${b.body}</p>${n}${t}\t\t</div>${n}${t}\t</div>${n}${t}</div>`;
     case "cta":
       return t + `<div class="whitebox">${n}${t}\t<div class="btnbox"><a href="${b.url}" class="landingbtn" target="_blank">${b.text}</a></div>${n}${t}</div>`;
     case "hubcard":
@@ -3788,7 +3801,9 @@ export function assembleEvolutionHtml(draft) {
 <link rel="icon" href="/favicon.ico" type="image/x-icon" />
 <link rel="canonical" href="${canonical}" />
 <!--▼공통 LP 스타일 (전 LP 공용 · 수정 금지)▼-->
-<link href="/pr/common/evolution/css/lp-common.css" rel="stylesheet" type="text/css" media="all" />
+<link href="/lp/campaigns/${esc(draft.campaignKey || draft.id || "")}/css/style.css" rel="stylesheet" type="text/css" media="all" />
+<!-- ⚠️ 2026-09 v2 폴더구조 확정: shared/evolution/ 방식에서 campaigns/{key}/css/
+     방식으로 되돌렸습니다 — 경제형 라인업과 같은 이유입니다. -->
 <!--▼이 LP 전용 추가분만 아래 파일에 작성▼-->
 <!-- <link href="./css/local.css" rel="stylesheet" type="text/css" media="all" /> -->
 </head>
@@ -3818,16 +3833,18 @@ ${body}
 	</div><!-- /.l-wrapper -->
 	<div id="lp-shell-foot-js"></div>
 	<div id="lp-shell-analyze"></div>
-	<script>${LP_SHELL_SCRIPT}</script>
+	<script src="/lp/shared/common/js/common.js"></script>
 </body>
 </html>
 `;
 }
 
-/** "미스미는 진화중!" 미리보기 전용 CSS — 실제 운영 lp-common.css를 그대로 담았습니다.
- *  ⚠️ 실제 배포 시엔 <link href="/pr/common/evolution/css/lp-common.css">로 참조만 하고
- *  (assembleEvolutionHtml 참고), 이 상수는 미리보기 iframe에서만 인라인으로 씁니다 —
- *  이벤트 LP의 buildEventLpCss()와 같은 이유입니다. */
+/** "미스미는 진화중!" 공용 CSS — 실제 운영 lp-common.css를 그대로 담았습니다.
+ *  ⚠️ 2026-09 v2 변경: 이제 미리보기 전용이 아니라, 실제 배포 시
+ *  lp/campaigns/{campaignKey}/css/style.css로 캠페인마다 올라가는 "진짜 배포
+ *  파일" 겸용입니다(assembleEvolutionHtml의
+ *  <link href="/lp/campaigns/{campaignKey}/css/style.css"> 참고). 카탈로그의
+ *  CATALOG_STYLE과 같은 역할입니다. */
 export const EVOLUTION_PREVIEW_CSS = `
 @charset "UTF-8";
 /* ============================================================
