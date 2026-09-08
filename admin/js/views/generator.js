@@ -2,7 +2,7 @@ import { store } from "../state.js";
 import { el, toast, esc } from "../lib/dom.js";
 import { navigate } from "../router.js";
 import { generateCopy, regenerateField } from "../lib/copyGenerator.js";
-import { processImage } from "../lib/imageProcessApi.js";
+import { generateImage, generateAltTextFromImage } from "../lib/imageProcessApi.js";
 import { resizeImage, EDM_IMAGE_MAX_DIM } from "../lib/imageResize.js";
 import { uploadToS3 } from "../lib/s3Upload.js";
 import { assembleEdmHtml } from "../lib/blocks.js";
@@ -41,6 +41,162 @@ export function renderGenerator(root, params) {
   const formBody = root.querySelector("#gen-form-body");
   const previewFrame = root.querySelector("#gen-preview-frame-wrap");
   let latestGuidelineIssues = [];
+
+  /** ⚠️ 미리보기 전용입니다 — 다운로드/발송용 산출물엔 절대 포함하면 안 됩니다.
+   *  blocks.js의 substituteRest()가 text/textarea 타입 필드에 붙여준 data-field
+   *  마커를 이용해서, iframe 안에서 직접 편집 가능하게 만듭니다. LP의
+   *  LP_PREVIEW_EDIT_SCRIPT와 완전히 같은 패턴입니다.
+   *  ⚠️ 이 상수들은 반드시 renderForm()/renderPreview()를 처음 호출하기 전에
+   *  정의되어 있어야 합니다 — const는 선언 전까지 TDZ(일시적 사각지대) 상태라,
+   *  renderPreview() 안에서 이 상수를 참조하는 코드가 먼저 실행되면
+   *  "Cannot access before initialization" 에러로 렌더링 자체가 실패합니다
+   *  (실제로 이 문제가 있었어서, 파일 뒤쪽에 있던 걸 여기로 옮겼습니다). */
+  const EDM_PREVIEW_EDIT_STYLE = `
+    [data-field]{outline:1px dashed transparent;cursor:text;transition:outline-color .15s;border-radius:2px;display:inline-block;min-width:1.5em;min-height:1em;}
+    [data-field]:hover{outline-color:rgba(15,33,139,0.45);}
+    [data-field]:focus{outline:2px solid #0f218b;outline-offset:1px;background:#f0f3ff;}
+    [data-field]:empty::before{content:"(클릭해서 입력)";color:#bbb;font-style:italic;}
+  `;
+  const EDM_PREVIEW_EDIT_SCRIPT = `
+    (function(){
+      // ⚠️ 버튼 문구+링크를 한 번에 고치는 팝업입니다. iframe 안(이 스크립트가
+      // 실행되는 문서)에 직접 그리므로, 바깥 앱의 CSS 클래스는 못 쓰고 전부
+      // 인라인 스타일로 만듭니다 — 어차피 미리보기 전용이라 발송용 산출물엔
+      // 전혀 안 남습니다.
+      function openButtonEditPopup(el, linkKey) {
+        document.querySelectorAll('.__edm_btn_popup').forEach(function(p){ p.remove(); }); // 기존 팝업 정리
+        var anchor = el.closest('a');
+        var currentLink = anchor ? anchor.getAttribute('href') : '';
+        var rect = el.getBoundingClientRect();
+
+        var popup = document.createElement('div');
+        popup.className = '__edm_btn_popup';
+        popup.style.cssText = 'position:absolute;top:' + (rect.bottom + window.scrollY + 6) + 'px;left:' +
+          (rect.left + window.scrollX) + 'px;background:#fff;border:1px solid #d0d0d0;border-radius:8px;' +
+          'box-shadow:0 4px 16px rgba(0,0,0,.18);padding:12px;width:240px;z-index:9999;font-family:sans-serif;';
+
+        var labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.value = el.innerText;
+        labelInput.style.cssText = 'width:100%;box-sizing:border-box;padding:6px 8px;margin-bottom:6px;border:1px solid #ccc;border-radius:4px;font-size:12px;';
+
+        var linkInput = document.createElement('input');
+        linkInput.type = 'text';
+        linkInput.value = currentLink || '';
+        linkInput.placeholder = 'https://...';
+        linkInput.style.cssText = labelInput.style.cssText;
+
+        var saveBtn = document.createElement('button');
+        saveBtn.textContent = '저장';
+        saveBtn.style.cssText = 'flex:1;padding:6px;background:#0f218b;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer;';
+        var cancelBtn = document.createElement('button');
+        cancelBtn.textContent = '취소';
+        cancelBtn.style.cssText = 'flex:1;padding:6px;background:#eee;color:#333;border:none;border-radius:4px;font-size:12px;cursor:pointer;';
+        var btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:6px;';
+        btnRow.appendChild(saveBtn); btnRow.appendChild(cancelBtn);
+
+        var labelCap = document.createElement('div');
+        labelCap.textContent = '버튼 문구';
+        labelCap.style.cssText = 'font-size:10px;color:#999;margin-bottom:2px;';
+        var linkCap = document.createElement('div');
+        linkCap.textContent = '링크(클릭 시 이동)';
+        linkCap.style.cssText = 'font-size:10px;color:#999;margin-bottom:2px;';
+
+        popup.appendChild(labelCap); popup.appendChild(labelInput);
+        popup.appendChild(linkCap); popup.appendChild(linkInput);
+        popup.appendChild(btnRow);
+        document.body.appendChild(popup);
+        labelInput.focus();
+
+        function close(){ popup.remove(); document.removeEventListener('mousedown', onOutsideClick); }
+        function onOutsideClick(e){ if (!popup.contains(e.target)) close(); }
+        setTimeout(function(){ document.addEventListener('mousedown', onOutsideClick); }, 0);
+
+        saveBtn.addEventListener('click', function(){
+          var newLabel = labelInput.value;
+          var newLink = linkInput.value;
+          el.innerText = newLabel;
+          if (anchor) anchor.setAttribute('href', newLink);
+          window.parent.postMessage({ source: 'edm-preview-edit', field: el.getAttribute('data-field'), value: newLabel }, '*');
+          window.parent.postMessage({ source: 'edm-preview-edit', field: linkKey, value: newLink }, '*');
+          close();
+        });
+        cancelBtn.addEventListener('click', close);
+      }
+
+      // ⚠️ 왼쪽 폼의 "이미지1" 등이 오른쪽 미리보기의 어느 이미지인지 알 수
+      // 없다는 피드백 반영 — blocks.js가 심어둔 data-image-key를 보고, 마우스를
+      // 올리면 브라우저 기본 툴팁으로 "이미지 1"처럼 보여줍니다. 별도의 배지
+      // UI를 새로 만들지 않고 title 속성(네이티브 툴팁)을 쓰는 이유는, 위치
+      // 계산이나 z-index 충돌 걱정 없이 항상 정확하게 뜨기 때문입니다.
+      document.querySelectorAll('[data-image-key]').forEach(function(el){
+        var m = el.getAttribute('data-image-key').match(/(\\d+)$/);
+        el.title = m ? '이미지 ' + m[1] : el.getAttribute('data-image-key');
+        el.style.outline = '1px dashed transparent';
+        el.style.transition = 'outline-color .15s';
+        el.addEventListener('mouseenter', function(){ el.style.outlineColor = 'rgba(15,33,139,0.45)'; });
+        el.addEventListener('mouseleave', function(){ el.style.outlineColor = 'transparent'; });
+      });
+      document.querySelectorAll('[data-field]').forEach(function(el){
+        var linkKey = el.getAttribute('data-link-field');
+        if (linkKey) {
+          // ⚠️ 버튼 문구는 인라인 편집(contenteditable) 대신 팝업으로 처리합니다 —
+          // "문구"와 "링크"가 세트인데, 링크는 href 속성값이라 애초에 인라인
+          // 편집이 불가능합니다(속성 안에 <span>을 못 넣음). 둘을 따로 고치게
+          // 하면 "왜 링크는 여기서 안 고쳐지지"라는 혼란이 생기므로, 클릭하면
+          // 문구+링크를 한 팝업에서 같이 고치게 만듭니다.
+          el.style.cursor = 'pointer';
+          el.addEventListener('click', function(e){
+            e.preventDefault();
+            openButtonEditPopup(el, linkKey);
+          });
+          return; // contenteditable/focus/blur는 아래서 안 붙임
+        }
+        el.setAttribute('contenteditable', 'true');
+        // ⚠️ 버튼 문구(btn_N)는 항상 <a href="...">버튼문구</a> 구조 안에 있습니다.
+        // contenteditable을 줘도 이 span이 "링크 안"에 있다는 사실 자체는 그대로라,
+        // 클릭하면 브라우저가 편집 포커스보다 먼저 "링크를 눌렀다"고 판단해서
+        // 새 페이지로 이동해버립니다. 클릭 시 그 기본 동작(이동)만 막고, 포커스는
+        // 정상적으로 걸리게 둡니다(mousedown 시점에 이미 포커스는 걸리므로
+        // preventDefault가 텍스트 편집 자체를 막지 않습니다).
+        el.addEventListener('click', function(e){ e.preventDefault(); });
+        // ⚠️ 빈 필드는 generator.js의 currentValues()가 "[메인 카피 1]" 같은
+        // 안내용 placeholder를 미리 넣어둡니다(미리보기에서 "여기에 뭐가 들어가는지"
+        // 보여주기 위함) — 그런데 이 상태에서 그대로 클릭해서 타이핑하면, 이 안내
+        // 문구 뒤에 이어붙게 되어 매번 직접 지워야 하는 불편이 있었습니다. 포커스
+        // 순간 "[...]" 패턴이면 자동으로 비워서, 바로 타이핑이 가능하게 합니다.
+        // ⚠️ el.innerText = '' 로 직접 지우면 contenteditable의 커서/선택 상태가
+        // 깨져서 이어서 타이핑이 안 먹는 문제가 있었습니다. 대신 기존 내용을
+        // "전체 선택" 상태로만 만들어두면, 첫 타이핑이 브라우저 기본 동작으로
+        // 선택된 내용을 자연스럽게 대체합니다 — 커서 문제가 없는 표준적인 방법입니다.
+        el.addEventListener('focus', function(){
+          if (/^\\[.*\\]$/.test(el.innerText.trim())) {
+            var range = document.createRange();
+            range.selectNodeContents(el);
+            var sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        });
+        el.addEventListener('blur', function(){
+          window.parent.postMessage({ source: 'edm-preview-edit', field: el.getAttribute('data-field'), value: el.innerText }, '*');
+        });
+      });
+    })();
+  `;
+
+  // ⚠️ 미리보기 iframe 안에서 data-field 요소를 편집하고 blur하면 이 리스너로
+  // 값이 전달됩니다. renderPreview() 안에 두면 호출될 때마다 리스너가 중복
+  // 등록되므로, 반드시 여기(초기화 시점)에서 딱 한 번만 등록해야 합니다(LP와 동일 원칙).
+  window.addEventListener("message", e => {
+    if (e.data?.source !== "edm-preview-edit") return;
+    const { field, value } = e.data;
+    draft.fieldValues[field] = value;
+    const formInput = formBody.querySelector(`[data-form-field="${field}"]`);
+    if (formInput) formInput.value = value;
+    log(`미리보기에서 "${field}" 수정됨`);
+  });
 
   renderForm();
   renderPreview();
@@ -347,6 +503,7 @@ export function renderGenerator(root, params) {
     if (templateHasFieldType("product-field")) formBody.appendChild(sectionSeriesCodes());
     if (templateHasFieldType("coupon-field")) formBody.appendChild(sectionCoupon());
     formBody.appendChild(sectionAiPrompt());
+    if (templateHasFieldType("image")) formBody.appendChild(sectionImageReferencePool());
     formBody.appendChild(sectionDynamicFields());
   }
 
@@ -359,7 +516,7 @@ export function renderGenerator(root, params) {
           placeholder: "예: 7월 웰컴 쿠폰 안내",
           oninput: e => { draft.campaignName = e.target.value; }
         }),
-        el("p", { class: "hint" }, "캠페인 목록에서 이 이름으로 표시됩니다.")
+        el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "캠페인 목록에서 이 이름으로 표시됩니다.")
       ]),
       el("div", { class: "field", style: "margin-bottom:14px;" }, [
         el("label", {}, ["프로모션명 ", el("span", { class: "req-tag" }, "· 필수")]),
@@ -368,7 +525,7 @@ export function renderGenerator(root, params) {
           placeholder: "예: 2026년 7월 경제형 프로모션",
           oninput: e => { draft.promotionName = e.target.value; }
         }),
-        el("p", { class: "hint" }, "같은 프로모션의 EDM/LP를 나중에 묶어보고 싶으면, 양쪽에 똑같은 이름을 입력하세요.")
+        el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "같은 프로모션의 EDM/LP를 나중에 묶어보고 싶으면, 양쪽에 똑같은 이름을 입력하세요.")
       ]),
       el("div", { class: "field", style: "margin-bottom:14px;" }, [
         el("label", {}, ["작성자 ", el("span", { class: "req-tag" }, "· 필수")]),
@@ -402,7 +559,7 @@ export function renderGenerator(root, params) {
       }, templatesForPurpose.map(([id, info]) =>
         el("option", { value: id, ...(id === draft.templateId ? { selected: "selected" } : {}) }, info.name)
       )),
-      t ? el("p", { class: "hint" },
+      t ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" },
         `입력 항목 ${t.fields.filter(f => f.type !== "coupon-field" && f.type !== "product-field").length}개`
         + (templateHasFieldType("coupon-field") ? " + 쿠폰 정보" : "")
         + (templateHasFieldType("product-field") ? " + 상품 그리드(시리즈 코드 조회)" : "")) : null
@@ -433,7 +590,7 @@ export function renderGenerator(root, params) {
   }
 
   function sectionAiPrompt() {
-    return sectionWrap(null, "AI 프롬프트", "ai", [
+    return sectionWrap("AI", "AI 프롬프트", "ai", [
       el("div", { class: "field" }, [
         el("label", {}, "AI에게 요청할 내용 (선택 · 카피 생성에 반영됩니다)"),
         el("textarea", {
@@ -446,6 +603,127 @@ export function renderGenerator(root, params) {
         onclick: runGenerateCopy
       }, draft.generating ? "생성 중..." : "✨ AI로 카피 자동 채우기")
     ]);
+  }
+
+  /** 이미지 슬롯마다 참고 URL을 매번 새로 입력하는 게 소모적이라, 캠페인당 한 번만
+   *  등록해두고 각 슬롯에서는 여기서 체크박스로 골라 쓰게 합니다. 등록 방식은 URL
+   *  붙여넣기 또는 파일 업로드(업로드하면 S3에 올라간 뒤 그 URL이 풀에 들어감) 둘 다 지원. */
+  function sectionImageReferencePool() {
+    const pool = draft.imageReferencePool || [];
+    const t = resolveTemplate();
+    const imageFields = t?.fields.filter(f => f.type === "image") || [];
+    return sectionWrap("AI", "참고 이미지 + 슬롯별 설명", "ai", [
+      el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "등록한 소재는 아래 슬롯에서 체크박스로 골라 씁니다."),
+      ...pool.map((ref, i) => el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px;" }, [
+        ref.url ? el("img", { src: ref.url, style: "width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0;" }) : null,
+        el("input", { type: "text", value: ref.label || "", placeholder: "이 이미지가 뭔지 짧게 (예: 제품 정면샷)", style: "flex:1;min-width:0;", oninput: e => { ref.label = e.target.value; } }),
+        el("button", { class: "btn btn-sm ghost", style: "flex-shrink:0;", onclick: () => { pool.splice(i, 1); renderForm(); } }, "삭제")
+      ])),
+      el("div", { class: "row2" }, [
+        el("label", { class: "btn btn-sm upload-label" }, [
+          "파일로 추가",
+          el("input", {
+            type: "file", accept: "image/*", multiple: true, style: "display:none;",
+            // ⚠️ 2026-09 변경: 예전엔 여기서 바로 uploadToS3()를 호출해서 즉시
+            // 저장했는데, 그러면 이 소재가 최종 페이지에 직접 안 쓰이는데도(AI가
+            // "참고만" 하는 용도라) 항상 고아 자산으로 남았습니다. "최종 결과물만
+            // 저장한다" 원칙에 맞춰, 이제 File을 그대로 풀에 보관만 하고 실제
+            // 업로드는 하지 않습니다 — object URL로 미리보기 썸네일만 만듭니다.
+            onchange: e => {
+              const files = [...e.target.files];
+              if (!files.length) return;
+              files.forEach(file => {
+                pool.push({ file, url: URL.createObjectURL(file), label: file.name });
+              });
+              renderForm();
+            }
+          })
+        ]),
+        el("input", {
+          type: "text", placeholder: "이미지 URL 붙여넣기 (Enter로 추가, 여러 개 가능)",
+          onkeydown: e => {
+            if (e.key === "Enter" && e.target.value.trim()) {
+              pool.push({ url: e.target.value.trim(), label: "" });
+              e.target.value = "";
+              renderForm();
+            }
+          }
+        })
+      ]),
+      pool.length ? el("div", { style: "margin-top:10px;padding-top:10px;border-top:1px solid #eee;" }, [
+        el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "슬롯마다 필요한 걸 적어주세요 (비우면 건너뜀):"),
+        ...imageFields.map(f => {
+          const meta = draft.imageMeta[f.key] || {};
+          return el("div", { class: "row2", style: "align-items:center;margin-bottom:6px;" }, [
+            el("label", { style: "width:60px;flex-shrink:0;font-size:12px;font-weight:700;color:#555;" }, f.label),
+            el("input", {
+              type: "text", value: meta.instruction || "",
+              placeholder: "예: 제품 정면샷을 파란 배경에 합성",
+              oninput: e => { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], instruction: e.target.value }; }
+            })
+          ]);
+        }),
+        el("button", {
+          class: "ai-btn", style: "width:100%;margin-top:4px;", disabled: draft.generating ? "disabled" : null,
+          onclick: runGenerateAllImages
+        }, draft.generating ? "생성 중..." : "✨ AI로 이미지 일괄 생성")
+      ]) : null
+    ]);
+  }
+
+  /** "AI로 카피 자동 채우기"(runGenerateCopy)와 같은 패턴을 이미지에도 적용한
+   *  것입니다 — 프롬프트 하나로 여러 텍스트 필드를 한 번에 채우듯, 참고 이미지
+   *  풀 전체를 "소재"로 놓고 각 슬롯에 미리 적어둔 설명(instruction)을 보고
+   *  AI가 슬롯마다 알아서 이미지를 만들어 채웁니다.
+   *  ⚠️ "한 번의 API 호출로 여러 이미지를 동시에 받는" 것이 아니라, 슬롯마다
+   *  generateImage()를 순차로 호출합니다(현재 이미지 생성 API가 1회 호출=1장
+   *  반환 구조라서) — 사용자 입장에서는 버튼 한 번으로 다 채워지는 것처럼
+   *  보이지만, 내부적으로는 여러 번 호출됩니다. 순차 호출인 이유: Promise.all로
+   *  동시에 돌리면 하나만 실패해도 전부 실패로 처리되는데, 슬롯 몇 개가
+   *  실패해도 나머지는 채워지는 게 낫습니다(일본 common.js에서 확인했던 것과
+   *  같은 함정 회피).
+   *  ⚠️ 슬롯별 지시문(설명)이 이미 적혀있어야 그 슬롯이 채워집니다 — 설명이
+   *  비어있는 슬롯은 조용히 건너뜁니다("이 슬롯엔 뭘 넣을지" AI가 알 방법이
+   *  없으므로). 이미 개별적으로 채워둔 슬롯도 설명이 있으면 다시 덮어씁니다 —
+   *  "일단 다 채우고, 마음에 안 드는 것만 개별로 다시 요청"하는 흐름이라
+   *  전체 재생성이 기본 동작입니다. */
+  async function runGenerateAllImages() {
+    const t = resolveTemplate();
+    if (!t) return;
+    const pool = draft.imageReferencePool || [];
+    if (!pool.length) {
+      toast("먼저 참고 이미지 풀에 소재를 등록해주세요");
+      return;
+    }
+    const imageFields = t.fields.filter(f => f.type === "image");
+    const targets = imageFields.filter(f => (draft.imageMeta[f.key]?.instruction || "").trim());
+    if (!targets.length) {
+      toast("각 이미지 슬롯에 어떤 이미지가 필요한지 설명을 먼저 적어주세요");
+      return;
+    }
+    const allFiles = pool.filter(r => r.file).map(r => r.file);
+    const allUrls = pool.filter(r => !r.file && r.url).map(r => r.url);
+    draft.generating = true;
+    renderForm();
+    log(`AI 이미지 일괄 생성 시작... (${targets.length}개 슬롯, 소재 ${pool.length}개)`);
+    let done = 0, failed = 0;
+    for (const f of targets) {
+      draft.imageUploading = f.key;
+      renderForm();
+      try {
+        const instruction = draft.imageMeta[f.key].instruction;
+        await generateAndStoreImage(f.key, { referenceFiles: allFiles, referenceUrls: allUrls, instruction, purpose: t.purpose });
+        done++;
+      } catch (e) {
+        failed++;
+        log(`실패(${f.key}): ` + e.message);
+      }
+    }
+    log(`AI 이미지 일괄 생성 완료 — 성공 ${done}건${failed ? ` · 실패 ${failed}건` : ""}`);
+    draft.generating = false;
+    draft.imageUploading = null;
+    renderForm();
+    renderPreview();
   }
 
   async function runGenerateCopy() {
@@ -521,46 +799,84 @@ export function renderGenerator(root, params) {
     return w > 0 ? w : EDM_IMAGE_MAX_DIM;
   }
 
-  // ⚠️ "확인 후 업로드" 구조: AI 가공(processImage)은 S3에 아무것도 저장하지 않고
-  // 미리보기용 blob만 돌려줍니다. fieldValues[key]는 확정 전까지 비워둡니다 — blocks.js의
-  // substituteImages()가 빈 값을 "이미지 연동 예정" 문구로 안전하게 처리해주므로, 확정
-  // 전에는 EDM 미리보기(iframe)에 아직 아무 이미지도 뜨지 않습니다. 사용자가 "이 결과로
-  // 업로드" 버튼을 눌러야(handleConfirmUpload) 그제서야 uploadToS3()가 호출되어 실제로
-  // S3에 저장되고 미리보기에도 반영됩니다.
-  async function handleImageUpload(key, file) {
-    if (draft.imageUploading === key) return; // 같은 필드에 대한 중복 요청 방지
+  /** 이미지 슬롯의 통합 핸들러 — 파일/참고풀선택/지시문 중 있는 대로 조합해서 넘기고,
+   *  편집인지 합성인지는 여기서 미리 안 가르고 generateImage()에게 맡깁니다.
+   *  지시문이 비어있고 파일만 있으면(=예전 handleImageUpload의 "보정 요청 없음" 케이스)
+   *  AI 호출 자체를 건너뛰고 그냥 업로드만 합니다 — 이 동작은 그대로 유지했습니다. */
+
+  /** 실제 생성/업로드/저장 로직 — 슬롯 하나를 채웁니다. 개별 "AI로 생성" 버튼
+   *  (handleImageGenerate)과 아래 일괄 채우기(runGenerateAllImages) 둘 다 이걸
+   *  공유합니다. purpose는 호출부에서 이미 구해서 넘겨줍니다(매번 resolveTemplate()
+   *  하지 않도록). */
+  async function generateAndStoreImage(key, { file, referenceFiles, referenceUrls, instruction, purpose }) {
+    let resultBlob, aiUsed;
+    if (!instruction?.trim() && file) {
+      // 지시문 없이 파일만 있으면 AI 호출 없이 그냥 업로드 (예전 동작 그대로 유지)
+      log(`이미지 업로드 중... (${file.name})`);
+      resultBlob = file;
+      aiUsed = false;
+    } else {
+      log(`AI 이미지 생성 중... (${key})`);
+      resultBlob = await generateImage({ file, referenceFiles, referenceUrls, instruction, purpose });
+      aiUsed = true;
+    }
+    const resized = await resizeImage(resultBlob, inferImageMaxWidth(key));
+    const filename = file?.name || `generated_${key}.png`;
+    const finalUrl = await uploadToS3(resized, filename, "EDM");
+    draft.fieldValues[key] = finalUrl;
+    // ⚠️ alt는 배포/다운로드 시점에 이미지를 직접 분석해서 만듭니다(handleImageGenerate
+    // 상단 설명 참고) — 여기서 지시문 기반으로 임시 대입하지 않습니다.
+    draft.imageMeta[key] = { ...(draft.imageMeta[key] || {}), filename, processed: true, instruction, aiProcessed: aiUsed, fileBlob: file || resized };
+    draft.imageMeta[key].assetId = registerAsset(key, filename, finalUrl, resized, instruction, aiUsed);
+    log(aiUsed ? `이미지 생성 완료: ${filename}` : `이미지 업로드 완료: ${filename}`);
+  }
+
+  /** 개별 슬롯의 "비어있음" 상태 전용 — AI를 전혀 안 태우고, 갖고 있는 파일을 그대로
+   *  올립니다. handleImageGenerate()는 meta.instruction이 있으면(①번 참고 이미지
+   *  섹션에서 이 슬롯에 설명을 적어뒀을 수 있음, 같은 데이터를 공유하므로) AI 생성으로
+   *  빠지는데, 여기 버튼은 "업로드"라고 표시되므로 실제 동작도 항상 순수 업로드여야
+   *  합니다 — 그래서 instruction을 아예 무시하는 별도 함수로 분리했습니다. */
+  async function handlePlainUpload(key) {
+    const meta = draft.imageMeta[key] || {};
+    const file = meta.pendingFile;
+    if (!file) { toast("파일을 먼저 선택해주세요"); return; }
+    draft.imageUploading = key;
+    renderForm();
+    try {
+      const resized = await resizeImage(file, inferImageMaxWidth(key));
+      const finalUrl = await uploadToS3(resized, file.name, "EDM");
+      draft.fieldValues[key] = finalUrl;
+      draft.imageMeta[key] = { ...draft.imageMeta[key], filename: file.name, processed: true, aiProcessed: false, fileBlob: resized };
+      draft.imageMeta[key].assetId = registerAsset(key, file.name, finalUrl, resized, "", false);
+      log(`이미지 업로드 완료: ${file.name}`);
+    } catch (e) {
+      log(`업로드 실패(${key}): ` + e.message);
+      toast("업로드에 실패했습니다: " + e.message);
+    } finally {
+      draft.imageUploading = null;
+      renderForm(); renderPreview();
+    }
+  }
+
+  async function handleImageGenerate(key) {
+    const meta = draft.imageMeta[key] || {};
+    const file = meta.pendingFile;
+    // ⚠️ 체크박스 선택(meta.selectedRefs) 대신 풀 전체를 자동으로 씁니다 —
+    // ①번 일괄 생성(runGenerateAllImages)과 정확히 같은 방식으로 통일해서,
+    // "체크박스로 골랐는데 왜 반영이 안 되지"라는 혼란을 없앴습니다.
+    const pool = draft.imageReferencePool || [];
+    const instruction = meta.instruction || "";
+    if (!file && !pool.length) {
+      toast("파일을 선택하거나, 위 '참고 이미지'에 소재를 하나 이상 등록해주세요");
+      return;
+    }
     draft.imageUploading = key;
     renderForm();
     const t = resolveTemplate();
-    const instruction = (draft.imageMeta[key] || {}).instruction || "";
     try {
-      // 이 필드가 실제로 들어가는 슬롯의 폭에 맞춰 리사이징합니다 (원본을 그대로 보내면
-      // 이메일 용량만 커지고, 좁은 슬롯엔 화질 이득도 없음).
-      const resized = await resizeImage(file, inferImageMaxWidth(key));
-      if (instruction.trim()) {
-        // 보정 요청이 있으면 AI 가공까지만 하고 S3엔 아직 저장하지 않습니다 — 사용자
-        // 확인을 기다리는 미리보기 상태로 둡니다.
-        log(`AI 가공 요청 중... (${file.name})`);
-        const previewBlob = await processImage(resized, instruction, t?.purpose);
-        draft.imageMeta[key] = {
-          filename: file.name,
-          instruction,
-          pendingInstruction: instruction,
-          fileBlob: resized,
-          previewBlob,
-          previewPending: true
-        };
-        log(`AI 가공 완료 — 확인 후 업로드해주세요: ${file.name}`);
-      } else {
-        // 보정 요청이 비어있으면 AI 가공 자체를 건너뛰고, 확인 절차 없이 바로 업로드합니다
-        // (가공 결과가 없으니 "확인할 대상"도 없음).
-        log(`이미지 업로드 중... (${file.name})`);
-        const url = await uploadToS3(resized, file.name, "EDM");
-        draft.fieldValues[key] = url;
-        draft.imageMeta[key] = { filename: file.name, processed: true, instruction, aiProcessed: false, fileBlob: resized };
-        draft.imageMeta[key].assetId = registerAsset(key, file.name, url, resized, instruction, false);
-        log(`이미지 업로드 완료: ${file.name}`);
-      }
+      const refFiles = pool.filter(r => r.file).map(r => r.file);
+      const refUrls = pool.filter(r => !r.file && r.url).map(r => r.url);
+      await generateAndStoreImage(key, { file, referenceFiles: refFiles, referenceUrls: refUrls, instruction, purpose: t?.purpose });
     } catch (e) {
       log("오류: " + e.message);
     } finally {
@@ -570,65 +886,30 @@ export function renderGenerator(root, params) {
     }
   }
 
-  /** 이미 확정 업로드된 이미지에 보정을 요청(재요청)합니다. 원본을 다시 선택할 필요 없이,
-   *  업로드 때 남겨둔 fileBlob으로 다시 AI 가공을 걸되, 결과는 즉시 S3에 반영하지 않고
-   *  미리보기 상태로만 둡니다 — 기존 확정 이미지(fieldValues[key])는 사용자가 새 결과를
-   *  확정하기 전까지 그대로 유지됩니다. */
+
   async function handleRecorrect(key) {
     const meta = draft.imageMeta[key] || {};
     if (!meta.fileBlob || !meta.newInstruction?.trim()) return;
-    if (draft.imageUploading === key) return;
     draft.imageUploading = key;
     renderForm();
     const t = resolveTemplate();
     log(`보정 재요청 중... (${meta.filename})`);
     try {
-      const previewBlob = await processImage(meta.fileBlob, meta.newInstruction, t?.purpose);
-      draft.imageMeta[key] = {
-        ...meta,
-        previewBlob,
-        pendingInstruction: meta.newInstruction,
-        newInstruction: "",
-        previewPending: true
-      };
-      log(`보정 완료 — 확인 후 업로드해주세요: ${meta.filename}`);
-    } catch (e) {
-      log("오류: " + e.message);
-    } finally {
-      draft.imageUploading = null;
-      renderForm();
-      renderPreview();
-    }
-  }
-
-  /** 미리보기(previewPending) 상태의 가공 결과를 실제로 S3에 확정 업로드합니다.
-   *  최초 업로드/재보정 재요청 두 경우 모두 이 함수 하나로 처리합니다 — 이미 확정된
-   *  이전 버전(assetId)이 있으면 새 버전 등록 후 지워서 에셋 목록에 옛 버전이 남지 않게
-   *  합니다. */
-  async function handleConfirmUpload(key) {
-    const meta = draft.imageMeta[key] || {};
-    if (!meta.previewBlob) return;
-    if (draft.imageUploading === key) return;
-    draft.imageUploading = key;
-    renderForm();
-    const finalInstruction = meta.pendingInstruction ?? meta.instruction ?? "";
-    try {
-      log(`업로드 중... (${meta.filename})`);
-      const url = await uploadToS3(meta.previewBlob, meta.filename, "EDM");
+      const pool = draft.imageReferencePool || [];
+      const refFiles = pool.filter(r => r.file).map(r => r.file);
+      const refUrls = pool.filter(r => !r.file && r.url).map(r => r.url);
+      const resultBlob = await generateImage({ file: meta.fileBlob, referenceFiles: refFiles, referenceUrls: refUrls, instruction: meta.newInstruction, purpose: t?.purpose });
+      const url = await uploadToS3(resultBlob, meta.filename, "EDM");
       draft.fieldValues[key] = url;
-      // 재보정 확정인 경우, 옛 버전 에셋은 삭제 — 안 그러면 확정할 때마다 안 쓰는
-      // 예전 이미지가 에셋 목록에 계속 쌓입니다.
+      // ⚠️ 2026-09 변경: alt는 이제 배포/다운로드 시점에 이미지를 직접 분석해서
+      // 만듭니다 — 여기서 지시문 기반으로 임시 대입하지 않습니다(handleImageGenerate
+      // 참고).
+      // 재보정한 새 버전만 남기고, 이 필드의 예전 버전 에셋은 지웁니다 — 안 그러면 보정을
+      // 시도할 때마다 안 쓰는 예전 이미지가 에셋 목록에 계속 쌓입니다.
       if (meta.assetId) store.deleteAsset(meta.assetId);
-      const newAssetId = registerAsset(key, meta.filename, url, meta.previewBlob, finalInstruction, true);
-      draft.imageMeta[key] = {
-        filename: meta.filename,
-        processed: true,
-        instruction: finalInstruction,
-        aiProcessed: true,
-        fileBlob: meta.previewBlob,
-        assetId: newAssetId
-      };
-      log(`업로드 완료: ${meta.filename}`);
+      const newAssetId = registerAsset(key, meta.filename, url, resultBlob, meta.newInstruction, true);
+      draft.imageMeta[key] = { ...meta, instruction: meta.newInstruction, newInstruction: "", aiProcessed: true, processed: true, assetId: newAssetId };
+      log(`보정 완료: ${meta.filename}`);
     } catch (e) {
       log("오류: " + e.message);
     } finally {
@@ -636,27 +917,6 @@ export function renderGenerator(root, params) {
       renderForm();
       renderPreview();
     }
-  }
-
-  /** 미리보기(previewPending) 상태를 확정하지 않고 되돌립니다. 이미 확정된 이전 버전이
-   *  있었으면(재보정 시도였던 경우) 그 상태로 복귀하고, 처음 업로드였던 경우엔 보정 요청
-   *  입력칸만 남기고 완전히 초기화합니다. S3엔 애초에 아무것도 저장되지 않았으므로
-   *  별도 삭제 처리가 필요 없습니다. */
-  function handleDiscardPreview(key) {
-    const meta = draft.imageMeta[key] || {};
-    if (meta.processed) {
-      draft.imageMeta[key] = {
-        filename: meta.filename,
-        processed: true,
-        instruction: meta.instruction,
-        aiProcessed: meta.aiProcessed,
-        fileBlob: meta.fileBlob,
-        assetId: meta.assetId
-      };
-    } else {
-      draft.imageMeta[key] = { instruction: meta.instruction || "" };
-    }
-    renderForm();
   }
 
   function toggleSwitch(checked, onChange) {
@@ -689,7 +949,7 @@ export function renderGenerator(root, params) {
         : null;
       return sectionWrap(null, g.name, "high", [
         isDeleted
-          ? el("p", { class: "hint" }, "이 섹션은 미리보기에서 제외됩니다.")
+          ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "이 섹션은 미리보기에서 제외됩니다.")
           : el("div", {}, g.fields.map(f => renderFieldInput(f)))
       ], isDeleted ? "sec-deleted" : "", headerExtra);
     }));
@@ -719,45 +979,37 @@ export function renderGenerator(root, params) {
       ]);
     }
     if (f.type === "textarea") {
-      return el("div", { class: "field" }, [labelRow, el("textarea", { oninput: e => onChange(e.target.value) }, value)]);
+      return el("div", { class: "field" }, [labelRow, el("textarea", { "data-form-field": f.key, oninput: e => onChange(e.target.value) }, value)]);
     }
     if (f.type === "image") {
       const meta = draft.imageMeta[f.key] || {};
       const uploading = draft.imageUploading === f.key;
 
-      // 미확정 미리보기 상태 — AI 가공은 끝났지만 아직 S3에 저장되지 않은 상태.
-      // 이 분기를 "완료 상태"보다 먼저 검사해야 합니다 — 재보정 재요청 중에는
-      // meta.processed가 true인 채로 previewPending도 함께 true가 될 수 있기 때문입니다
-      // (기존 확정본은 그대로 두고, 새 결과만 확인 대기 상태로 얹는 구조).
-      if (meta.previewPending) {
-        return el("div", { class: "field" }, [
-          labelRow,
-          el("div", { class: "image-field-filled" }, [
-            el("img", { src: URL.createObjectURL(meta.previewBlob), alt: "", class: "image-field-thumb" }),
-            el("div", { class: "image-field-info" }, [
-              el("p", { class: "image-field-name" }, meta.filename || "이미지"),
-              el("span", { class: "badge amber" }, "AI 가공됨 · 미확정")
-            ])
-          ]),
-          meta.pendingInstruction ? el("p", { class: "hint" }, `요청한 보정: "${meta.pendingInstruction}"`) : null,
-          el("p", { class: "hint" }, "확정 전까지는 S3에 저장되지 않고, 미리보기에도 반영되지 않습니다."),
-          el("div", { class: "row2" }, [
-            el("button", {
-              class: "btn btn-sm primary", disabled: uploading ? "disabled" : null,
-              onclick: () => handleConfirmUpload(f.key)
-            }, uploading ? "업로드 중..." : "이 결과로 업로드"),
-            el("button", {
-              class: "btn btn-sm ghost", disabled: uploading ? "disabled" : null,
-              onclick: () => handleDiscardPreview(f.key)
-            }, meta.processed ? "취소 (이전 이미지 유지)" : "다시 시도")
-          ])
+      // ⚠️ 2026-09 신설: EDM 템플릿은 이미지 슬롯이 최대 15개(image_1~image_15)까지
+      // 있어서, 전부 펼쳐두면 폼이 지나치게 길어집니다. "AI로 이미지 일괄 채우기"
+      // (참고 이미지 풀 섹션)로 한 번에 처리하는 게 기본 흐름이 됐으니, 개별 슬롯은
+      // 평소엔 한 줄 요약만 보이고 클릭해야 펼쳐지게 만듭니다 — 재요청/URL직접입력
+      // 같은 개별 조작이 필요할 때만 펼쳐서 쓰는 용도입니다.
+      if (!meta.expanded) {
+        const statusText = value && meta.processed ? "✅ 완료" : (value ? "🔗 URL 지정됨" : "비어있음");
+        return el("div", {
+          class: "field",
+          style: "display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #e2e4ec;border-radius:8px;padding:8px 12px;cursor:pointer;",
+          onclick: () => { draft.imageMeta[f.key] = { ...meta, expanded: true }; renderForm(); }
+        }, [
+          el("span", { style: "font-size:11px;font-weight:700;color:#555;" }, f.label),
+          el("span", { class: "slot-status", style: (value && meta.processed ? "color:#2e7d32;" : "color:#999;") + "font-size:11px;font-weight:700;" }, statusText + " ▾")
         ]);
       }
+      const collapseBtn = el("span", {
+        style: "font-size:11px;color:#999;cursor:pointer;float:right;",
+        onclick: () => { draft.imageMeta[f.key] = { ...meta, expanded: false }; renderForm(); }
+      }, "▴ 접기");
 
       // 완료 상태 — 썸네일 + 배지 + 다시 업로드/URL 전환 + (가능하면) 추가 보정 요청
       if (value && meta.processed) {
         return el("div", { class: "field" }, [
-          labelRow,
+          el("div", {}, [labelRow, collapseBtn]),
           el("div", { class: "image-field-filled" }, [
             el("img", { src: value, alt: "", class: "image-field-thumb" }),
             el("div", { class: "image-field-info" }, [
@@ -766,7 +1018,7 @@ export function renderGenerator(root, params) {
               el("span", { class: "badge blue" }, "S3 저장됨")
             ])
           ]),
-          meta.instruction ? el("p", { class: "hint" }, `요청한 보정: "${meta.instruction}"`) : null,
+          meta.instruction ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, `요청한 보정: "${meta.instruction}"`) : null,
           meta.fileBlob ? el("div", { class: "field-with-regen", style: "margin:6px 0;" }, [
             el("input", {
               type: "text", value: meta.newInstruction || "", style: "flex:1;min-width:0;",
@@ -788,33 +1040,81 @@ export function renderGenerator(root, params) {
       // URL 직접 입력 상태 — CLI로 만든 링크 등을 그대로 붙여넣는 기존 경로
       if (meta.urlMode || (value && !meta.processed)) {
         return el("div", { class: "field" }, [
-          labelRow,
+          el("div", {}, [labelRow, collapseBtn]),
           el("input", { type: "text", value, placeholder: "https://... (CLI로 만든 링크 등 붙여넣기)", oninput: e => onChange(e.target.value) }),
           el("button", { class: "btn btn-sm ghost", onclick: () => { draft.imageMeta[f.key] = {}; renderForm(); } }, "업로드로 전환")
         ]);
       }
 
-      // 비어있음 — 업로드 유도 (보정 요청은 선택 사항, 한 줄로 압축)
+      // 비어있음 — 편집/합성을 미리 구분하지 않는 통합 입력. 파일 업로드·지시문 중
+      // 있는 대로 조합해서 넘기고, 편집인지 합성인지는 AI가 판단합니다. 지시문이
+      // 비어있고 파일만 있으면 AI 호출 없이 그냥 업로드만 합니다(기존 동작 유지).
+      // ⚠️ 2026-09 재조정: 체크박스로 소재를 "선택"하게 해뒀다가, 정작 AI 생성 시엔
+      // 그 선택을 무시하고 풀 전체를 쓰는 게 실제 혼란의 원인이었습니다(①번 일괄
+      // 생성과 같은 방식으로 통일). 그래서 체크박스는 빼고, "소재는 항상 풀 전체를
+      // 자동으로 참고한다"로 단순화했습니다 — 설명 입력창과 AI 생성 버튼은
+      // 개별 슬롯만 새로 만들고 싶을 때를 위해 남겨둡니다.
+      const pool = draft.imageReferencePool || [];
+      const pendingFileName = meta.pendingFile?.name;
+      // ⚠️ 버튼 하나만 참조해뒀다가, 아래 textarea의 oninput에서 폼 전체를 다시
+      // 그리지 않고 이 버튼의 글자만 직접 바꿉니다 — renderForm()을 매 키 입력마다
+      // 부르면 포커스가 날아가는 문제가 있어서(실제로 겪었음) 그 방식을 버렸는데,
+      // 그러면 이번엔 버튼 라벨이 타이핑해도 안 바뀌는 문제가 생겼습니다. "포커스는
+      // 안 건드리고 버튼 하나만 갱신"하는 게 두 문제를 동시에 푸는 방법입니다.
+      const generateBtn = el("button", {
+        class: "btn btn-sm", disabled: uploading ? "disabled" : null,
+        onclick: () => handleImageGenerate(f.key)
+      }, uploading ? "처리 중..." : (meta.instruction?.trim() ? "✨ AI로 생성" : "업로드"));
       return el("div", { class: "field" }, [
-        labelRow,
-        el("input", {
-          type: "text", value: meta.instruction || "",
-          placeholder: "보정 요청 (선택) · 예: 배경 제거, 제품 중앙 정렬",
-          oninput: e => { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], instruction: e.target.value }; }
+        el("div", {}, [labelRow, collapseBtn]),
+        pool.length ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" },
+          `등록된 소재 ${pool.length}개를 자동으로 참고합니다.`) : null,
+        el("textarea", {
+          placeholder: "무엇을 원하는지 설명 (선택) · 예: 배경 제거 / 소재 참고해서 합성 / 비워두면 그냥 업로드만",
+          value: meta.instruction || "",
+          oninput: e => {
+            const val = e.target.value;
+            draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], instruction: val };
+            if (!uploading) generateBtn.textContent = val.trim() ? "✨ AI로 생성" : "업로드";
+          }
         }),
-        el("div", { class: "image-upload-row" }, [
+        el("p", { class: "hint", style: "font-size:10px;color:#999;margin:3px 0 6px;" },
+          "위에 설명을 적으면 아래 버튼이 \"AI로 생성\"으로 바뀝니다. 설명 없이 파일만 있으면 그냥 \"업로드\"만 됩니다."),
+        el("div", { class: "row2", style: "margin-bottom:6px;" }, [
           el("label", { class: "btn btn-sm upload-label" }, [
-            uploading ? "AI로 이미지 가공 중..." : "이미지 업로드",
+            "소재 추가 (여러 장)",
             el("input", {
-              type: "file", accept: "image/*", style: "display:none;", disabled: uploading ? "disabled" : null,
-              onchange: e => { if (e.target.files[0]) handleImageUpload(f.key, e.target.files[0]); }
+              type: "file", accept: "image/*", multiple: true, style: "display:none;",
+              // ⚠️ 여기서 고른 파일들은 개별 슬롯 전용이 아니라, ①번(참고 이미지 풀)과
+              // 완전히 같은 공용 풀(draft.imageReferencePool)에 그대로 추가됩니다 —
+              // "어느 슬롯에서 넣었는지"와 무관하게 모든 슬롯이 똑같이 참고할 수 있게
+              // 하려는 의도입니다. 슬롯마다 소재를 따로 관리하면 "이 슬롯엔 있는데
+              // 저 슬롯엔 없네" 하는 혼란이 다시 생기기 때문입니다.
+              onchange: e => {
+                const files = [...e.target.files];
+                if (!files.length) return;
+                files.forEach(file => {
+                  pool.push({ file, url: URL.createObjectURL(file), label: file.name });
+                });
+                renderForm();
+              }
             })
           ]),
-          el("button", { class: "btn btn-sm", onclick: () => { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], urlMode: true }; renderForm(); } }, "URL 직접 입력")
+          el("label", { class: "btn btn-sm upload-label" }, [
+            pendingFileName ? `원본: ${pendingFileName}` : "이 사진 자체를 고칠 원본 (1장)",
+            el("input", {
+              type: "file", accept: "image/*", style: "display:none;", disabled: uploading ? "disabled" : null,
+              onchange: e => { if (e.target.files[0]) { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], pendingFile: e.target.files[0] }; renderForm(); } }
+            })
+          ])
+        ]),
+        el("div", { class: "image-upload-row" }, [
+          generateBtn,
+          el("button", { class: "btn btn-sm ghost", onclick: () => { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], urlMode: true }; renderForm(); } }, "URL 직접 입력")
         ])
       ]);
     }
-    return el("div", { class: "field" }, [labelRow, el("input", { type: "text", value, oninput: e => onChange(e.target.value) })]);
+    return el("div", { class: "field" }, [labelRow, el("input", { type: "text", value, "data-form-field": f.key, oninput: e => onChange(e.target.value) })]);
   }
 
   function sectionCoupon() {
@@ -832,7 +1132,7 @@ export function renderGenerator(root, params) {
         field("쿠폰 코드 (최대 9자)", c.code, v => { c.code = v.slice(0, 9); schedulePreview(); }, { maxlength: 9 }),
         field("사용 기한", c.expiry, v => { c.expiry = v; schedulePreview(); })
       ]),
-      el("p", { class: "hint" }, "※ 쿠폰 정보는 쿠폰 블록이 포함된 템플릿에서만 표시됩니다")
+      el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "※ 쿠폰 정보는 쿠폰 블록이 포함된 템플릿에서만 표시됩니다")
     ]);
   }
 
@@ -859,7 +1159,7 @@ export function renderGenerator(root, params) {
           })
         ])
       ]),
-      el("p", { class: "hint" }, "상품 데이터 자동 조회 · 엑셀은 1열 시리즈코드, 2열(선택) 가격(조회 결과에 가격 없을 때만 사용) · 조회 결과는 미리보기에 바로 반영됩니다.")
+      el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "상품 데이터 자동 조회 · 엑셀은 1열 시리즈코드, 2열(선택) 가격(조회 결과에 가격 없을 때만 사용) · 조회 결과는 미리보기에 바로 반영됩니다.")
     ]);
   }
 
@@ -944,7 +1244,7 @@ export function renderGenerator(root, params) {
           type: "text", value: draft.offerNo, placeholder: "예: OFFER2026070",
           oninput: e => { draft.offerNo = e.target.value; schedulePreview(); }
         }),
-        el("p", { class: "hint" }, draft.offerNo
+        el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, draft.offerNo
           ? `UTM에는 "${withGenSuffix(draft.offerNo)}"로 자동 저장됩니다 (이 생성기로 만든 캠페인임을 구분하기 위한 _GEN 접미사, 자동 부착)`
           : "오퍼번호를 입력하면 UTM에 자동으로 반영됩니다 (뒤에 _GEN 접미사가 자동으로 붙습니다)")
       ])
@@ -974,8 +1274,11 @@ export function renderGenerator(root, params) {
   function renderPreview() {
     const { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans } = computeHiddenUnits();
     const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans });
+    const previewHtml = html
+      .replace("</head>", `<style>${EDM_PREVIEW_EDIT_STYLE}</style></head>`)
+      .replace("</body>", `<script>${EDM_PREVIEW_EDIT_SCRIPT}</script></body>`);
     previewFrame.innerHTML = "";
-    const iframe = el("iframe", { srcdoc: html });
+    const iframe = el("iframe", { srcdoc: previewHtml });
     // ⚠️ iframe은 기본적으로 안의 콘텐츠 길이에 맞춰 스스로 커지지 않아서, 고정 높이만
     // 줘두면 긴 템플릿은 내부 스크롤이 생겨 답답해 보입니다. 로드 완료 후 실제 콘텐츠
     // 높이를 측정해서 iframe 자체의 높이를 그만큼 맞춰줍니다 (짧은 템플릿은 짧게).
@@ -1041,7 +1344,15 @@ export function renderGenerator(root, params) {
   function draftToCampaign(statusOverride) {
     const t = resolveTemplate();
     const today = new Date().toISOString().slice(0, 10).replace(/-/g, ".");
-    return {
+    // ⚠️ imageReferencePool 안의 File 기반 소재("파일로 추가"로 넣은 것)는 브라우저
+    // 메모리에만 있는 Blob이라 JSON으로 저장할 수 없습니다(그대로 두면 저장 시점에
+    // 조용히 빈 객체가 되어 데이터가 사라집니다). URL 기반 소재("URL 붙여넣기")는
+    // 그냥 문자열이라 정상 저장됩니다. File 기반은 걸러내고, 몇 개가 빠졌는지
+    // 호출부(saveDraft)에서 알 수 있게 개수를 별도로 리턴합니다.
+    const pool = draft.imageReferencePool || [];
+    const savablePool = pool.filter(r => !r.file);
+    const droppedCount = pool.length - savablePool.length;
+    const campaign = {
       id: draft.id,
       name: (draft.campaignName || "").trim() || "(캠페인명 미입력)",
       author: (draft.author || "").trim() || "(작성자 미입력)",
@@ -1052,28 +1363,34 @@ export function renderGenerator(root, params) {
       createdAt: existing ? existing.createdAt : today, // 작성일: 최초 생성 시점, 이후 안 바뀜
       updatedAt: today, // 최종 수정일: 저장/내보내기마다 갱신
       promotionName: draft.promotionName || "",
-      draftData: { ...draft }
+      draftData: { ...draft, imageReferencePool: savablePool }
     };
+    return { campaign, droppedCount };
   }
 
   async function persistCampaign(statusOverride) {
-    const campaign = draftToCampaign(statusOverride);
+    const { campaign, droppedCount } = draftToCampaign(statusOverride);
     const savedCampaign = await store.upsertCampaign(campaign);
     draft.id = savedCampaign.id;
     existing = savedCampaign; // ⚠️ existing이 최초 진입 시점 값으로 고정돼 있으면, 내보내기로 "완료"
     // 상태를 저장한 뒤 다시 임시저장할 때 draftToCampaign()이 옛 existing.status(초안 등)를
     // 참조해서 "완료"가 "초안"으로 되돌아가는 버그가 생깁니다. 매번 저장할 때마다 최신값으로
     // 갱신해서 이 문제를 막습니다.
-    return savedCampaign;
+    return { savedCampaign, droppedCount };
   }
 
   async function saveDraft(e) {
     const button = e?.currentTarget;
     if (button) button.disabled = true;
     try {
-      await persistCampaign();
-      toast("임시저장했습니다");
-      log("임시저장 완료");
+      const { droppedCount } = await persistCampaign();
+      if (droppedCount > 0) {
+        toast(`임시저장했습니다 (⚠ 아직 AI 생성에 안 쓴 새 소재 ${droppedCount}개는 저장 대상이 아니라 제외됐습니다 — 브라우저를 닫으면 사라집니다)`);
+        log(`임시저장 완료 — 미사용 신규 소재 ${droppedCount}개는 저장 안 됨(재접속 시 다시 추가 필요)`);
+      } else {
+        toast("임시저장했습니다");
+        log("임시저장 완료");
+      }
     } catch (error) {
       console.error("캠페인 저장 실패", error);
       toast(`임시저장에 실패했습니다: ${error.message}`);
@@ -1125,7 +1442,36 @@ export function renderGenerator(root, params) {
     }
   }
 
+  /** 배포/다운로드 직전, 이미지 타입 필드를 전부 훑어서 alt를 확정합니다.
+   *  ⚠️ 여기서만(다운로드 버튼을 누르는 이 순간에만) 호출합니다 — 이미지를 만들
+   *  때마다(handleImageGenerate/handleRecorrect) 호출하지 않습니다. 재생성을
+   *  여러 번 해도 최종적으로 다운로드되는 건 한 번뿐이므로, 여기서 한 번만
+   *  분석하면 그 사이의 중간 결과물 분석 비용을 전부 아낄 수 있습니다(재생성
+   *  10회 기준 최대 90% 절감 확인됨). 이미 사람이 직접 입력해둔 alt가 있으면
+   *  그건 존중하고(덮어쓰지 않고) 건드리지 않습니다.
+   *  ⚠️ 이미지 필드는 이미 S3에 업로드되어 URL만 갖고 있는 상태라, 분석하려면
+   *  다시 fetch해서 Blob으로 받아와야 합니다. */
+  async function fillMissingImageAltTexts() {
+    const t = resolveTemplate();
+    if (!t) return;
+    const imageFields = t.fields.filter(f => f.type === "image");
+    for (const f of imageFields) {
+      const url = draft.fieldValues[f.key];
+      const altKey = `${f.key}_alt`;
+      if (!url || draft.fieldValues[altKey]) continue; // 이미지가 없거나 alt가 이미 있으면 스킵
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const blob = await res.blob();
+        draft.fieldValues[altKey] = await generateAltTextFromImage(blob, resolveTemplate()?.purpose);
+      } catch (e) {
+        log(`alt 생성 실패(${f.key}): ` + e.message); // 실패해도 다운로드 자체는 막지 않음
+      }
+    }
+  }
+
   async function downloadHtml() {
+    await fillMissingImageAltTexts();
     const { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans } = computeHiddenUnits();
     const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans });
     if (!(await confirmExportGuards(html))) return;
@@ -1154,6 +1500,7 @@ function buildInitialDraft(templateId, existing) {
     author: "",
     promotionName: "",
     aiPrompt: "",
+    imageReferencePool: [],
     purpose: t?.purpose || "온보딩",
     templateId,
     fieldValues: {},

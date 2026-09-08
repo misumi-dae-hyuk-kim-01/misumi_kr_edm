@@ -9,6 +9,7 @@
 
 import { esc } from "./dom.js";
 import { EDM_TEMPLATE_HTML } from "../data/edmTemplateHtml.js";
+import { EDM_TEMPLATE_FIELDS } from "../data/edmTemplateFields.js";
 
 const ESP_MERGE_TAGS = new Set(["customer_name"]);
 
@@ -390,9 +391,15 @@ function substituteImages(html, values) {
         const altText = values[`${key}_alt`] || "상품/콘텐츠 이미지";
         const withSrc = imgTag.replace(`{{${key}}}`, esc(url));
         const withAlt = withSrc.replace(/alt="[^"]*"/, `alt="${esc(altText)}"`);
-        return withAlt + closing;
+        // ⚠️ 미리보기 전용 식별용 — 왼쪽 폼의 "이미지1" 등과 오른쪽 미리보기의
+        // 실제 위치를 매칭할 방법이 없어서, 어느 슬롯인지 호버로 확인할 수 있게
+        // <img> 태그 자체에 data-image-key를 심어둡니다. 발송용 실제 HTML에는
+        // 영향 없는 속성이라(이메일 클라이언트가 무시함) 그대로 둬도 안전합니다.
+        const withKey = withAlt.replace("<img ", `<img data-image-key="${esc(key)}" `);
+        return withKey + closing;
       }
-      return `<span style="color:#c9a227;font-style:italic;font-size:11px;">이미지 연동 예정</span>` + closing;
+      const num = (key.match(/(\d+)$/) || [])[1];
+      return `<span data-image-key="${esc(key)}" style="color:#c9a227;font-style:italic;font-size:11px;">이미지${num || ""}</span>` + closing;
     }
   );
 }
@@ -400,11 +407,42 @@ function substituteImages(html, values) {
 /** 나머지 모든 {{변수}} 치환. ESP 병합 태그는 그대로 남기고, 값이 없는 필드는 빈 문자열로
  *  치환합니다(레이아웃 자체는 원본 그대로 유지되고, 텅 빈 자리로만 보임 — 실제 발송 전에
  *  가이드라인 검사에서 "값이 비어있음"을 별도로 잡아내는 걸 전제로 합니다). */
-function substituteRest(html, values) {
+/** ⚠️ 미리보기에서 직접 편집 가능하게 하려고, text/textarea 타입 필드만
+ *  <span data-field="key">로 감쌉니다. link/image 타입은 href="{{...}}"처럼
+ *  속성값 안에서 쓰이는 경우가 있어서, 거기다 <span>을 넣으면 HTML 자체가
+ *  깨집니다(태그를 속성값 문자열 안에 넣을 수 없음) — 그래서 반드시 타입으로
+ *  구분해서 텍스트 계열만 감싸야 합니다. LP의 LP_PREVIEW_EDIT_SCRIPT와 같은
+ *  방식(부모 창이 postMessage로 편집 내용을 받아 처리)을 그대로 씁니다.
+ *  ⚠️ 같은 <td> 안에 필드가 두 개 붙어있는 경우(예: {{copy_sub}}<br/>
+ *  <strong>{{copy_sub_strong}}</strong>)가 실제로 있어서, 부모 요소가 아니라
+ *  치환되는 값 하나하나를 개별로 감싸야 각 필드가 독립적으로 편집됩니다. */
+/** 버튼 문구 필드(btn_N, cta_label 등)마다, 같은 <a href="{{링크키}}">에 묶여있는
+ *  링크 필드가 뭔지 원본 템플릿(치환 전)에서 찾아둡니다. 실제 확인 결과 항상
+ *  `<a href="{{링크}}" style="...">​{{버튼문구}}` 형태로, href와 내용 사이에
+ *  스타일 속성 외엔 다른 텍스트/태그가 없어서 이 정규식으로 안전하게 찾을 수
+ *  있습니다. 이 짝을 알아야, 미리보기에서 버튼 문구를 클릭했을 때 "문구+링크를
+ *  같이 고치는 팝업"에 어떤 링크 필드를 같이 보여줄지 알 수 있습니다. */
+function findLinkFieldPairs(rawHtml, buttonLabelKeys) {
+  const pairs = {};
+  for (const labelKey of buttonLabelKeys) {
+    const re = new RegExp(`<a href="\\{\\{([a-zA-Z_0-9]+)\\}\\}"[^>]*>\\s*\\{\\{${labelKey}\\}\\}`);
+    const m = rawHtml.match(re);
+    if (m) pairs[labelKey] = m[1];
+  }
+  return pairs;
+}
+
+function substituteRest(html, values, textFieldKeys, linkFieldPairs) {
   return html.replace(/\{\{([a-zA-Z_0-9]+)\}\}/g, (match, key) => {
     if (ESP_MERGE_TAGS.has(key)) return match;
     const v = values[key];
-    return v !== undefined && v !== null && v !== "" ? esc(String(v)) : "";
+    const text = v !== undefined && v !== null && v !== "" ? esc(String(v)) : "";
+    if (textFieldKeys.has(key)) {
+      const linkKey = linkFieldPairs[key];
+      const linkAttr = linkKey ? ` data-link-field="${linkKey}"` : "";
+      return `<span data-field="${key}"${linkAttr}>${text}</span>`;
+    }
+    return text;
   });
 }
 
@@ -426,8 +464,19 @@ export function assembleEdmHtml(templateId, values = {}, options = {}) {
   // 확실히 빈 값으로 만듭니다.
   const finalValues = { ...values };
   for (const key of stripped.blankOnly) finalValues[key] = "";
+  // ⚠️ text/textarea 타입만 골라서 substituteRest에 넘깁니다 — link/image 타입은
+  // 절대 <span>으로 감싸면 안 됩니다(속성값 안에서 쓰이므로).
+  const textFieldKeys = new Set(
+    (EDM_TEMPLATE_FIELDS[templateId]?.fields || [])
+      .filter(f => f.type === "text" || f.type === "textarea" || f.type === "button-label")
+      .map(f => f.key)
+  );
+  const buttonLabelKeys = (EDM_TEMPLATE_FIELDS[templateId]?.fields || [])
+    .filter(f => f.type === "button-label")
+    .map(f => f.key);
+  const linkFieldPairs = findLinkFieldPairs(raw, buttonLabelKeys);
   html = substituteImages(html, finalValues);
-  html = substituteRest(html, finalValues);
+  html = substituteRest(html, finalValues, textFieldKeys, linkFieldPairs);
   html = collapseAdjacentSpacers(html);
   return html;
 }

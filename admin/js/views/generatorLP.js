@@ -7,10 +7,10 @@ import { seedLpTemplates } from "../data/lpTemplates.js";
 import { checkGuidelinesLP, summarizeGuidelineIssuesLP, LP_WIDTH_PATTERNS, LP_ECONOMY_LAYOUT, DEPLOYMENT_COUNTRY } from "../lib/guidelineCheckLP.js";
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
 import { fetchSeriesInfo, fetchSeriesInfoBatch } from "../lib/seriesApi.js";
-import { deployLpToS3, deployLpFilesToS3, deploySharedAssetsToS3, resolveCampaignKey, buildCampaignKey, currentYYMM } from "../lib/lpDeploy.js";
+import { deployLpToS3, deployLpFilesToS3, deploySharedAssetsToS3, resolveCampaignKey, buildCampaignKey, currentTimestamp } from "../lib/lpDeploy.js";
 import { resizeImage } from "../lib/imageResize.js";
 import { uploadToS3 } from "../lib/s3Upload.js";
-import { generateImage } from "../lib/imageProcessApi.js";
+import { generateImage, generateAltTextFromImage } from "../lib/imageProcessApi.js";
 
 const LP_TEMPLATES = seedLpTemplates();
 // ⚠️ 신상품카탈로그는 다른 LP 템플릿과 완전히 다른 화면(캐치카피 등 타이핑 폼이 아니라
@@ -309,10 +309,10 @@ export function renderGeneratorLP(root, params) {
         // 판단하게 합니다. 지시문 없이 업로드만 하면 예전처럼 그냥 업로드만 됩니다.
         el("div", { style: "margin-top:8px;padding:8px;background:#fafafa;border-radius:6px;" }, [
           el("p", { class: "hint", style: "margin:0 0 6px;" }, "AI로 배너 만들기 (선택) — 소재를 올리고/또는 프롬프트만으로 요청할 수 있습니다."),
-          materials.length ? el("div", { style: "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;" }, materials.map((url, mi) =>
+          materials.length ? el("div", { style: "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;" }, materials.map((mat, mi) =>
             el("span", { style: "display:inline-flex;align-items:center;gap:4px;background:#eef0f8;border-radius:12px;padding:2px 8px 2px 2px;font-size:11px;" }, [
-              el("img", { src: url, style: "width:18px;height:18px;object-fit:cover;border-radius:50%;" }),
-              `소재${mi + 1}`,
+              el("img", { src: mat.url, style: "width:18px;height:18px;object-fit:cover;border-radius:50%;" }),
+              mat.name || `소재${mi + 1}`,
               el("span", { style: "cursor:pointer;color:#999;font-weight:700;", onclick: () => { materials.splice(mi, 1); renderForm(); } }, "×")
             ])
           )) : null,
@@ -320,16 +320,14 @@ export function renderGeneratorLP(root, params) {
             "소재 업로드 (여러 장 가능)",
             el("input", {
               type: "file", accept: "image/*", multiple: true, style: "display:none;",
-              onchange: async e => {
+              // ⚠️ 2026-09 변경: 즉시 uploadToS3() 하던 것을, 파일을 그대로 보관만
+              // 하는 방식으로 바꿨습니다 — 이 소재는 AI가 "참고만" 하고 최종
+              // 페이지엔 직접 등장하지 않아서, 업로드하는 순간부터 영원히 고아
+              // 자산으로 남는 문제가 있었습니다("최종 결과물만 저장한다" 원칙).
+              onchange: e => {
                 const files = [...e.target.files];
                 if (!files.length) return;
-                log(`배너 소재 업로드 중... (${files.length}장)`);
-                for (const file of files) {
-                  try {
-                    const url = await uploadToS3(file, file.name, "LP");
-                    materials.push(url);
-                  } catch (err) { log(`오류(${file.name}): ` + err.message); }
-                }
+                files.forEach(file => materials.push({ file, url: URL.createObjectURL(file), name: file.name }));
                 renderForm();
               }
             })
@@ -368,7 +366,7 @@ export function renderGeneratorLP(root, params) {
         ...rows,
         banners.length < 4 ? el("button", {
           class: "btn btn-sm ghost", style: "width:100%;",
-          onclick: () => { banners.push({ img: "", href: "", label: "", instruction: "", materialUrls: [] }); renderForm(); }
+          onclick: () => { banners.push({ img: "", href: "", label: "", instruction: "", materialUrls: [], altText: "" }); renderForm(); }
         }, "+ 배너 추가") : null,
         // ⚠️ 예전 문구("다시 배포하면 반영됩니다")는 사실이 아니었습니다 — 배포는 이미
         // 만들어진 HTML을 그대로 올릴 뿐이라 재배포만으로는 반영되지 않았습니다.
@@ -425,7 +423,7 @@ export function renderGeneratorLP(root, params) {
         resultBlob = file;
       } else {
         log(`배너 ${index + 1} AI 생성 중... (소재 ${materials.length}개)`);
-        resultBlob = await generateImage({ file, referenceUrls: materials, instruction, purpose: draft.seoTitle || "신상품카탈로그" });
+        resultBlob = await generateImage({ file, referenceFiles: materials.map(m => m.file), instruction, purpose: draft.seoTitle || "신상품카탈로그" });
       }
       const resized = await resizeImage(resultBlob, 1200);
       const filename = file?.name || `banner_${index + 1}.png`;
@@ -832,6 +830,26 @@ export function renderGeneratorLP(root, params) {
   /** 완료된 그룹들의 style.css/script.js/그룹html을 하나의 zip으로 다운로드합니다.
    *  deployCatalog()가 S3에 올리는 파일 목록과 동일한 구성입니다 — 배포 전에 로컬에서
    *  실제 파일들을 한 번 열어보고 싶을 때 씁니다(일반 LP의 downloadHtml()과 같은 역할). */
+  /** 배포/다운로드 직전, 이미지가 있는 배너 중 altText가 아직 없는 것만 채웁니다.
+   *  ⚠️ b.label은 안 건드립니다 — label은 alt이자 동시에 화면에 보이는 버튼
+   *  텍스트라서, vision 결과로 덮어쓰면 버튼에 긴 문장이 뜨는 사고가 납니다.
+   *  altText는 label과 별개의 필드로, HTML의 alt 속성에서만 label보다 우선
+   *  사용됩니다(catalogBannerHtml 참고). EDM의 fillMissingImageAltTexts()와
+   *  같은 이유로 여기서만(배포/다운로드 시점) 호출합니다. */
+  async function fillMissingBannerAltTexts() {
+    for (const b of draft.catalogBanners || []) {
+      if (!b.img || b.altText) continue;
+      try {
+        const res = await fetch(b.img);
+        if (!res.ok) continue;
+        const blob = await res.blob();
+        b.altText = await generateAltTextFromImage(blob, draft.seoTitle || "신상품카탈로그");
+      } catch (e) {
+        log("배너 alt 생성 실패: " + e.message);
+      }
+    }
+  }
+
   async function downloadCatalogZip() {
     // ⚠️ 다운로드도 배포와 마찬가지로 URL이 고정되어야 하므로, 여기서도
     // 캠페인 키를 확정합니다(deployCatalog()/downloadHtml()과 동일 원칙).
@@ -841,6 +859,10 @@ export function renderGeneratorLP(root, params) {
     }
     await resolveCampaignKey(draft);
     renderForm();
+    // ⚠️ alt를 채운 뒤 rebuildCatalogHtml()로 재조립해야, 캐시된(draft.catalogGroups의)
+    // HTML에 새 alt가 실제로 반영됩니다 — 순서가 중요합니다.
+    await fillMissingBannerAltTexts();
+    rebuildCatalogHtml();
     if (!(await confirmCatalogExportGuards())) return;
     // ⚠️ v2 폴더구조: css/js 하위폴더로 분리 — deployCatalog()의 파일 목록과
     // 정확히 같은 구성이어야 합니다(둘 다 lp/campaigns/{key}/ 밑에 나란히 배치).
@@ -870,6 +892,9 @@ export function renderGeneratorLP(root, params) {
     }
     await resolveCampaignKey(draft);
     renderForm(); // 슬러그 입력창이 잠긴 상태로 다시 그려지도록
+    // ⚠️ alt를 채운 뒤 rebuildCatalogHtml()로 재조립해야, 아래에서 배포되는 HTML에
+    // 새 alt가 실제로 반영됩니다 — 순서가 중요합니다(downloadCatalogZip과 동일 원칙).
+    await fillMissingBannerAltTexts();
     // ⚠️ 배포 직전에 한 번 더 재조립합니다 — 사용자가 배너를 바꾼 뒤 rebuildCatalogHtml
     // 호출을 놓쳤어도(예: 수동 URL 입력 필드에서 blur 없이 바로 배포 클릭), 배포되는
     // 파일이 항상 최신 배너 상태를 반영하도록 하는 안전장치입니다.
@@ -1000,20 +1025,27 @@ export function renderGeneratorLP(root, params) {
           }),
           locked
             ? el("p", { class: "hint" }, "✅ 이미 배포되어 URL이 고정됐습니다 — 바꾸려면 새 캠페인으로 다시 시작해야 합니다.")
-            : el("p", { class: "hint" }, "처음 배포/다운로드하는 순간 확정되고, 그 뒤엔 못 바꿉니다. 최종 경로: lp/campaigns/{슬러그}_{연월}_{순번}/")
+            : el("p", { class: "hint" }, "처음 배포/다운로드하는 순간 확정되고, 그 뒤엔 못 바꿉니다. 최종 경로: lp/campaigns/{슬러그}_{생성시각(년월일시분초)}/")
         ])
       ])
     ]);
   }
 
-  /** 미리보기 전용 — 실제 배포처럼 findNextAvailableSeq()로 서버에 물어보지 않고
-   *  (미리보기를 렌더링할 때마다 네트워크 호출이 생기면 안 되니까), 이미 확정된
-   *  키가 있으면 그걸 쓰고 없으면 "지금 슬러그로 배포하면 대략 이런 모양이 된다"는
-   *  걸 순번 자리에 물음표를 넣어 보여줍니다. 실제 배포 시점엔 resolveCampaignKey()가
-   *  진짜 순번으로 확정합니다. */
+  // ⚠️ 미리보기용 타임스탬프를 렌더링할 때마다 새로 계산하면(previewCampaignKey가
+  // renderPreview 때마다 호출되므로) 초가 계속 바뀌어서 미리보기 URL이 매번
+  // 달라 보이는 혼란이 생깁니다. 최초 1번만 계산해서 이 변수에 고정해두고,
+  // 실제 배포 시점엔 어차피 resolveCampaignKey()가 진짜 값으로 덮어씁니다.
+  let cachedPreviewTimestamp = null;
+
+  /** 미리보기 전용 — 실제 배포처럼 서버에 물어보지 않고, 이미 확정된 키가
+   *  있으면 그걸 쓰고 없으면 "지금 슬러그로 배포하면 대략 이런 모양이 된다"를
+   *  보여줍니다. 실제 배포 시점엔 resolveCampaignKey()가 그 순간의 진짜
+   *  타임스탬프로 다시 확정합니다(여기서 캐시해둔 값과 다를 수 있음 — 미리보기는
+   *  어차피 "대략 이런 모양"이라는 걸 보여주는 용도라 문제없습니다). */
   function previewCampaignKey() {
     if (draft.campaignKey) return draft.campaignKey;
-    return buildCampaignKey(draft.slug || "", currentYYMM(), "?");
+    if (!cachedPreviewTimestamp) cachedPreviewTimestamp = currentTimestamp();
+    return buildCampaignKey(draft.slug || "", cachedPreviewTimestamp);
   }
 
 
@@ -2369,14 +2401,32 @@ export function renderGeneratorLP(root, params) {
       log(`임시저장 실패 — 필수 항목 누락: ${missing.join(", ")}`);
       return;
     }
-    const campaign = draftToCampaignLP();
+    const { campaign, droppedCount } = draftToCampaignLP();
     store.upsertCampaign(campaign);
-    toast("임시저장했습니다");
-    log("임시저장 완료");
+    if (droppedCount > 0) {
+      toast(`임시저장했습니다 (⚠ 아직 AI 생성에 안 쓴 새 배너 소재 ${droppedCount}개는 저장 대상이 아니라 제외됐습니다 — 브라우저를 닫으면 사라집니다)`);
+      log(`임시저장 완료 — 미사용 신규 소재 ${droppedCount}개는 저장 안 됨(재접속 시 다시 추가 필요)`);
+    } else {
+      toast("임시저장했습니다");
+      log("임시저장 완료");
+    }
   }
 
   function draftToCampaignLP() {
-    return {
+    // ⚠️ EDM의 imageReferencePool과 완전히 같은 문제 — draft.catalogBanners[i].materialUrls
+    // 안의 File 기반 소재("소재 업로드"로 넣은 것)는 브라우저 메모리의 Blob이라 JSON으로
+    // 저장할 수 없습니다. 그대로 두면 store.upsertCampaign() 저장 시점에 조용히 깨지거나
+    // 예외가 나서, 최악의 경우 캠페인 목록 자체가 안 뜨는 원인이 될 수 있습니다
+    // (generator.js의 draftToCampaign()에서 이미 한 번 겪었던 것과 동일한 버그).
+    // URL 기반 소재는 그냥 문자열이라 정상 저장되므로 그대로 둡니다.
+    let droppedCount = 0;
+    const savableBanners = (draft.catalogBanners || []).map(b => {
+      const materials = b.materialUrls || [];
+      const kept = materials.filter(m => !m.file);
+      droppedCount += materials.length - kept.length;
+      return { ...b, materialUrls: kept };
+    });
+    const campaign = {
       id: draft.id,
       name: (draft.campaignName || "").trim() || "(캠페인명 미입력)",
       author: (draft.author || "").trim() || "(작성자 미입력)",
@@ -2386,8 +2436,9 @@ export function renderGeneratorLP(root, params) {
       segment: "-",
       createdAt: existing ? existing.createdAt : new Date().toISOString().slice(0, 10).replace(/-/g, "."),
       promotionName: draft.promotionName || "",
-      draftData: { ...draft }
+      draftData: { ...draft, catalogBanners: savableBanners }
     };
+    return { campaign, droppedCount };
   }
 }
 
@@ -2411,7 +2462,7 @@ function buildInitialDraftLP(existing) {
     catalogImporting: false,
     catalogProgress: null,
     catalogDeployedUrls: [],
-    catalogBanners: [{ img: "", href: "", label: "", instruction: "", materialUrls: [] }],
+    catalogBanners: [{ img: "", href: "", label: "", instruction: "", materialUrls: [], altText: "" }],
     catalogBannerUploading: null,
     catchcopy: "",
     cta: "",

@@ -6,8 +6,8 @@ export const LP_DEPLOY_CONFIG = {
   deployApiUrl: "https://ukor76mhyj.execute-api.ap-northeast-1.amazonaws.com/deploy-lp" // kor-smartlp 버킷이 도쿄 리전이라 API Gateway도 ap-northeast-1로 만들어야 함
 };
 
-// findNextAvailableSeq()의 HEAD 요청, deploySharedAssetsToS3()의 스킵 시 URL 조립에
-// 공통으로 쓰입니다 — 두 곳에 하드코딩하지 않고 한 곳에서 관리합니다.
+// deploySharedAssetsToS3()의 스킵 시 URL 조립에 쓰입니다 — 하드코딩하지 않고
+// 한 곳에서 관리합니다.
 export const S3_BUCKET_BASE_URL = "https://kor-smartlp.s3.ap-northeast-1.amazonaws.com";
 
 // 캠페인마다 겹치지 않는 폴더가 필요합니다. 한글 캠페인명을 그대로 경로에 쓰면 URL
@@ -165,7 +165,7 @@ export async function deploySharedAssetsToS3(namespace, files, version) {
 
 /** 마케터가 뭘 입력하든(한글/공백/특수문자 포함) 영문 소문자·숫자·하이픈·
  *  언더스코어만 남기고 나머지는 하이픈으로 바꿉니다. 결과가 비어버리면
- *  기본값("campaign")을 씁니다 — 빈 슬러그로 인해 "_2603_1"처럼 앞이 잘려
+ *  기본값("campaign")을 씁니다 — 빈 슬러그로 인해 "_260315..."처럼 앞이 잘려
  *  보이는 키가 생기는 걸 막기 위함입니다. */
 export function sanitizeSlug(input) {
   const slug = String(input || "")
@@ -175,52 +175,36 @@ export function sanitizeSlug(input) {
   return slug || "campaign";
 }
 
-/** 현재 연월을 YYMM 형식으로. (예: 2026년 3월 → "2603") */
-export function currentYYMM() {
+/** ⚠️ 2026-09 v3 변경: 캠페인 키를 {slug}_{YYMM}_{순번} → {slug}_{yymmddhhmmss}로
+ *  바꿨습니다(개발팀 제안 반영). 초 단위까지 붙이면 두 사람이 같은 슬러그로
+ *  정확히 같은 초에 배포할 확률이 사실상 0이라, 순번 방식이 안고 있던 동시성
+ *  문제(백엔드 IfNoneMatch 필요)가 원천적으로 없어집니다 — findNextAvailableSeq()
+ *  자체가 필요 없어져서 삭제했습니다.
+ *  현재 시각을 yymmddhhmmss(초까지, 구분자 없이 12자리)로. 예: 2026-03-15
+ *  14:05:09 → "260315140509" */
+export function currentTimestamp() {
   const now = new Date();
-  const yy = String(now.getFullYear()).slice(-2);
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  return yy + mm;
+  const p2 = n => String(n).padStart(2, "0");
+  return String(now.getFullYear()).slice(-2)
+    + p2(now.getMonth() + 1)
+    + p2(now.getDate())
+    + p2(now.getHours())
+    + p2(now.getMinutes())
+    + p2(now.getSeconds());
 }
 
-export function buildCampaignKey(slug, yyyymm, seq) {
-  return `${sanitizeSlug(slug)}_${yyyymm}_${seq}`;
+export function buildCampaignKey(slug, timestamp) {
+  return `${sanitizeSlug(slug)}_${timestamp}`;
 }
 
-/** ⚠️ 항상 뒤에서부터 파싱합니다 — 슬러그에 언더스코어가 있어도 안전합니다. */
+/** ⚠️ 항상 뒤에서부터 파싱합니다 — 슬러그에 언더스코어가 있어도 안전합니다.
+ *  timestamp는 항상 12자리 숫자이므로, 뒤에서 언더스코어 하나만 잘라내면 됩니다. */
 export function parseCampaignKey(key) {
   const parts = String(key || "").split("_");
-  if (parts.length < 3) return { slug: key, yyyymm: "", seq: "" };
-  const seq = parts.pop();
-  const yyyymm = parts.pop();
+  if (parts.length < 2) return { slug: key, timestamp: "" };
+  const timestamp = parts.pop();
   const slug = parts.join("_");
-  return { slug, yyyymm, seq };
-}
-
-/** 이 슬러그로 이미 배포된 게 있는지, S3에서 순번을 늘려가며 확인합니다.
- *  ⚠️ 이 함수는 "여러 명이 동시에 만들 때 완전히 충돌을 막는" 용도가
- *  아닙니다 — 그러려면 presigned URL 발급 시 IfNoneMatch 옵션이 필요하고,
- *  이건 백엔드(get-upload-url Lambda) 수정이 있어야 완성됩니다(별도 확인 필요).
- *  이 함수는 그 전까지 쓰는 차선책으로, "이미 존재하는 순번인지 HEAD 요청으로
- *  확인 후 다음 번호를 추천"하는 수준입니다 — 아주 드물게(동시 클릭) 겹칠 수
- *  있습니다. IfNoneMatch가 준비되면 이 함수 대신 "실패 시 seq+1 재시도" 루프로
- *  교체하는 게 맞습니다. */
-export async function findNextAvailableSeq(slug, yyyymm, bucketBaseUrl) {
-  const safeSlug = sanitizeSlug(slug);
-  let seq = 1;
-  // 최대 999번까지만 시도 — 그 이상 겹치는 건 비정상 상황으로 보고 그대로 반환
-  while (seq < 999) {
-    const key = buildCampaignKey(safeSlug, yyyymm, seq);
-    try {
-      const res = await fetch(`${bucketBaseUrl}/lp/campaigns/${key}/index.html`, { method: "HEAD" });
-      if (res.status === 404) return seq; // 없으면 이 번호 사용 가능
-    } catch (e) {
-      // 네트워크 오류 등 확인 불가 시, 안전하게 이 번호를 그대로 추천
-      return seq;
-    }
-    seq++;
-  }
-  return seq;
+  return { slug, timestamp };
 }
 
 /**
@@ -230,8 +214,11 @@ export async function findNextAvailableSeq(slug, yyyymm, bucketBaseUrl) {
  * 담당합니다:
  *   - draft에 이미 campaignKey가 있으면(=이전에 한 번이라도 배포/키 확정을
  *     했으면) 그대로 반환합니다 — slug를 그 사이에 고쳤어도 무시합니다.
- *   - 없으면 지금 draft.slug로 새로 만들고, draft.campaignKey에 저장해서
- *     잠급니다.
+ *   - 없으면 지금 draft.slug + 현재 타임스탬프로 새로 만들고, draft.campaignKey에
+ *     저장해서 잠급니다.
+ * ⚠️ 2026-09 v3: 순번 확인을 위해 S3에 HEAD 요청을 보내던 것(findNextAvailableSeq)이
+ * 없어져서, 이 함수가 이제 동기적으로도 계산 가능하지만 기존 호출부와의 호환을
+ * 위해 async는 유지합니다.
  * 호출하는 쪽(generatorLP.js)에서 draft 객체를 직접 변형(mutate)한다는 점에
  * 주의하세요 — 순수 함수가 아니라 "확정 + 저장"을 한 번에 하는 함수입니다.
  * @param {object} draft
@@ -239,9 +226,7 @@ export async function findNextAvailableSeq(slug, yyyymm, bucketBaseUrl) {
  */
 export async function resolveCampaignKey(draft) {
   if (draft.campaignKey) return draft.campaignKey;
-  const yyyymm = currentYYMM();
-  const seq = await findNextAvailableSeq(draft.slug, yyyymm, S3_BUCKET_BASE_URL);
-  const key = buildCampaignKey(draft.slug, yyyymm, seq);
+  const key = buildCampaignKey(draft.slug, currentTimestamp());
   draft.campaignKey = key;
   return key;
 }
