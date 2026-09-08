@@ -9,6 +9,7 @@
 
 import { esc } from "./dom.js";
 import { LP_WIDTH_PATTERNS, LP_ECONOMY_LAYOUT, DEPLOYMENT_LANG, LP_REQUIRED_DESCRIPTION_SUFFIX } from "./guidelineCheckLP.js";
+import { commonPartsLoaderScript } from "./lpCommonParts.js";
 
 // ==========================================================================
 // 개별 블록 렌더 함수 (모두 동일 시그니처: (draft) => htmlString)
@@ -107,6 +108,12 @@ const blockRegistry = {
 const FALLBACK_BLOCKS = ["브레드크럼", "히어로", "본문"];
 
 const STYLE = `
+  /* 본사이트 공용 헤더/푸터를 fetch로 끼워 넣는 동안(lpCommonParts.js) 컨텐츠가
+     헤더 없이 잠깐 보이는 것을 막는 최소한의 로딩 상태 — 실패해도 finally에서
+     항상 제거되므로 로더가 영구히 남는 경우는 없습니다. */
+  .lp-loader { display: none; }
+  .lp-isLoading .lp-loader { display: block; text-align: center; padding: 60px 0; color: #999; font-size: 13px; }
+  .lp-isLoading .lp-wrap { visibility: hidden; }
   .lp-wrap { margin: 0 auto; font-family: 'Apple SD Gothic Neo', sans-serif; }
   .lp-breadcrumb { font-size: 11px; color: #888; padding: 12px 0; }
   .lp-hero { background: #0F218B; color: #fff; text-align: center; padding: 60px 24px; }
@@ -244,7 +251,11 @@ export function assembleLpHtml(draft, template, seoMeta = {}) {
 </style>
 </head>
 <body class="${bodyClass}">
-  <div class="lp-wrap">${wrapInner}</div>
+  <div class="l-wrapper lp-isLoading">
+    <div class="lp-loader">불러오는 중...</div>
+    <div class="lp-wrap">${wrapInner}</div>
+  </div>
+  <script>${commonPartsLoaderScript()}</script>
 </body>
 </html>`;
 }
