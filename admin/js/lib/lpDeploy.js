@@ -3,7 +3,7 @@
 // (S3_UPLOAD_CONFIG와 별개로 관리하는 이유: 이미지는 아무 채널이나 올릴 수 있는 자산이고,
 // LP 배포는 "이 경로 = 이 캠페인" 규칙이 있는 별개의 관심사라서 CONFIG를 분리했습니다).
 export const LP_DEPLOY_CONFIG = {
-  deployApiUrl: "" // 예: "https://xxxx.execute-api.ap-northeast-2.amazonaws.com/deploy-lp"
+  deployApiUrl: "https://ukor76mhyj.execute-api.ap-northeast-1.amazonaws.com/deploy-lp" // kor-smartlp 버킷이 도쿄 리전이라 API Gateway도 ap-northeast-1로 만들어야 함
 };
 
 // findNextAvailableSeq()의 HEAD 요청, deploySharedAssetsToS3()의 스킵 시 URL 조립에
@@ -22,18 +22,21 @@ export function buildLpDeployKey(campaignKey) {
  * @param {string} campaignId 이 캠페인의 고유 id (draft.id) — 배포 경로를 결정합니다
  * @returns {Promise<string>} 배포된 페이지의 최종 URL
  */
+
 export async function deployLpToS3(html, campaignKey) {
   const key = buildLpDeployKey(campaignKey);
+  const contentType = "text/html; charset=utf-8";
+
 
   if (LP_DEPLOY_CONFIG.deployApiUrl) {
     const presignRes = await fetch(LP_DEPLOY_CONFIG.deployApiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key, contentType: "text/html" })
+      body: JSON.stringify({ key, contentType })
     });
     if (!presignRes.ok) throw new Error("배포 URL 발급 실패: " + presignRes.status);
     const { uploadUrl, publicUrl } = await presignRes.json();
-    const putRes = await fetch(uploadUrl, { method: "PUT", body: html, headers: { "Content-Type": "text/html; charset=utf-8" } });
+    const putRes = await fetch(uploadUrl, { method: "PUT", body: html, headers: { "Content-Type": contentType } });
     if (!putRes.ok) throw new Error("S3 배포 실패: " + putRes.status);
     return publicUrl;
   }
