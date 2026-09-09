@@ -6,10 +6,9 @@
 .gen-app{display:grid;grid-template-columns:480px 1fr;min-height:100vh;}
 .content:has(.gen-app){padding:0;overflow:hidden;max-height:100vh;}
 .gen-form-area{background:#fff;border-right:1px solid #e0e0e0;display:flex;flex-direction:column;max-height:100vh;}
-.gen-topbar{padding:14px 22px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:10px;flex-shrink:0;}
 .gen-back{font-size:12px;color:#888;}
 .gen-back:hover{color:#0F218B;}
-.gen-form-header{padding:12px 22px 12px;border-bottom:1px solid #eee;flex-shrink:0;}
+.gen-form-header{padding:12px 22px 12px;border-bottom:1px solid #eee;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px;}
 .gen-form-header h1{font-size:15px;font-weight:700;color:#0F218B;}
 .gen-form-header p{font-size:11px;color:#999;margin-top:2px;}
 

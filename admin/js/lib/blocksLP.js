@@ -11,6 +11,13 @@ import { esc } from "./dom.js";
 import { LP_WIDTH_PATTERNS, LP_ECONOMY_LAYOUT, DEPLOYMENT_LANG, LP_REQUIRED_DESCRIPTION_SUFFIX } from "./guidelineCheckLP.js";
 import { commonPartsLoaderScript } from "./lpCommonParts.js";
 
+// ⚠️ 2026-09 신설: 모든 LP 템플릿의 <title>에 공통으로 붙는 미스미 접미사를
+// 한 곳으로 통일했습니다. 예전엔 템플릿마다 따로 문자열을 박아넣어서,
+// 전각(｜)/반각(|) 구분자가 섞여 있었고(이벤트LP·경제형라인업은 전각, Evolution은
+// 반각), 일반형 LP·카탈로그는 아예 안 붙어있었습니다 — 이제 이 상수 하나로
+// 5개 템플릿 전부 통일합니다.
+export const LP_TITLE_SUFFIX = " ｜ MISUMI｜미스미 종합 Web 카탈로그";
+
 // ==========================================================================
 // 개별 블록 렌더 함수 (모두 동일 시그니처: (draft) => htmlString)
 // ==========================================================================
@@ -242,7 +249,7 @@ export function assembleLpHtml(draft, template, seoMeta = {}) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${esc(seoMeta.title || draft.catchcopy || "")}</title>
+<title>${esc((seoMeta.title || draft.catchcopy || "") + LP_TITLE_SUFFIX)}</title>
 <meta name="description" content="${esc(seoMeta.description || "")}">
 <meta name="keywords" content="${esc(keywordsAttr)}">
 <style>
@@ -475,7 +482,7 @@ ${items}
  */
 export function resolveCatalogSeoMeta(group, totalCount, seoMeta = {}) {
   return {
-    title: seoMeta.title || `${group.label} 신상품 | 미스미 신상품 안내`,
+    title: (seoMeta.title || `${group.label} 신상품 | 미스미 신상품 안내`) + LP_TITLE_SUFFIX,
     description: seoMeta.description || `한국미스미 ${group.label} 신상품 ${totalCount}건을 확인해보세요. ${LP_REQUIRED_DESCRIPTION_SUFFIX}`,
     keywords: seoMeta.keywords
   };
@@ -588,6 +595,8 @@ export function assembleLpCatalogGroupHtml(group, allGroups, categories, seoMeta
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${esc(effectiveSeoMeta.title)}</title>
   <meta name="description" content="${esc(effectiveSeoMeta.description)}">
+  <meta name="keywords" content="${esc((effectiveSeoMeta.keywords || []).join(", "))}">
+  <link rel="canonical" href="https://kr.misumi-ec.com/lp/campaigns/${esc(campaignKey)}/${esc(group.file)}">
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
   <link rel="stylesheet" href="/lp/campaigns/${esc(campaignKey)}/css/style.css">
@@ -597,6 +606,10 @@ export function assembleLpCatalogGroupHtml(group, allGroups, categories, seoMeta
      아래 <header class="lp-head">는 이거랑 다른 자리입니다 — 그건 이 페이지 고유의
      타이틀 영역(실제 사이트의 .new_info에 해당)이라 그대로 콘텐츠로 남겨둡니다. -->
 <div id="lp-shell-header"></div>
+<ul class="l-breadcrumb">
+  <li><a href="/">MISUMI HOME</a>&gt;</li>
+  <li><strong>미스미 신상품 안내</strong></li>
+</ul>
 <div class="lp" data-group="${esc(groupKey)}">
 
   <header class="lp-head">
@@ -1160,12 +1173,16 @@ export function normalizeHeadlineEm(headline) {
 }
 
 function eventKvBlock(draft, skin) {
-  const badgeHtml = draft.kvBadge ? `<div class="lp-kv-badge">${esc(draft.kvBadge)}</div>` : "";
-  const subcopyHtml = draft.kvSubcopy ? `<div class="lp-kv-subcopy">${esc(draft.kvSubcopy)}</div>` : "";
+  const badgeHtml = draft.kvBadge ? `<div class="lp-kv-badge" data-field="kvBadge">${esc(draft.kvBadge)}</div>` : "";
+  const subcopyHtml = draft.kvSubcopy ? `<div class="lp-kv-subcopy" data-field="kvSubcopy">${esc(draft.kvSubcopy)}</div>` : "";
   const headlineHtml = normalizeHeadlineEm(draft.kvHeadline);
   const bgStyle = draft.kvImageUrl
     ? `background-image:url('${esc(draft.kvImageUrl)}');background-size:cover;background-position:center;`
     : `background:repeating-linear-gradient(135deg, ${skin.main}, ${skin.main} 12px, ${skin.mainHover} 12px, ${skin.mainHover} 24px);`;
+  // ⚠️ kvHeadline은 <em>강조</em> 마크업을 변환(normalizeHeadlineEm)해서 넣는데,
+  // contenteditable로 직접 편집하게 하면 이 <em> 구조가 깨지거나 편집 후 되돌릴
+  // 때 원래 마크업 형식을 잃어버립니다 — 그래서 여기는 data-field를 안 붙이고
+  // 왼쪽 폼에서만 편집하게 남겨둡니다.
   return `<div class="lp-kv" role="img" aria-label="${esc(draft.kvAlt || "")}" style="${bgStyle}">
     <div class="lp-kv-inner">
       ${badgeHtml}
@@ -1185,10 +1202,15 @@ export function enforceSingleEmphasis(rows) {
 }
 
 function eventSummaryBlock(rows) {
-  const items = enforceSingleEmphasis(rows || []).map(row => `
+  // ⚠️ 배열이라 필드 하나("summaryRows")로는 어느 행인지 구분이 안 됩니다.
+  // "summaryRows.0.label"처럼 인덱스를 포함한 경로를 data-field에 심어서,
+  // 미리보기 편집 스크립트가 이 경로를 보고 정확히 몇 번째 행의 무엇을
+  // 고쳤는지 부모 창에 알릴 수 있게 합니다(생성기 쪽 리스너도 이 경로
+  // 표기법을 이해하도록 확장했습니다).
+  const items = enforceSingleEmphasis(rows || []).map((row, i) => `
     <div class="lp-summary-row">
-      <div class="lp-summary-label">${esc(row.label)}</div>
-      <div class="lp-summary-value${row.emphasis ? " is-emphasis" : ""}">${esc(row.value)}</div>
+      <div class="lp-summary-label" data-field="summaryRows.${i}.label">${esc(row.label)}</div>
+      <div class="lp-summary-value${row.emphasis ? " is-emphasis" : ""}" data-field="summaryRows.${i}.value">${esc(row.value)}</div>
     </div>`).join("\n");
   return `<div class="lp-summary">${items}</div>`;
 }
@@ -1425,8 +1447,9 @@ export function assembleEventLpHtml(draft, seoMeta = {}) {
     eventNoticeBlock(draft, skin)
   ].filter(Boolean).join("\n");
 
-  const title = esc((seoMeta.title || draft.title || "") + " ｜ MISUMI｜미스미 종합 Web 카탈로그");
+  const title = esc((seoMeta.title || draft.title || "") + LP_TITLE_SUFFIX);
   const description = esc(seoMeta.description || draft.description || "");
+  const keywords = esc((seoMeta.keywords || []).join(", "));
 
   return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${DEPLOYMENT_LANG}" lang="${DEPLOYMENT_LANG}">
@@ -1435,6 +1458,7 @@ export function assembleEventLpHtml(draft, seoMeta = {}) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${title}</title>
 <meta name="description" content="${description}" />
+<meta name="keywords" content="${keywords}" />
 <link rel="canonical" href="https://kr.misumi-ec.com/pr/vona/${esc(draft.slug || "")}/" />
 <!-- ⚠️ 폰트는 SSI/common.js와 무관하게 CDN에서 직접 로드 — 원본 프로토타입(이벤트LP-일반형_dc.html)
      그대로. 이걸 빠뜨리면 헤더/푸터 로딩 여부와 상관없이 브라우저 기본 서체로 보입니다. -->
@@ -1551,6 +1575,66 @@ function economyProductCard(p, i, placement, meta) {
 
 /** PC 메인 뷰 — 신상품소식(latest-bx) + 대표상품(featured) + 전체 라인업
  *  카테고리 요약(lnb 재활용) + 안내 카드(leadCards). */
+/** ⚠️ 2026-09 신설 — 실제 운영 중인 /pr/vona/economy/common/top_gnb.html을 그대로
+ *  반영했습니다. #gnbWrap용 CSS는 이미 있었는데(1937번 줄 근처) 정작 이 마크업을
+ *  만드는 함수가 없어서 화면에 아예 안 나오고 있었습니다.
+ *  ⚠️ 마케터가 캠페인마다 편집하는 콘텐츠가 아니라 "사이트 자체의 고정된 카테고리
+ *  구조"라서, LNB(data.categories)와 달리 데이터 기반이 아니라 고정 마크업입니다
+ *  — 실제 사이트의 GNB가 바뀌면 이 함수도 그때 같이 손봐야 합니다. */
+function economyGnbHtml() {
+  const items = [
+    { cls: "gnb1", label: "TOP", url: "/pr/vona/economy/?bid=bid_exct_kr_m-mech_KR210068_52142" },
+    { cls: "gnb2", label: "이벤트 및 기술정보", url: "/pr/vona/economy/main/?bid=bid_exct_kr_m-mech_KR210068_52143", sub: [
+      { label: "상품권 증정 이벤트", url: "/pr/vona/economy/event/08/" },
+      { label: "상품 특징 및 기술 정보", url: "/pr/vona/economy/campaign/" },
+      { label: "경제형 BEST상품", url: "/pr/vona/economy/main/" }
+    ] },
+    { cls: "gnb3", label: "직동부품", url: "/pr/vona/economy/01.html?bid=bid_pdct_kr_m-mech_KR210068_52513", sub: [
+      { label: "스테이지", url: "/pr/vona/economy/0104.html?bid=bid_pdct_kr_m-mech_KR210068_95830" },
+      { label: "액츄에이터", url: "/pr/vona/economy/0103.html?bid=bid_pdct_kr_m-mech_KR210068_95829" },
+      { label: "직동부품", url: "/pr/vona/economy/0101.html?bid=bid_pdct_kr_m-mech_KR210068_52514" },
+      { label: "부시/지지/고정 링", url: "/pr/vona/economy/0102.html?bid=bid_pdct_kr_m-mech_KR210068_52515" }
+    ] },
+    { cls: "gnb4", label: "회전운동", url: "/pr/vona/economy/02.html?bid=bid_pdct_kr_m-mech_KR210068_52516", sub: [
+      { label: "벨트/풀리, 커플링, 메카록", url: "/pr/vona/economy/0201.html?bid=bid_pdct_kr_m-mech_KR210068_52517" },
+      { label: "평벨트/우레탄 롤러/볼 롤러", url: "/pr/vona/economy/0202.html?bid=bid_pdct_kr_m-mech_KR210068_52518" },
+      { label: "기어/스프로켓/체인", url: "/pr/vona/economy/0203.html?bid=bid_pdct_kr_m-mech_KR210068_52519" },
+      { label: "베어링 및 관련품/캠 팔로워", url: "/pr/vona/economy/0204.html?bid=bid_pdct_kr_m-mech_KR210068_52520" }
+    ] },
+    { cls: "gnb5", label: "위치결정", url: "/pr/vona/economy/03.html?bid=bid_pdct_kr_m-mech_KR210068_52521", sub: [
+      { label: "위치 결정/고정, 조정 부품", url: "/pr/vona/economy/0301.html?bid=bid_pdct_kr_m-mech_KR210068_52522" },
+      { label: "플런저/토글 클램프", url: "/pr/vona/economy/0302.html?bid=bid_pdct_kr_m-mech_KR210068_52523" }
+    ] },
+    { cls: "gnb6", label: "스프링/공압", url: "/pr/vona/economy/04.html?bid=bid_pdct_kr_m-mech_KR210068_52524", sub: [
+      { label: "스프링/쇼크 업소버", url: "/pr/vona/economy/0401.html?bid=bid_pdct_kr_m-mech_KR210068_52525" },
+      { label: "조인트/에어호스", url: "/pr/vona/economy/0402.html?bid=bid_pdct_kr_m-mech_KR210068_52526" },
+      { label: "공압 관련 부품", url: "/pr/vona/economy/0403.html?bid=bid_pdct_kr_m-mech_KR210068_55257" }
+    ] },
+    { cls: "gnb7", label: "알루미늄프레임/외장", url: "/pr/vona/economy/05.html?bid=bid_pdct_kr_m-mech_KR210068_52527", sub: [
+      { label: "알루미늄프레임 관련부품", url: "/pr/vona/economy/0501.html?bid=bid_pdct_kr_m-mech_KR210068_52528" },
+      { label: "핸들/경첩/노브/레일/캐치", url: "/pr/vona/economy/0502.html?bid=bid_pdct_kr_m-mech_KR210068_52529" },
+      { label: "캐스터/조정패드/방진고무", url: "/pr/vona/economy/0503.html?bid=bid_pdct_kr_m-mech_KR210068_52530" }
+    ] },
+    { cls: "gnb8", label: "온도조절부품", url: "/pr/vona/economy/07.html?bid=bid_pdct_kr_m-mech_KR210068_55258", sub: [
+      { label: "온도조절부품", url: "/pr/vona/economy/0701.html?bid=bid_pdct_kr_m-mech_KR210068_55259" }
+    ] },
+    { cls: "gnb9", label: "모터/센서", url: "/pr/vona/economy/08.html?bid=bid_pdct_kr_m-mech_KR210068_55260", sub: [
+      { label: "모터", url: "/pr/vona/economy/0801.html?bid=bid_pdct_kr_m-mech_KR210068_55261" },
+      { label: "센서", url: "/pr/vona/economy/0802.html?bid=bid_pdct_kr_m-mech_KR210068_55262" }
+    ] },
+    { cls: "gnb10", label: "그 외 부품", url: "/pr/vona/economy/06.html?bid=bid_pdct_kr_m-mech_KR210068_52531", sub: [
+      { label: "공업용 소재", url: "/pr/vona/economy/0602.html?bid=bid_pdct_kr_m-mech_KR210068_95634" },
+      { label: "마그넷/프로브/평행키/스토퍼볼트", url: "/pr/vona/economy/0601.html?bid=bid_pdct_kr_m-mech_KR210068_52532" },
+      { label: "배선부품", url: "/pr/vona/economy/0603.html?bid=bid_pdct_kr_m-mech_KR210068_96890" },
+      { label: "박스", url: "/pr/vona/economy/0604.html?bid=bid_pdct_kr_m-mech_45170_102900" }
+    ] }
+  ];
+  const liHtml = items.map(it => `<li class="${it.cls}"><a href="${esc(it.url)}">${esc(it.label)}</a>${
+    it.sub ? `<div class="depth2"><ul>${it.sub.map(s => `<li><a href="${esc(s.url)}">${esc(s.label)}</a></li>`).join("")}</ul></div>` : ""
+  }</li>`).join("\n");
+  return `<div id="gnbWrap"><ul id="gnb">${liHtml}</ul></div>`;
+}
+
 function economyMainView(data) {
   const { meta, news, products, categories, leadCards } = data;
   const arrivals = products.filter(p => p.newArrival);
@@ -1700,9 +1784,17 @@ function economyDataView(data) {
 export function economySampleData() {
   const meta = { campaign: "SAMPLE", bidPrefix: "bid_kr_e", canonical: "https://kr.misumi-ec.com/pr/vona/economy/", lnbLogo: "", lnbBanner: "" };
   const categories = [
-    { code: "A", name: "직동 부품" },
-    { code: "B", name: "전동 부품" },
-    { code: "C", name: "배선 부품" }
+    { code: "A", name: "직동부품" },
+    { code: "B", name: "전동부품" },
+    { code: "C", name: "배선부품" },
+    { code: "D", name: "스프링/충격보호" },
+    { code: "E", name: "외장부품" },
+    { code: "F", name: "위치결정부품" },
+    { code: "G", name: "회전부품" },
+    { code: "H", name: "온도조절부품" },
+    { code: "I", name: "반송부품" },
+    { code: "J", name: "볼트관련부품" },
+    { code: "K", name: "기타" }
   ];
   const img = "https://via.placeholder.com/150x150/eef0f8/0f218b?text=SAMPLE";
   const products = [
@@ -1743,7 +1835,7 @@ export function assembleEconomyLineupHtml(data, view = "main", seoMeta = {}, cam
     : economyMainView(data);
 
   const crumbLabel = view === "main" ? "경제형 전상품 분류" : "경제형 전체 라인업";
-  const title = esc((seoMeta.title || "경제형 전체상품") + " ｜ MISUMI｜미스미 종합 Web 카탈로그");
+  const title = esc((seoMeta.title || "경제형 전체상품") + LP_TITLE_SUFFIX);
   const description = esc(seoMeta.description || "");
   const keywords = esc((seoMeta.keywords || []).join(", "));
 
@@ -1752,6 +1844,7 @@ export function assembleEconomyLineupHtml(data, view = "main", seoMeta = {}, cam
       <li>MISUMI HOME &gt;</li>
       <li><strong>${crumbLabel}</strong></li>
     </ul>
+    ${economyGnbHtml()}
     <div class="container">
       <div class="nav">
         <h1><a href="${esc(data.meta.canonical)}" class="allCate"><img src="${esc(data.meta.lnbLogo)}" alt="MISUMI 경제형" /></a></h1>
@@ -3806,7 +3899,7 @@ export function assembleEvolutionHtml(draft) {
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${esc(m.title)} | MISUMI｜미스미 종합 Web 카탈로그</title>
+<title>${esc(m.title + LP_TITLE_SUFFIX)}</title>
 <meta name="description" content="${esc(m.desc)}" />
 <meta name="keywords" content="${esc((m.keywords || []).join(", "))}" />
 <link rel="icon" href="/favicon.ico" type="image/x-icon" />

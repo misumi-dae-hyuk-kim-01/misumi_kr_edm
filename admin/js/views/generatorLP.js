@@ -1,6 +1,6 @@
 import { store } from "../state.js";
 import { el, toast, esc } from "../lib/dom.js";
-import { generateCopyLP } from "../lib/copyGeneratorLP.js";
+import { generateCopyLP, generateEventLpContent } from "../lib/copyGeneratorLP.js";
 import { generateSeoMeta } from "../lib/seoMetaGenerator.js";
 import { assembleLpHtml, assembleLpCatalogGroupHtml, resolveCatalogGroups, resolveCatalogSeoMeta, CATALOG_STYLE, CATALOG_SCRIPT, assembleEventLpHtml, buildEventLpCss, detectBenefitType, benefitLayoutRule, enforceSingleEmphasis, NOTICE_COMMON_MASTER, EVENT_LP_TEMPLATE_ID, assembleEconomyLineupHtml, economyBid, economyLineupIssues, economySampleData, ECONOMY_LINEUP_TEMPLATE_ID, ECONOMY_LINEUP_PREVIEW_CSS, assembleEvolutionHtml, evolutionBlockDefaults, EVOLUTION_BLOCK_TYPES, EVOLUTION_PREVIEW_CSS, EVOLUTION_TEMPLATE_ID, LP_PREVIEW_EDIT_STYLE, LP_PREVIEW_EDIT_SCRIPT, LP_SHELL_SCRIPT, LP_SHELL_SCRIPT_VERSION } from "../lib/blocksLP.js";
 import { seedLpTemplates } from "../data/lpTemplates.js";
@@ -33,12 +33,9 @@ export function renderGeneratorLP(root, params) {
 
   root.appendChild(el("div", { class: "gen-app" }, [
     el("div", { class: "gen-form-area" }, [
-      el("div", { class: "gen-topbar" }, [
-        el("a", { class: "gen-back", href: "#/campaigns" }, "← 캠페인 목록")
-      ]),
       el("div", { class: "gen-form-header" }, [
         el("h1", {}, "LP 생성기"),
-        el("p", { id: "genlp-subtitle" }, `랜딩페이지 · ${DEPLOYMENT_COUNTRY}`)
+        el("a", { class: "gen-back", href: "#/campaigns" }, "← 캠페인 목록")
       ]),
       el("div", { class: "gen-form-body", id: "genlp-form-body" }),
       el("div", { class: "gen-form-footer" }, [
@@ -84,6 +81,19 @@ export function renderGeneratorLP(root, params) {
   window.addEventListener("message", e => {
     if (e.data?.source !== "lp-preview-edit") return;
     const { field, value } = e.data;
+    // ⚠️ "summaryRows.0.label"처럼 점으로 이어진 경로면 배열 요소를 직접
+    // 찾아 갱신합니다 — 단순 draft[field] 방식으론 배열 안의 특정 항목을
+    // 가리킬 수 없어서, 이 표기법을 별도로 해석해야 합니다.
+    if (field.includes(".")) {
+      const [arrayKey, idxStr, prop] = field.split(".");
+      const idx = Number(idxStr);
+      if (Array.isArray(draft[arrayKey]) && draft[arrayKey][idx] && prop in draft[arrayKey][idx]) {
+        draft[arrayKey][idx][prop] = value;
+        log(`미리보기에서 "${field}" 수정됨`);
+        renderForm();
+      }
+      return;
+    }
     if (!(field in draft)) return;
     draft[field] = value;
     const formInput = formBody.querySelector(`[data-form-field="${field}"]`);
@@ -128,13 +138,13 @@ export function renderGeneratorLP(root, params) {
         el("button", { class: "btn primary export-btn", onclick: toggleExportMenu }, "내보내기 ▾"),
         el("div", { class: "export-menu", id: "genlp-export-menu", style: "display:none;" }, [
           el("button", {
-            class: "export-menu-item", disabled: downloadDisabled ? "disabled" : null,
-            onclick: () => { closeExportMenu(); downloadFn(); }
-          }, isCatalog ? "파일 다운로드 (zip)" : "파일 다운로드"),
-          el("button", {
             class: "export-menu-item", disabled: deployDisabled ? "disabled" : null,
             onclick: () => { closeExportMenu(); deployFn(); }
-          }, isCatalog && !allReady ? `배포하기 (S3) — ${readyCount}/${totalGroupsWithData || "?"}건 조회 완료` : "배포하기 (S3)")
+          }, isCatalog && !allReady ? `배포하기 (S3) — ${readyCount}/${totalGroupsWithData || "?"}건 조회 완료` : "배포하기 (S3)"),
+          el("button", {
+            class: "export-menu-item", disabled: downloadDisabled ? "disabled" : null,
+            onclick: () => { closeExportMenu(); downloadFn(); }
+          }, isCatalog ? "파일 다운로드 (zip)" : "파일 다운로드")
         ])
       ]),
       el("button", { class: "btn", disabled: linkCheckDisabled ? "disabled" : null, onclick: linkCheckFn }, "🔗 링크 확인")
@@ -162,58 +172,55 @@ export function renderGeneratorLP(root, params) {
     if (isCatalog) {
       // ⚠️ 신상품카탈로그는 캐치카피 등을 타이핑하는 화면이 아니라 엑셀 업로드
       // 중심이라, 일반 LP 섹션들을 전부 건너뜁니다.
-      // 배너 → 상품 데이터 업로드 → SEO 메타 순서로 배치합니다(콘텐츠 순서와 일치 —
-      // 실제 완성된 페이지에서도 배너가 상품 목록보다 위에 나오므로).
+      // AI(SEO메타)를 항상 콘텐츠 최상단에 두고, 배너 → 상품 데이터 업로드 순서.
+      formBody.appendChild(sectionSeoMeta());
       formBody.appendChild(sectionCatalogBanners());
       formBody.appendChild(sectionCatalogUpload());
-      formBody.appendChild(sectionSeoMeta());
       return;
     }
     if (isEventLp) {
       // ⚠️ 이벤트 LP는 GENERATOR_SPEC.md 3절 "담당자가 채우는 순서 = LP의 블록
-      // 순서" 원칙 그대로: 기본정보 → KV → 요약표 → 혜택 → STEP(선택) → CTA → 유의사항.
-      formBody.appendChild(sectionEventLpBasic());
+      // 순서" 원칙 그대로: AI(항상 최상단) → KV → 요약표 → 혜택 → STEP(선택) → CTA → 유의사항.
+      formBody.appendChild(sectionEventLpAiContent());
       formBody.appendChild(sectionEventLpKv());
       formBody.appendChild(sectionEventLpSummary());
       formBody.appendChild(sectionEventLpBenefits());
       formBody.appendChild(sectionEventLpSteps());
       formBody.appendChild(sectionEventLpCta());
       formBody.appendChild(sectionEventLpNotice());
-      formBody.appendChild(sectionSeoMeta());
       return;
     }
     if (isEconomyLineup) {
       // ⚠️ 신상품카탈로그와 마찬가지로 상시 운영되는(계속 갱신되는) 페이지입니다.
       // 다른 점은 "구조"입니다 — 카탈로그는 그룹별로 개별 페이지를 만드는 방식인
       // 반면, 경제형 라인업은 PC메인/전체라인업/모바일/데이터 4개 뷰가 하나의
-      // 사이트 구조를 이루고, 상품 데이터만 주기적으로 갱신됩니다. 그래서 콘텐츠
-      // 입력 폼도 기본정보(메타) → 상품 데이터 엑셀 업로드 → 뷰 전환 순서.
+      // 사이트 구조를 이루고, 상품 데이터만 주기적으로 갱신됩니다. AI(SEO메타)를
+      // 항상 최상단에 두고, 기본정보(메타) → 상품 데이터 엑셀 업로드 → 뷰 전환 순서.
+      formBody.appendChild(sectionSeoMeta());
       formBody.appendChild(sectionEconomyBasic());
       formBody.appendChild(sectionEconomyUpload());
       formBody.appendChild(sectionEconomyView());
-      formBody.appendChild(sectionSeoMeta());
       return;
     }
     if (isEvolution) {
       // ⚠️ 다른 템플릿과 달리 "블록 조합형"입니다 — 고정된 필드 목록이 아니라
-      // 담당자가 블록을 골라 추가/삭제/순서변경합니다. 기본정보 → 페이지 종류(LP/허브)
-      // 전환 → 블록 팔레트+편집 순서.
-      formBody.appendChild(sectionEvolutionBasic());
+      // 담당자가 블록을 골라 추가/삭제/순서변경합니다. AI(SEO메타, 항상 최상단) →
+      // 기본정보 → 페이지 종류(LP/허브) 전환 → 블록 팔레트+편집 순서.
       formBody.appendChild(sectionEvolutionSeoMeta());
+      formBody.appendChild(sectionEvolutionBasic());
       formBody.appendChild(sectionEvolutionPalette());
       formBody.appendChild(sectionEvolutionBlocks());
       return;
     }
+    formBody.appendChild(sectionAiCopy());
     formBody.appendChild(sectionPageType());
     formBody.appendChild(sectionWidthPattern());
     formBody.appendChild(sectionBreadcrumb());
     formBody.appendChild(sectionSeriesCodesLP());
     formBody.appendChild(sectionCatchcopy());
-    formBody.appendChild(sectionAiCopy());
     formBody.appendChild(sectionHeroImage());
     formBody.appendChild(sectionBodyImage());
     formBody.appendChild(sectionBodyText());
-    formBody.appendChild(sectionSeoMeta());
   }
 
   // ==========================================================================
@@ -288,42 +295,44 @@ export function renderGeneratorLP(root, params) {
       const materials = b.materialUrls || [];
       const uploading = draft.catalogBannerUploading === i;
       return el("div", { class: "field", style: "margin-bottom:10px;border-bottom:1px solid #f0f0f0;padding-bottom:10px;" }, [
-        el("label", {}, `배너 ${i + 1}`),
-        el("input", {
-          type: "text", value: b.img, placeholder: "이미지 URL (또는 아래에서 업로드/AI 생성)",
-          oninput: e => { banners[i].img = e.target.value; },
-          onblur: () => rebuildCatalogHtml()
-        }),
-        el("div", { class: "image-upload-row", style: "margin-top:6px;" }, [
-          el("label", { class: "btn btn-sm upload-label" }, [
-            uploading ? "처리 중..." : "이미지 업로드",
-            el("input", {
-              type: "file", accept: "image/*", style: "display:none;", disabled: uploading ? "disabled" : null,
-              onchange: e => { if (e.target.files[0]) handleCatalogBannerGenerate(i, e.target.files[0]); }
-            })
-          ]),
-          b.img ? el("img", { src: b.img, alt: "", style: "width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid #e0e0e0;" }) : null
+        el("div", { style: "display:flex;justify-content:space-between;align-items:center;" }, [
+          el("label", {}, `배너 ${i + 1}`),
+          el("span", {
+            style: "font-size:11px;color:#999;cursor:pointer;",
+            onclick: () => { banners.splice(i, 1); renderForm(); rebuildCatalogHtml(); }
+          }, "✕ 삭제")
         ]),
-        // ⚠️ EDM 생성기의 generateImage() 통합 방식과 동일 — 편집인지 합성인지는
-        // 코드가 미리 안 가르고, 소재(참고 이미지)와 지시문을 그대로 AI에 넘겨서
-        // 판단하게 합니다. 지시문 없이 업로드만 하면 예전처럼 그냥 업로드만 됩니다.
-        el("div", { style: "margin-top:8px;padding:8px;background:#fafafa;border-radius:6px;" }, [
-          el("p", { class: "hint", style: "margin:0 0 6px;" }, "AI로 배너 만들기 (선택) — 소재를 올리고/또는 프롬프트만으로 요청할 수 있습니다."),
-          materials.length ? el("div", { style: "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;" }, materials.map((mat, mi) =>
-            el("span", { style: "display:inline-flex;align-items:center;gap:4px;background:#eef0f8;border-radius:12px;padding:2px 8px 2px 2px;font-size:11px;" }, [
-              el("img", { src: mat.url, style: "width:18px;height:18px;object-fit:cover;border-radius:50%;" }),
-              mat.name || `소재${mi + 1}`,
-              el("span", { style: "cursor:pointer;color:#999;font-weight:700;", onclick: () => { materials.splice(mi, 1); renderForm(); } }, "×")
-            ])
-          )) : null,
-          el("label", { class: "btn btn-sm ghost", style: "margin-bottom:6px;" }, [
-            "소재 업로드 (여러 장 가능)",
+        // ⚠️ 2026-09 재구성 — 예전엔 "URL 입력창 + 이미지 업로드 버튼 + (별도 박스로)
+        // 소재 업로드+지시문+AI생성 버튼"이 전부 따로 있어서 배너 하나가 너무 길고
+        // 복잡했습니다(소재 업로드도 박스 안에 묻혀서 눈에 잘 안 띔). EDM/이벤트LP
+        // KV와 동일한 압축 패턴으로 통일: 업로드 계열 버튼 2개를 한 줄에, 지시문
+        // 입력 여부에 따라 버튼 하나가 "업로드"/"AI로 생성"으로 자동 전환됩니다.
+        el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px;" }, [
+          b.img ? el("img", { src: b.img, alt: "", style: "width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid #e0e0e0;flex-shrink:0;" }) : null,
+          el("input", {
+            type: "text", value: b.img, placeholder: "이미지 URL (또는 아래에서 업로드/AI 생성)", style: "flex:1;min-width:0;",
+            oninput: e => { banners[i].img = e.target.value; },
+            onblur: () => rebuildCatalogHtml()
+          })
+        ]),
+        materials.length ? el("div", { style: "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;" }, materials.map((mat, mi) =>
+          el("span", { style: "display:inline-flex;align-items:center;gap:4px;background:#eef0f8;border-radius:12px;padding:2px 8px 2px 2px;font-size:11px;" }, [
+            el("img", { src: mat.url, style: "width:18px;height:18px;object-fit:cover;border-radius:50%;" }),
+            mat.name || `소재${mi + 1}`,
+            el("span", { style: "cursor:pointer;color:#999;font-weight:700;", onclick: () => { materials.splice(mi, 1); renderForm(); } }, "×")
+          ])
+        )) : null,
+        el("textarea", {
+          placeholder: "무엇을 원하는지 설명 (선택) · 예: 파란 배경에 '신상품 20% 할인' 문구 / 비워두면 그냥 업로드만",
+          value: b.instruction || "",
+          oninput: e => { banners[i].instruction = e.target.value; },
+          style: "margin-bottom:6px;"
+        }),
+        el("div", { class: "row2", style: "margin-bottom:6px;" }, [
+          el("label", { class: "btn btn-sm upload-label", style: "text-align:center;justify-content:center;" }, [
+            "소재 추가 (여러 장)",
             el("input", {
               type: "file", accept: "image/*", multiple: true, style: "display:none;",
-              // ⚠️ 2026-09 변경: 즉시 uploadToS3() 하던 것을, 파일을 그대로 보관만
-              // 하는 방식으로 바꿨습니다 — 이 소재는 AI가 "참고만" 하고 최종
-              // 페이지엔 직접 등장하지 않아서, 업로드하는 순간부터 영원히 고아
-              // 자산으로 남는 문제가 있었습니다("최종 결과물만 저장한다" 원칙).
               onchange: e => {
                 const files = [...e.target.files];
                 if (!files.length) return;
@@ -332,27 +341,30 @@ export function renderGeneratorLP(root, params) {
               }
             })
           ]),
-          el("textarea", {
-            placeholder: "예: 이 제품 사진들을 참고해서, 파란 배경에 '신상품 20% 할인'이라는 문구가 들어간 배너를 만들어줘",
-            value: b.instruction || "",
-            oninput: e => { banners[i].instruction = e.target.value; },
-            style: "margin-bottom:6px;"
-          }),
-          el("button", {
-            class: "btn btn-sm", disabled: uploading ? "disabled" : null,
-            onclick: () => handleCatalogBannerGenerate(i, null)
-          }, uploading ? "생성 중..." : "AI로 생성")
+          el("label", { class: "btn btn-sm upload-label", style: "text-align:center;justify-content:center;" }, [
+            "원본 교체 (1장)",
+            el("input", {
+              type: "file", accept: "image/*", style: "display:none;", disabled: uploading ? "disabled" : null,
+              onchange: e => { if (e.target.files[0]) handleCatalogBannerGenerate(i, e.target.files[0]); }
+            })
+          ])
         ]),
-        el("input", {
-          type: "text", value: b.href, placeholder: "클릭 시 이동할 링크 (선택)", style: "margin-top:6px;",
-          oninput: e => { banners[i].href = e.target.value; },
-          onblur: () => rebuildCatalogHtml()
-        }),
-        el("input", {
-          type: "text", value: b.label, placeholder: "배너 이름 (버튼에 표시)", style: "margin-top:6px;",
-          oninput: e => { banners[i].label = e.target.value; },
-          onblur: () => rebuildCatalogHtml()
-        })
+        el("button", {
+          class: "btn btn-sm", style: "width:100%;margin-bottom:6px;", disabled: uploading ? "disabled" : null,
+          onclick: () => handleCatalogBannerGenerate(i, null)
+        }, uploading ? "처리 중..." : (b.instruction?.trim() ? "✨ AI로 생성" : "업로드")),
+        el("div", { class: "row2" }, [
+          el("input", {
+            type: "text", value: b.href, placeholder: "클릭 시 이동할 링크 (선택)",
+            oninput: e => { banners[i].href = e.target.value; },
+            onblur: () => rebuildCatalogHtml()
+          }),
+          el("input", {
+            type: "text", value: b.label, placeholder: "배너 이름 (버튼에 표시)",
+            oninput: e => { banners[i].label = e.target.value; },
+            onblur: () => rebuildCatalogHtml()
+          })
+        ])
       ]);
     });
 
@@ -850,6 +862,21 @@ export function renderGeneratorLP(root, params) {
     }
   }
 
+  /** 이벤트 LP의 KV(메인비주얼) 이미지도 같은 원칙(배포/다운로드 시점에 딱 한 번,
+   *  이미 값이 있으면 건드리지 않음)으로 alt를 자동 채웁니다 — 카탈로그 배너에만
+   *  있던 기능이 이벤트 LP엔 빠져있었습니다. */
+  async function fillMissingEventLpAlt() {
+    if (!draft.kvImageUrl || draft.kvAlt) return;
+    try {
+      const res = await fetch(draft.kvImageUrl);
+      if (!res.ok) return;
+      const blob = await res.blob();
+      draft.kvAlt = await generateAltTextFromImage(blob, draft.seoTitle || draft.title || "이벤트 LP");
+    } catch (e) {
+      log("KV 이미지 alt 생성 실패: " + e.message);
+    }
+  }
+
   async function downloadCatalogZip() {
     // ⚠️ 다운로드도 배포와 마찬가지로 URL이 고정되어야 하므로, 여기서도
     // 캠페인 키를 확정합니다(deployCatalog()/downloadHtml()과 동일 원칙).
@@ -969,6 +996,7 @@ export function renderGeneratorLP(root, params) {
       ]),
       el("div", { class: "sec-body" }, [
         el("select", {
+          style: "width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;",
           // ⚠️ 이벤트 LP는 이제 "일반형"/"경제형"이 완전히 분리된 별도 선택지입니다
           // (예전엔 하나의 템플릿 안에서 폼으로 스킨을 바꿀 수 있었는데, 그러면
           // 같은 캠페인 폴더 안에서 CSS 내용이 바뀔 수 있어 캐시 무효화 문제가
@@ -994,14 +1022,14 @@ export function renderGeneratorLP(root, params) {
           el("option", { value: EVOLUTION_TEMPLATE_ID, ...(isEvolution ? { selected: "selected" } : {}) }, "미스미는 진화중! (기능 개선 안내)")
         ]),
         current ? el("p", { class: "hint" }, "블록: " + current.blocks.join(" → ")) : null,
-        isEventLp ? el("p", { class: "hint hint-warn" },
-          "⚠ 사이트 공통 헤더/푸터는 SSI가 아니라 common.js 방식(브라우저가 fetch로 가져와 채움)으로 채워집니다 — common.js가 실제로 구현되고, fetch 경로에 CORS가 허용되어야 정상 동작합니다(개발팀 확인 중). 그 전까지는 미리보기·다운로드에서 헤더/푸터 자리가 비어있을 수 있습니다."
+        isEventLp && draft.eventSkin === "economy" ? el("p", { class: "hint hint-warn" },
+          "⚠ 경제형 스킨은 실제 사이트에서 카테고리 사이드 네비게이션(.ec-lnb)이 같이 붙는 것으로 확인됐습니다 — 이 생성기는 아직 그 블록을 안 만듭니다(개발팀 확인 중)."
         ) : null,
         isEconomyLineup ? el("p", { class: "hint hint-warn" },
-          "⚠ 신상품카탈로그와 마찬가지로 상시 운영(계속 갱신)되는 페이지입니다. 다른 점은 구조 — 카탈로그는 그룹별 개별 페이지인 반면, 이건 PC메인/전체라인업/모바일/데이터(QA) 4개 뷰가 하나의 사이트를 이룹니다. 모바일은 SP 전용 CSS 미확보로 자리만 잡아둔 상태입니다. 사이트 공통 헤더/푸터는 common.js 방식으로 채워지며(개발팀 확인 중), 확정 전까지는 자리가 비어있을 수 있습니다."
+          "⚠ 신상품카탈로그와 마찬가지로 상시 운영(계속 갱신)되는 페이지입니다. 다른 점은 구조 — 카탈로그는 그룹별 개별 페이지인 반면, 이건 PC메인/전체라인업/모바일/데이터(QA) 4개 뷰가 하나의 사이트를 이룹니다. 모바일은 SP 전용 CSS 미확보로 자리만 잡아둔 상태입니다."
         ) : null,
-        isEvolution ? el("p", { class: "hint hint-warn" },
-          "⚠ 사이트 공통 헤더/푸터는 common.js 방식으로 채워집니다(개발팀 확인 중) — 확정 전까지는 자리가 비어있을 수 있습니다. 블록을 자유롭게 추가·삭제·순서변경할 수 있는 조합형 템플릿입니다."
+        isEvolution ? el("p", { class: "hint" },
+          "블록을 자유롭게 추가·삭제·순서변경할 수 있는 조합형 템플릿입니다."
         ) : null
       ])
     ]);
@@ -1025,7 +1053,7 @@ export function renderGeneratorLP(root, params) {
           }),
           locked
             ? el("p", { class: "hint" }, "✅ 이미 배포되어 URL이 고정됐습니다 — 바꾸려면 새 캠페인으로 다시 시작해야 합니다.")
-            : el("p", { class: "hint" }, "처음 배포/다운로드하는 순간 확정되고, 그 뒤엔 못 바꿉니다. 최종 경로: lp/campaigns/{슬러그}_{생성시각(년월일시분초)}/")
+            : el("p", { class: "hint" }, "첫 배포/다운로드 시 확정, 이후 변경 불가 (lp/campaigns/{슬러그}_{시각}/)")
         ])
       ])
     ]);
@@ -1053,30 +1081,78 @@ export function renderGeneratorLP(root, params) {
   // 이벤트 LP — GENERATOR_SPEC.md 2절 콘텐츠 입력 스펙 그대로
   // ==========================================================================
 
-  function sectionEventLpBasic() {
+  /** ⚠️ 신설 — EDM의 "AI로 카피 자동 채우기"와 같은 위치·역할입니다. 지금까지는
+   *  본문 카피용 AI와 SEO 메타용 AI가 완전히 분리되어 있어서 두 번 따로
+   *  요청해야 했는데, 프롬프트 하나로 KV 문구(배지/헤드라인/서브카피)와
+   *  SEO 메타(타이틀/설명/키워드)를 한 번에 채웁니다. 이후 개별 미세조정은
+   *  아래 각 섹션(KV, SEO메타)에서 그대로 할 수 있습니다 — 일괄 채우기가
+   *  개별 조정을 막지 않습니다(EDM과 동일 원칙). */
+  function sectionEventLpAiContent() {
     return el("div", { class: "sec" }, [
-      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "기본 정보")])]),
+      el("div", { class: "sec-hd" }, [
+        el("div", { class: "sec-hd-left" }, [
+          el("span", { class: "sec-badge ai" }, "AI"),
+          el("span", { class: "sec-title" }, "AI로 카피 자동 채우기")
+        ])
+      ]),
       el("div", { class: "sec-body" }, [
-        el("div", { class: "field", style: "margin-bottom:10px;" }, [
-          el("label", {}, ["slug ", el("span", { class: "req-tag" }, "· 필수")]),
-          el("input", { type: "text", value: draft.slug || "", placeholder: "예: welcomeevent (경로: /pr/vona/<slug>/)", oninput: e => { draft.slug = e.target.value; renderPreview(); } })
-        ]),
-        el("div", { class: "field", style: "margin-bottom:10px;" }, [
-          el("label", {}, ["타이틀 ", el("span", { class: "req-tag" }, "· 필수")]),
-          el("input", { type: "text", value: draft.title || "", placeholder: "｜MISUMI｜미스미 종합 Web 카탈로그 는 자동 부착", oninput: e => { draft.title = e.target.value; renderPreview(); } })
-        ]),
-        el("div", { class: "field", style: "margin-bottom:10px;" }, [
-          el("label", {}, "설명 (80자 이내)"),
-          el("textarea", { oninput: e => { draft.description = e.target.value; renderPreview(); } }, draft.description || "")
-        ]),
         el("div", { class: "field" }, [
-          el("label", {}, "스킨"),
-          // ⚠️ 더 이상 여기서 못 바꿉니다 — 위 "템플릿" 드롭다운에서 "이벤트 LP (일반형)"/
-          // "(경제형)" 중 뭘 골랐는지로 캠페인 생성 시점에 고정됩니다. 여기선 그냥
-          // 지금 어느 쪽인지만 읽기 전용으로 보여줍니다(스킨을 바꾸려면 처음부터
-          // 다른 템플릿을 다시 선택해서 새 캠페인으로 시작해야 함).
-          el("p", { class: "hint" }, `${draft.eventSkin === "economy" ? "경제형 (920px, 컬러 다름)" : "일반형 (950px)"} — 위 템플릿 선택에서 고정됩니다`),
-          draft.eventSkin === "economy" ? el("p", { class: "hint hint-warn" }, "⚠ 경제형 스킨은 실제 사이트에서 카테고리 사이드 네비게이션(.ec-lnb)이 같이 붙는 것으로 확인됐습니다 — 이 생성기는 아직 그 블록을 안 만듭니다(개발팀 확인 중).") : null
+          el("label", {}, "AI에게 요청할 내용 (선택 · 본문·SEO 메타 생성에 반영됩니다)"),
+          el("textarea", {
+            placeholder: "예: 7월 여름맞이 프로모션, 최대 20% 할인 / 신뢰감 있는 톤으로",
+            value: draft.eventAiPrompt || "",
+            oninput: e => { draft.eventAiPrompt = e.target.value; }
+          })
+        ]),
+        el("button", {
+          class: "ai-btn", disabled: draft.generating ? "disabled" : null,
+          onclick: async () => {
+            draft.generating = true;
+            renderForm();
+            log("AI 콘텐츠 생성 요청 중...");
+            try {
+              const result = await generateEventLpContent({ instruction: draft.eventAiPrompt, title: draft.title });
+              draft.kvBadge = result.kvBadge;
+              draft.kvHeadline = result.kvHeadline;
+              draft.kvSubcopy = result.kvSubcopy;
+              // ⚠️ draft.title은 입력창이 따로 없어졌지만(기본정보 섹션 삭제),
+              // 브레드크럼의 유일한 소스라서(blocksLP.js: breadcrumbLabel||title,
+              // breadcrumbLabel은 어디서도 편집되지 않아 사실상 항상 비어있음)
+              // 여기서 SEO 타이틀과 같은 값으로 채워둬야 브레드크럼이 빈 채로
+              // 나가지 않습니다.
+              draft.title = result.seoTitle;
+              draft.seoTitle = result.seoTitle;
+              draft.seoDescription = result.seoDescription;
+              draft.seoKeywords = result.seoKeywords;
+              log("AI 콘텐츠 생성 완료 (KV 문구 + SEO 메타)");
+            } catch (e) {
+              log("AI 콘텐츠 생성 실패: " + e.message);
+              toast("생성에 실패했습니다: " + e.message);
+            } finally {
+              draft.generating = false;
+              renderForm();
+              renderPreview();
+            }
+          }
+        }, draft.generating ? "생성 중..." : "✨ AI로 카피 자동 채우기"),
+        el("div", { style: "border-top:1px solid #eee;padding-top:10px;margin-top:10px;" }, [
+          el("div", { class: "field" }, [
+            el("label", {}, `SEO 타이틀 (${(draft.seoTitle || "").length}/35자)`),
+            el("input", { type: "text", value: draft.seoTitle || "", oninput: e => { draft.seoTitle = e.target.value; draft.title = e.target.value; renderPreview(); } }),
+            el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" },
+              "※ 뒤에 \"｜ MISUMI｜미스미 종합 Web 카탈로그\" 자동 부착됨")
+          ]),
+          el("div", { class: "field" }, [
+            el("label", {}, `SEO 디스크립션 (${(draft.seoDescription || "").length}/100자)`),
+            el("textarea", { oninput: e => { draft.seoDescription = e.target.value; renderPreview(); } }, draft.seoDescription || "")
+          ]),
+          el("div", { class: "field" }, [
+            el("label", {}, "SEO 키워드"),
+            el("input", {
+              type: "text", value: (draft.seoKeywords || []).join(", "), placeholder: "쉼표로 구분",
+              oninput: e => { draft.seoKeywords = e.target.value.split(",").map(s => s.trim()).filter(Boolean); renderPreview(); }
+            })
+          ])
         ])
       ])
     ]);
@@ -1101,14 +1177,57 @@ export function renderGeneratorLP(root, params) {
         el("div", { class: "field", style: "margin-bottom:10px;" }, [
           el("label", {}, ["이미지 URL 또는 업로드 ", el("span", { class: "req-tag" }, "· 필수")]),
           el("input", { type: "text", value: draft.kvImageUrl || "", placeholder: "일반형 950×300 / 경제형 920×300 기준", oninput: e => { draft.kvImageUrl = e.target.value; renderPreview(); } }),
-          el("input", {
-            type: "file", accept: "image/*",
-            onchange: e => { if (e.target.files[0]) handleEventKvUpload(e.target.files[0]); }
-          })
+          el("div", { class: "image-upload-row", style: "margin-top:6px;" }, [
+            el("label", { class: "btn btn-sm upload-label" }, [
+              draft.kvUploading ? "처리 중..." : "이미지 업로드",
+              el("input", {
+                type: "file", accept: "image/*", style: "display:none;", disabled: draft.kvUploading ? "disabled" : null,
+                onchange: e => { if (e.target.files[0]) handleEventKvUpload(e.target.files[0]); }
+              })
+            ]),
+            draft.kvImageUrl ? el("img", { src: draft.kvImageUrl, alt: "", style: "width:36px;height:36px;object-fit:cover;border-radius:4px;border:1px solid #e0e0e0;" }) : null
+          ]),
+          // ⚠️ 신상품카탈로그 배너(handleCatalogBannerGenerate)와 완전히 같은 패턴 —
+          // 소재를 올리고/또는 프롬프트만으로 AI에게 KV 이미지 생성을 요청할 수
+          // 있게 합니다. 지시문 없이 업로드만 하면 예전처럼 그냥 업로드만 됩니다.
+          el("div", { style: "margin-top:8px;padding:8px;background:#fafafa;border-radius:6px;" }, [
+            el("p", { class: "hint", style: "margin:0 0 6px;" }, "AI로 KV 만들기 (선택) — 소재를 올리고/또는 프롬프트만으로 요청할 수 있습니다."),
+            (draft.kvMaterials || []).length ? el("div", { style: "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;" }, draft.kvMaterials.map((mat, mi) =>
+              el("span", { style: "display:inline-flex;align-items:center;gap:4px;background:#eef0f8;border-radius:12px;padding:2px 8px 2px 2px;font-size:11px;" }, [
+                el("img", { src: mat.url, style: "width:18px;height:18px;object-fit:cover;border-radius:50%;" }),
+                mat.name || `소재${mi + 1}`,
+                el("span", { style: "cursor:pointer;color:#999;font-weight:700;", onclick: () => { draft.kvMaterials.splice(mi, 1); renderForm(); } }, "×")
+              ])
+            )) : null,
+            el("label", { class: "btn btn-sm ghost", style: "margin-bottom:6px;" }, [
+              "소재 업로드 (여러 장 가능)",
+              el("input", {
+                type: "file", accept: "image/*", multiple: true, style: "display:none;",
+                onchange: e => {
+                  const files = [...e.target.files];
+                  if (!files.length) return;
+                  if (!draft.kvMaterials) draft.kvMaterials = [];
+                  files.forEach(file => draft.kvMaterials.push({ file, url: URL.createObjectURL(file), name: file.name }));
+                  renderForm();
+                }
+              })
+            ]),
+            el("textarea", {
+              placeholder: "예: 이 제품 사진을 참고해서, 파란 배경에 이벤트 분위기가 나는 KV를 만들어줘",
+              value: draft.kvInstruction || "",
+              oninput: e => { draft.kvInstruction = e.target.value; },
+              style: "margin-bottom:6px;"
+            }),
+            el("button", {
+              class: "btn btn-sm", disabled: draft.kvUploading ? "disabled" : null,
+              onclick: () => handleEventKvGenerate()
+            }, draft.kvUploading ? "처리 중..." : "✨ AI로 생성")
+          ])
         ]),
         el("div", { class: "field" }, [
           el("label", {}, ["대체텍스트(alt) ", el("span", { class: "req-tag" }, "· 필수")]),
-          el("input", { type: "text", value: draft.kvAlt || "", oninput: e => { draft.kvAlt = e.target.value; renderPreview(); } })
+          el("input", { type: "text", value: draft.kvAlt || "", oninput: e => { draft.kvAlt = e.target.value; renderPreview(); } }),
+          el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "비워두면 배포/다운로드 시점에 이미지를 직접 분석해서 자동으로 채웁니다.")
         ])
       ])
     ]);
@@ -1126,21 +1245,51 @@ export function renderGeneratorLP(root, params) {
     }
   }
 
+  /** handleCatalogBannerGenerate()와 완전히 같은 패턴 — 소재/지시문 중 있는 대로
+   *  조합해서 AI에 넘기고, 지시문이 없으면 그냥 업로드만 합니다. */
+  async function handleEventKvGenerate() {
+    const materials = draft.kvMaterials || [];
+    const instruction = draft.kvInstruction || "";
+    if (!materials.length && !instruction.trim()) {
+      toast("소재를 추가하거나 프롬프트를 입력해주세요");
+      return;
+    }
+    draft.kvUploading = true;
+    renderForm();
+    try {
+      log(`KV AI 생성 중... (소재 ${materials.length}개)`);
+      const resultBlob = await generateImage({ referenceFiles: materials.map(m => m.file), instruction, purpose: draft.seoTitle || draft.title || "이벤트 LP" });
+      const resized = await resizeImage(resultBlob, 950);
+      const filename = `kv_${Date.now()}.png`;
+      const url = await uploadToS3(resized, filename, "LP");
+      draft.kvImageUrl = url;
+      log("KV AI 생성 완료: " + filename);
+    } catch (e) {
+      log("KV 생성 실패: " + e.message);
+      toast("생성에 실패했습니다: " + e.message);
+    } finally {
+      draft.kvUploading = false;
+      renderForm(); renderPreview();
+    }
+  }
+
   function sectionEventLpSummary() {
     const rows = draft.summaryRows;
     const rowsHtml = rows.map((row, i) => el("div", { class: "field", style: "border-bottom:1px solid #f0f0f0;padding-bottom:8px;margin-bottom:8px;" }, [
       el("div", { class: "row2" }, [
-        el("input", { type: "text", value: row.label, placeholder: "라벨 (8자 이내, 예: 대상)", oninput: e => { row.label = e.target.value; } }),
-        el("input", { type: "text", value: row.value, placeholder: "값", oninput: e => { row.value = e.target.value; } })
+        el("input", { type: "text", value: row.label, placeholder: "라벨 (8자 이내, 예: 대상)", oninput: e => { row.label = e.target.value; renderPreview(); } }),
+        el("input", { type: "text", value: row.value, placeholder: "값", oninput: e => { row.value = e.target.value; renderPreview(); } })
       ]),
-      el("label", { style: "display:flex;align-items:center;gap:6px;margin-top:6px;font-weight:400;" }, [
-        el("input", {
-          type: "checkbox", checked: row.emphasis ? "checked" : null,
-          onchange: e => { rows.forEach(r => r.emphasis = false); row.emphasis = e.target.checked; renderForm(); renderPreview(); }
-        }),
-        "강조 (최대 1개)"
-      ]),
-      rows.length > 1 ? el("button", { class: "btn btn-sm ghost", onclick: () => { rows.splice(i, 1); renderForm(); renderPreview(); } }, "− 이 행 삭제") : null
+      el("div", { style: "display:flex;align-items:center;justify-content:space-between;margin-top:6px;" }, [
+        el("label", { style: "display:flex;align-items:center;gap:6px;font-weight:400;font-size:12.5px;" }, [
+          el("input", {
+            type: "checkbox", checked: row.emphasis ? "checked" : null,
+            onchange: e => { rows.forEach(r => r.emphasis = false); row.emphasis = e.target.checked; renderForm(); renderPreview(); }
+          }),
+          "강조 (최대 1개)"
+        ]),
+        rows.length > 1 ? el("button", { class: "btn btn-sm ghost", onclick: () => { rows.splice(i, 1); renderForm(); renderPreview(); } }, "− 행 삭제") : null
+      ])
     ]));
     return el("div", { class: "sec" }, [
       el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "02. 이벤트 요약표 (3~5행 권장)")])]),
@@ -1419,19 +1568,29 @@ export function renderGeneratorLP(root, params) {
     const isLp = draft.evolutionPage === "lp";
     const m = isLp ? draft.evolutionMetaLp : draft.evolutionMetaHub;
     return el("div", { class: "sec" }, [
-      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "SEO 메타")])]),
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-badge ai" }, "AI"), el("span", { class: "sec-title" }, "SEO 메타")])]),
       el("div", { class: "sec-body" }, [
+        el("div", { class: "field" }, [
+          el("label", {}, "AI에게 요청할 내용 (선택)"),
+          el("textarea", {
+            placeholder: "예: 신기능 업데이트 안내",
+            value: draft.evolutionSeoAiPrompt || "",
+            oninput: e => { draft.evolutionSeoAiPrompt = e.target.value; }
+          })
+        ]),
         el("button", {
           class: "ai-btn", style: "margin-bottom:10px;",
           onclick: async () => {
             log("SEO 메타 생성 요청 중...");
-            const result = await generateSeoMeta({ contentName: m.title || "미스미는 진화중", parentCategory: "" });
+            const result = await generateSeoMeta({ contentName: draft.evolutionSeoAiPrompt || m.title || "미스미는 진화중", parentCategory: "" });
             m.desc = result.description;
             m.keywords = result.keywords;
             log("SEO 메타 생성 완료");
             renderForm(); renderPreview();
           }
         }, "✨ AI 자동생성"),
+        el("p", { class: "hint", style: "font-size:10px;color:#999;margin:0 0 8px;" },
+          "※ 위 타이틀 뒤에 \"｜ MISUMI｜미스미 종합 Web 카탈로그\" 자동 부착됨 (디스크립션·키워드는 해당없음)"),
         el("div", { class: "field", style: "margin-bottom:10px;" }, [
           el("label", {}, `디스크립션 (${(m.desc || "").length}/100자)`),
           el("textarea", { oninput: e => { m.desc = e.target.value; renderPreview(); } }, m.desc || "")
@@ -1535,6 +1694,7 @@ export function renderGeneratorLP(root, params) {
       el("div", { class: "series-slot" }, [
         el("input", {
           type: "text", placeholder: `시리즈코드 ${i + 1}`, value: code,
+          style: "font-size:12.5px;border:1px solid #d0d0d0;border-radius:6px;font-family:inherit;outline:none;padding:7px 22px 7px 10px;",
           oninput: e => { slots[i] = e.target.value; }
         }),
         code ? el("button", { class: "rm", onclick: () => { slots[i] = ""; renderForm(); } }, "✕") : null
@@ -1583,7 +1743,7 @@ export function renderGeneratorLP(root, params) {
     return el("div", { class: "sec" }, [
       el("div", { class: "sec-hd" }, [
         el("div", { class: "sec-hd-left" }, [
-          el("span", { class: "sec-title" }, "캠페인 설정")
+          el("span", { class: "sec-title" }, "기본 정보")
         ])
       ]),
       el("div", { class: "sec-body" }, [
@@ -1698,30 +1858,76 @@ export function renderGeneratorLP(root, params) {
     ]);
   }
 
+  /** ⚠️ 재구성 — 이벤트LP의 sectionEventLpAiContent()와 같은 이유로, 카피와
+   *  SEO 메타를 같은 섹션에서 한 번에 처리합니다. 예전엔 프롬프트도 없이
+   *  버튼만 있었고, 타이틀/디스크립션/키워드는 저 아래 별도 SEO메타 섹션에
+   *  떨어져 있어서 "카피는 여기, SEO는 저기" 식으로 나뉘어 있었습니다. */
   function sectionAiCopy() {
+    const handleChange = () => renderPreview();
     return el("div", { class: "sec" }, [
       el("div", { class: "sec-hd" }, [
         el("div", { class: "sec-hd-left" }, [
-          el("span", { class: "sec-title" }, "AI 카피 자동생성")
+          el("span", { class: "sec-badge ai" }, "AI"),
+          el("span", { class: "sec-title" }, "AI로 카피 자동 채우기")
         ])
       ]),
       el("div", { class: "sec-body" }, [
+        el("div", { class: "field" }, [
+          el("label", {}, "AI에게 요청할 내용 (선택 · 카피·SEO 메타 생성에 반영됩니다)"),
+          el("textarea", {
+            placeholder: "예: 베어링 신제품 시리즈, 신뢰감 있는 톤으로",
+            value: draft.lpAiPrompt || "",
+            oninput: e => { draft.lpAiPrompt = e.target.value; }
+          })
+        ]),
         el("button", {
-          class: "ai-btn",
+          class: "ai-btn", style: "margin-bottom:10px;",
           disabled: draft.generating || null,
           onclick: async () => {
             draft.generating = true;
             renderForm();
             log("AI 카피 생성 요청 중...");
-            const result = await generateCopyLP({ pageType: draft.pageType });
-            draft.catchcopy = result.catchcopy;
-            draft.cta = result.cta;
-            draft.generating = false;
-            log("AI 카피 생성 완료");
-            renderForm();
-            renderPreview();
+            try {
+              const result = await generateCopyLP({ pageType: draft.pageType, instruction: draft.lpAiPrompt });
+              draft.catchcopy = result.catchcopy;
+              draft.cta = result.cta;
+              const seoResult = await generateSeoMeta({
+                contentName: draft.lpAiPrompt || result.catchcopy,
+                parentCategory: draft.breadcrumb
+              });
+              draft.seoTitle = seoResult.title;
+              draft.seoDescription = seoResult.description;
+              draft.seoKeywords = seoResult.keywords;
+              log("AI 카피 생성 완료 (카피 + SEO 메타)");
+            } catch (e) {
+              log("AI 카피 생성 실패: " + e.message);
+              toast("생성에 실패했습니다: " + e.message);
+            } finally {
+              draft.generating = false;
+              renderForm();
+              renderPreview();
+            }
           }
-        }, draft.generating ? "생성 중..." : "✨ AI 카피 생성")
+        }, draft.generating ? "생성 중..." : "✨ AI로 카피 자동 채우기"),
+        el("div", { style: "border-top:1px solid #eee;padding-top:10px;" }, [
+          el("div", { class: "field" }, [
+            el("label", {}, `SEO 타이틀 (${(draft.seoTitle || "").length}/35자)`),
+            el("input", { type: "text", value: draft.seoTitle || "", oninput: e => { draft.seoTitle = e.target.value; handleChange(); } }),
+            el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" },
+              "※ 뒤에 \"｜ MISUMI｜미스미 종합 Web 카탈로그\" 자동 부착됨")
+          ]),
+          el("div", { class: "field" }, [
+            el("label", {}, `SEO 디스크립션 (${(draft.seoDescription || "").length}/100자)`),
+            el("textarea", { oninput: e => { draft.seoDescription = e.target.value; handleChange(); } }, draft.seoDescription || "")
+          ]),
+          el("div", { class: "field" }, [
+            el("label", {}, "SEO 키워드"),
+            el("input", {
+              type: "text", value: (draft.seoKeywords || []).join(", "), placeholder: "쉼표로 구분",
+              oninput: e => { draft.seoKeywords = e.target.value.split(",").map(s => s.trim()).filter(Boolean); handleChange(); }
+            })
+          ])
+        ])
       ])
     ]);
   }
@@ -1798,20 +2004,33 @@ export function renderGeneratorLP(root, params) {
         seoMetaRebuildTimer = setTimeout(rebuildCatalogHtml, 500);
       }
     };
+    // ⚠️ 2026-09: 미스미 접미사(LP_TITLE_SUFFIX)를 5개 템플릿 전부에 공통
+    // 적용하도록 통일했습니다 — 이전엔 템플릿마다 붙는지 여부가 달라서
+    // 조건 분기로 안내했는데, 이제 하나로 통일됩니다.
+    const suffixHint = "※ 뒤에 \"｜ MISUMI｜미스미 종합 Web 카탈로그\" 자동 부착됨";
     return el("div", { class: "sec" }, [
       el("div", { class: "sec-hd" }, [
         el("div", { class: "sec-hd-left" }, [
+          el("span", { class: "sec-badge ai" }, "AI"),
           el("span", { class: "sec-title" }, "SEO 메타")
         ])
       ]),
       el("div", { class: "sec-body" }, [
+        el("div", { class: "field" }, [
+          el("label", {}, "AI에게 요청할 내용 (선택)"),
+          el("textarea", {
+            placeholder: isCatalog ? "예: 베어링 신상품, 실무 담당자 대상" : "예: 경제형 시리즈 전체 라인업",
+            value: draft.seoAiPrompt || "",
+            oninput: e => { draft.seoAiPrompt = e.target.value; }
+          })
+        ]),
         el("button", {
           class: "ai-btn",
           style: "margin-bottom:10px;",
           onclick: async () => {
             log("SEO 메타 생성 요청 중...");
             const result = await generateSeoMeta({
-              contentName: draft.catchcopy || (isCatalog ? "신상품카탈로그" : "컨텐츠"),
+              contentName: draft.seoAiPrompt || draft.catchcopy || (isCatalog ? "신상품카탈로그" : "컨텐츠"),
               parentCategory: draft.breadcrumb
             });
             draft.seoTitle = result.title;
@@ -1827,7 +2046,8 @@ export function renderGeneratorLP(root, params) {
           el("input", {
             type: "text", value: draft.seoTitle || "",
             oninput: e => { draft.seoTitle = e.target.value; handleChange(); }
-          })
+          }),
+          suffixHint ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, suffixHint) : null
         ]),
         el("div", { class: "field" }, [
           el("label", {}, `디스크립션 (${(draft.seoDescription || "").length}/100자)`),
@@ -1947,7 +2167,7 @@ export function renderGeneratorLP(root, params) {
       const previewHtml = inlineShellScriptForPreview(html).replace("</head>", `<style>${EVOLUTION_PREVIEW_CSS}</style></head>`);
     appendAutoHeightIframe(previewFrame, previewHtml); // 카탈로그와 동일하게 콘텐츠 높이만큼 자동으로 늘어남
       const badge = root.querySelector("#genlp-guideline-badge");
-      if (badge) { badge.className = "guideline-badge badge-pass"; badge.textContent = "✅ 조립 성공 (사이트 공통 헤더/푸터는 common.js가 채움 — 개발팀 확인 중)"; }
+      if (badge) { badge.className = "guideline-badge"; badge.textContent = "이 템플릿은 자동 가이드라인 검사를 지원하지 않습니다"; }
     } catch (e) {
       previewFrame.appendChild(el("p", { class: "preview-error" }, e.message));
     }
@@ -1971,8 +2191,8 @@ export function renderGeneratorLP(root, params) {
       latestGuidelineIssues = [];
       const badge = root.querySelector("#genlp-guideline-badge");
       if (badge) {
-        badge.className = "guideline-badge badge-pass";
-        badge.textContent = "✅ 조립 성공 (사이트 공통 헤더/푸터는 common.js가 채움 — 개발팀 확인 중)";
+        badge.className = "guideline-badge";
+        badge.textContent = "이 템플릿은 자동 가이드라인 검사를 지원하지 않습니다";
       }
     } catch (e) {
       previewFrame.appendChild(el("p", { class: "preview-error" }, e.message));
@@ -1998,7 +2218,7 @@ export function renderGeneratorLP(root, params) {
     badge.className = "guideline-badge " + (allIssues.length === 0 ? "badge-pass" : summary.errors ? "badge-fail" : "badge-warn");
     badge.textContent = allIssues.length === 0
       ? "✅ 완료된 그룹 전체 가이드라인 통과"
-      : `${summary.errors ? "❌" : "⚠️"} 위반 ${summary.errors}건 · 경고 ${summary.warnings}건 — 그룹별 상세는 클릭해서 보기`;
+      : `${summary.errors ? "❌" : "⚠️"} 위반 ${summary.errors}건 · 경고 ${summary.warnings}건`;
   }
 
   function renderCatalogPreview() {
@@ -2047,7 +2267,7 @@ export function renderGeneratorLP(root, params) {
     badge.className = "guideline-badge " + (issues.length === 0 ? "badge-pass" : summary.errors ? "badge-fail" : "badge-warn");
     badge.textContent = issues.length === 0
       ? "✅ LP 가이드라인 통과"
-      : `${summary.errors ? "❌" : "⚠️"} 위반 ${summary.errors}건 · 경고 ${summary.warnings}건 (클릭해서 보기)`;
+      : `${summary.errors ? "❌" : "⚠️"} 위반 ${summary.errors}건 · 경고 ${summary.warnings}건`;
   }
 
   function toggleGuidelineDetails() {
@@ -2164,6 +2384,7 @@ export function renderGeneratorLP(root, params) {
       toast("신상품카탈로그는 위 '전체 배포' 버튼을 사용하세요");
       return;
     }
+    if (draft.templateId === EVENT_LP_TEMPLATE_ID) await fillMissingEventLpAlt();
     // ⚠️ 다운로드도 배포와 마찬가지로 "URL이 한 번 정해지면 안 바뀐다" 원칙이
     // 적용됩니다 — 다운로드한 zip을 나중에 웹서버에 그대로 올릴 걸 전제하므로,
     // 여기서도 캠페인 키를 확정해서 잠급니다(배포와 동일한 resolveCampaignKey).
@@ -2271,6 +2492,7 @@ export function renderGeneratorLP(root, params) {
     }
     await resolveCampaignKey(draft);
     renderForm(); // 슬러그 입력창이 잠긴 상태로 다시 그려지도록
+    if (draft.templateId === EVENT_LP_TEMPLATE_ID) await fillMissingEventLpAlt();
     if (draft.templateId === ECONOMY_LINEUP_TEMPLATE_ID) {
       if (!draft.economyProducts.length) {
         toast("상품 데이터를 먼저 업로드해주세요");
@@ -2426,6 +2648,9 @@ export function renderGeneratorLP(root, params) {
       droppedCount += materials.length - kept.length;
       return { ...b, materialUrls: kept };
     });
+    const kvMaterialsAll = draft.kvMaterials || [];
+    const savableKvMaterials = kvMaterialsAll.filter(m => !m.file);
+    droppedCount += kvMaterialsAll.length - savableKvMaterials.length;
     const campaign = {
       id: draft.id,
       name: (draft.campaignName || "").trim() || "(캠페인명 미입력)",
@@ -2436,7 +2661,7 @@ export function renderGeneratorLP(root, params) {
       segment: "-",
       createdAt: existing ? existing.createdAt : new Date().toISOString().slice(0, 10).replace(/-/g, "."),
       promotionName: draft.promotionName || "",
-      draftData: { ...draft, catalogBanners: savableBanners }
+      draftData: { ...draft, catalogBanners: savableBanners, kvMaterials: savableKvMaterials }
     };
     return { campaign, droppedCount };
   }
@@ -2480,6 +2705,7 @@ function buildInitialDraftLP(existing) {
     description: "",
     eventSkin: "normal",
     kvHeadline: "", kvBadge: "", kvSubcopy: "", kvImageUrl: "", kvAlt: "",
+    kvMaterials: [], kvInstruction: "", kvUploading: false, eventAiPrompt: "", lpAiPrompt: "",
     summaryRows: [
       { label: "대상", value: "", emphasis: false },
       { label: "내용", value: "", emphasis: true },
