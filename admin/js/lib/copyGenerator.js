@@ -1,7 +1,7 @@
 // ⚠️ 실서비스 연동 지점
-// Phase 1 요건(CMN-05)의 AI 카피 자동생성은 Lambda(fn-generate) → Claude API 호출로 구현됩니다.
-// 이 데모에서는 백엔드 없이 목업 카피를 반환합니다. 실 연동 시 CONFIG.copyApiUrl을
-// API Gateway 엔드포인트로 바꾸고, generateCopy()의 목업 분기를 fetch 호출로 교체하세요.
+// Phase 1 요건(CMN-05)의 AI 카피 자동생성은 Lambda(fn-generate-copy) → OpenAI Chat
+// Completions 호출로 구현되어 있습니다. CONFIG.copyApiUrl이 비어있을 때만 아래 목업
+// 분기로 동작합니다.
 //
 // ⚠️ 아키텍처 전환: 예전엔 category(상품/비상품)+segment 조합별로 고정된 필드(catchcopy,
 // headline 등)를 채웠는데, 이제 템플릿마다 필드 구성이 달라서 "이 템플릿이 요구하는 필드

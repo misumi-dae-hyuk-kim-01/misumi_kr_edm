@@ -12,7 +12,8 @@
 // 같은 원칙으로 통일한 것입니다 — "최종 결과물만 저장한다"는 원칙 하나로 소재도
 // 처리됩니다.
 //
-// 실제로 연동하려면 백엔드에 아래와 같은 엔드포인트가 필요합니다 (개발팀·AI팀 협의 필요):
+// 백엔드는 process-image Lambda(OpenAI gpt-image-1의 images/edits)로 구현되어 있고,
+// 계약은 아래와 같습니다:
 //   POST (multipart/form-data) { file?, referenceFiles[]?, instruction, purpose }
 //     → 생성/편집된 이미지 바이너리(Content-Type: image/*)
 // ⚠️ 서버는 이 요청에서 S3에 아무것도 저장하면 안 됩니다. 결과를 바이너리로 그대로
