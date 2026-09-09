@@ -19,7 +19,7 @@
 // 응답에 실어 보내기만 하면 됩니다. 최종 저장은 사용자가 확정한 뒤 별도의
 // uploadToS3() 흐름(=presigned URL)을 통해 이루어집니다.
 export const IMAGE_PROCESS_CONFIG = {
-  apiUrl: "" // 예: "https://xxxx.execute-api.ap-northeast-2.amazonaws.com/generate-image"
+  apiUrl: "https://2ylb31kte6.execute-api.ap-northeast-1.amazonaws.com" // process-image (OpenAI gpt-image-1)
 };
 
 /**

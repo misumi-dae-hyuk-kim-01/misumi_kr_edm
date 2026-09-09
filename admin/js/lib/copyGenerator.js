@@ -8,7 +8,7 @@
 // 키 목록"을 받아서 그만큼만 돌려주는 방식으로 바꿨습니다. customPrompt는 카피 생성뿐 아니라
 // (나중에 연동될) 이미지 선택/편집에도 같은 값이 쓰입니다 — 여기서는 카피에만 반영합니다.
 export const CONFIG = {
-  copyApiUrl: "" // 예: "https://xxxx.execute-api.ap-northeast-2.amazonaws.com/generate-copy"
+  copyApiUrl: "https://bdtaymh2tc.execute-api.ap-northeast-1.amazonaws.com" // fn-generate-copy (OpenAI)
 };
 
 // 목적별 데모 문구 후보. 실제 필드 키와 무관하게 "이런 느낌의 문구"만 후보로 갖고 있고,
