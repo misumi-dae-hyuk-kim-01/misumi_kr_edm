@@ -9,6 +9,7 @@ import { assembleEdmHtml } from "../lib/blocks.js";
 import { checkGuidelines, summarizeGuidelineIssues } from "../lib/guidelineCheck.js";
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
 import { fetchSeriesInfo } from "../lib/seriesApi.js";
+import { nowDate, nowDateTime } from "../lib/datetime.js";
 import { EDM_TEMPLATE_FIELDS } from "../data/edmTemplateFields.js";
 import { EDM_TEMPLATE_HTML } from "../data/edmTemplateHtml.js";
 
@@ -775,7 +776,7 @@ export function renderGenerator(root, params) {
       id,
       filename,
       category: inferImageCategory(key),
-      uploadedAt: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
+      uploadedAt: nowDate(),
       variants: { EDM: { url, sizeKB: Math.round((blob?.size || 0) / 1024), isDemoUrl: !url.startsWith("http") } },
       source: "generator",
       // ⚠️ 재사용 라이브러리로 바뀌면서 "사용 중인 캠페인"(findUsage)은 이미 대조로
@@ -895,7 +896,13 @@ export function renderGenerator(root, params) {
 
   async function handleRecorrect(key) {
     const meta = draft.imageMeta[key] || {};
-    if (!meta.fileBlob || !meta.newInstruction?.trim()) return;
+    const savedUrl = draft.fieldValues[key];
+    // ⚠️ meta.fileBlob은 저장→복원을 거치면 사라집니다(Blob은 JSON에 못 담김,
+    // draftToCampaign 참고). 그때는 이미 S3에 올라가 있는 결과물(savedUrl)을 서버가
+    // 내려받아 편집하도록 넘깁니다 — 브라우저에서 직접 fetch하면 S3 CORS에 막힐 수
+    // 있어서, 다운로드는 서버(process-image)에 맡깁니다.
+    const hasBlob = meta.fileBlob instanceof Blob;
+    if ((!hasBlob && !savedUrl) || !meta.newInstruction?.trim()) return;
     draft.imageUploading = key;
     renderForm();
     const t = resolveTemplate();
@@ -904,7 +911,15 @@ export function renderGenerator(root, params) {
       const pool = draft.imageReferencePool || [];
       const refFiles = pool.filter(r => r.file).map(r => r.file);
       const refUrls = pool.filter(r => !r.file && r.url).map(r => r.url);
-      const resultBlob = await generateImage({ file: meta.fileBlob, referenceFiles: refFiles, referenceUrls: refUrls, instruction: meta.newInstruction, purpose: t?.purpose });
+      // 원본 Blob이 없으면 savedUrl을 "첫 번째 참고 이미지"로 넣습니다 — 서버는 file이
+      // 없을 때 참고 이미지의 첫 장을 편집 대상으로 삼습니다.
+      const resultBlob = await generateImage({
+        file: hasBlob ? meta.fileBlob : undefined,
+        referenceFiles: refFiles,
+        referenceUrls: hasBlob ? refUrls : [savedUrl, ...refUrls],
+        instruction: meta.newInstruction,
+        purpose: t?.purpose
+      });
       const url = await uploadToS3(resultBlob, meta.filename, "EDM");
       draft.fieldValues[key] = url;
       // ⚠️ 2026-09 변경: alt는 이제 배포/다운로드 시점에 이미지를 직접 분석해서
@@ -1031,7 +1046,10 @@ export function renderGenerator(root, params) {
             ])
           ]),
           meta.instruction ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, `요청한 보정: "${meta.instruction}"`) : null,
-          meta.fileBlob ? el("div", { class: "field-with-regen", style: "margin:6px 0;" }, [
+          // ⚠️ 예전엔 meta.fileBlob이 있을 때만 보여줬는데, 저장→복원 후엔 Blob이
+          // 사라져서(draftToCampaign 참고) 재보정이 아예 불가능했습니다. 결과물이 이미
+          // S3에 있으면(value) 서버가 그걸 내려받아 편집할 수 있으므로 그때도 보여줍니다.
+          (meta.fileBlob instanceof Blob || value) ? el("div", { class: "field-with-regen", style: "margin:6px 0;" }, [
             el("input", {
               type: "text", value: meta.newInstruction || "", style: "flex:1;min-width:0;padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;",
               placeholder: "보정 요청 추가 · 예: 배경을 더 어둡게",
@@ -1366,7 +1384,6 @@ export function renderGenerator(root, params) {
 
   function draftToCampaign(statusOverride) {
     const t = resolveTemplate();
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, ".");
     // ⚠️ imageReferencePool 안의 File 기반 소재("파일로 추가"로 넣은 것)는 브라우저
     // 메모리에만 있는 Blob이라 JSON으로 저장할 수 없습니다(그대로 두면 저장 시점에
     // 조용히 빈 객체가 되어 데이터가 사라집니다). URL 기반 소재("URL 붙여넣기")는
@@ -1375,6 +1392,17 @@ export function renderGenerator(root, params) {
     const pool = draft.imageReferencePool || [];
     const savablePool = pool.filter(r => !r.file);
     const droppedCount = pool.length - savablePool.length;
+    // ⚠️ imageMeta[key].fileBlob도 같은 이유(Blob은 JSON으로 저장 불가)로 걸러내야
+    // 합니다. 예전엔 그대로 저장돼서, 저장→복원 후 fileBlob이 빈 객체 {}가 된 채로
+    // 남았습니다. {}는 truthy라 "보정 요청" 버튼이 그대로 보이고, 누르면 FormData가
+    // Blob이 아닌 값을 "[object Object]" 문자열로 보내서 서버가 500을 냈습니다.
+    // 원본 Blob은 못 살리지만 결과물은 이미 S3에 있으므로, 복원 후 재보정은
+    // fieldValues[key](S3 URL)를 서버가 내려받아 처리합니다(handleRecorrect 참고).
+    const savableImageMeta = {};
+    for (const [k, m] of Object.entries(draft.imageMeta || {})) {
+      const { fileBlob, previewBlob, pendingFile, ...rest } = m || {};
+      savableImageMeta[k] = rest;
+    }
     const campaign = {
       id: draft.id,
       name: (draft.campaignName || "").trim() || "(캠페인명 미입력)",
@@ -1383,10 +1411,13 @@ export function renderGenerator(root, params) {
       purpose: t?.purpose || "",
       templateName: t?.name || "", // 목록엔 안 보이지만, 다른 용도로 쓸 수 있어 데이터는 유지
       status: statusOverride || existing?.status || "초안",
-      createdAt: existing ? existing.createdAt : today, // 작성일: 최초 생성 시점, 이후 안 바뀜
-      updatedAt: today, // 최종 수정일: 저장/내보내기마다 갱신
+      createdAt: existing ? existing.createdAt : nowDate(), // 작성일: 최초 생성 시점, 이후 안 바뀜
+      // ⚠️ 최종수정일에만 시:분을 붙입니다 — 목록이 이 값으로 정렬되는데(campaigns.js),
+      // 날짜만 있으면 같은 날 저장한 캠페인이 전부 동률이 되어 새로고침할 때마다 순서가
+      // 뒤바뀌었습니다. 작성일은 정렬에 쓰이지 않아 날짜만으로 충분합니다.
+      updatedAt: nowDateTime(), // 최종 수정일: 저장/내보내기마다 갱신
       promotionName: draft.promotionName || "",
-      draftData: { ...draft, imageReferencePool: savablePool }
+      draftData: { ...draft, imageReferencePool: savablePool, imageMeta: savableImageMeta }
     };
     return { campaign, droppedCount };
   }

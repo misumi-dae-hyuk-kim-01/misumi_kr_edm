@@ -2,6 +2,7 @@ import { store } from "../state.js";
 import { el, toast } from "../lib/dom.js";
 import { LP_WIDTH_PATTERNS, LP_ECONOMY_LAYOUT } from "../lib/guidelineCheckLP.js";
 import { resizeImage } from "../lib/imageResize.js";
+import { nowDate } from "../lib/datetime.js";
 
 // ⚠️ 실서비스 연동 지점 (copyGenerator.js/seriesApi.js와 동일한 패턴)
 // CONFIG.uploadApiUrl이 비어있으면 데모 모드로 동작합니다: 실제 S3에 올라가지 않고
@@ -160,7 +161,7 @@ export function renderAssets(root) {
           id: "a" + Date.now() + Math.random().toString(16).slice(2),
           filename: f.name,
           category,
-          uploadedAt: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
+          uploadedAt: nowDate(),
           variants,
           source: "assets-page",
           aiProcessed: false
