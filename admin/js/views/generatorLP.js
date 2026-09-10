@@ -10,6 +10,7 @@ import { fetchSeriesInfo, fetchSeriesInfoBatch } from "../lib/seriesApi.js";
 import { deployLpToS3, deployLpFilesToS3, deploySharedAssetsToS3, resolveCampaignKey, restoreLpDeploymentState, buildCampaignKey, currentTimestamp } from "../lib/lpDeploy.js";
 import { resizeImage } from "../lib/imageResize.js";
 import { uploadToS3 } from "../lib/s3Upload.js";
+import { nowDate, nowDateTime } from "../lib/datetime.js";
 import { generateImage, generateAltTextFromImage } from "../lib/imageProcessApi.js";
 
 const LP_TEMPLATES = seedLpTemplates();
@@ -393,7 +394,7 @@ export function renderGeneratorLP(root, params) {
       id,
       filename,
       category: "히어로 배경",
-      uploadedAt: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
+      uploadedAt: nowDate(),
       variants: { LP1200: { url, sizeKB: Math.round((blob?.size || 0) / 1024), isDemoUrl: !url.startsWith("http") } },
       source: "generator",
       sourceCampaignId: draft.id,
@@ -2437,7 +2438,11 @@ export function renderGeneratorLP(root, params) {
       category: draft.pageType,
       type: "랜딩페이지",
       segment: "-",
-      createdAt: existing ? existing.createdAt : new Date().toISOString().slice(0, 10).replace(/-/g, "."),
+      createdAt: existing ? existing.createdAt : nowDate(),
+      // ⚠️ 예전엔 LP만 updatedAt을 아예 안 넣었습니다. 목록이 최종수정일 내림차순으로
+      // 정렬되면서(campaigns.js), LP는 몇 번을 수정해도 createdAt으로만 비교되어
+      // 계속 아래에 묻히는 문제가 됩니다 — EDM(generator.js)과 동일하게 맞춥니다.
+      updatedAt: nowDateTime(),
       promotionName: draft.promotionName || "",
       draftData: { ...draft, catalogBanners: savableBanners }
     };
