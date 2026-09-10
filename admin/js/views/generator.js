@@ -131,12 +131,11 @@ export function renderGenerator(root, params) {
       // UI를 새로 만들지 않고 title 속성(네이티브 툴팁)을 쓰는 이유는, 위치
       // 계산이나 z-index 충돌 걱정 없이 항상 정확하게 뜨기 때문입니다.
       document.querySelectorAll('[data-image-key]').forEach(function(el){
-        var m = el.getAttribute('data-image-key').match(/(\\d+)$/);
-        el.title = m ? '이미지 ' + m[1] : el.getAttribute('data-image-key');
-        el.style.outline = '1px dashed transparent';
-        el.style.transition = 'outline-color .15s';
-        el.addEventListener('mouseenter', function(){ el.style.outlineColor = 'rgba(15,33,139,0.45)'; });
-        el.addEventListener('mouseleave', function(){ el.style.outlineColor = 'transparent'; });
+        // ⚠️ 키(image_7 등)에서 숫자만 뽑아 추측하던 방식은, 폼의 라벨이 실제
+        // 화면 순서에 맞게 재조정되면(예: image_7 라벨이 "이미지 2") 서로
+        // 어긋나는 문제가 있었습니다. blocks.js가 심어둔 data-image-label(폼과
+        // 정확히 같은 문자열)을 그대로 씁니다.
+        el.title = el.getAttribute('data-image-label') || el.getAttribute('data-image-key');
       });
       document.querySelectorAll('[data-field]').forEach(function(el){
         var linkKey = el.getAttribute('data-link-field');
@@ -147,10 +146,19 @@ export function renderGenerator(root, params) {
           // 하면 "왜 링크는 여기서 안 고쳐지지"라는 혼란이 생기므로, 클릭하면
           // 문구+링크를 한 팝업에서 같이 고치게 만듭니다.
           el.style.cursor = 'pointer';
-          el.addEventListener('click', function(e){
+          var handler = function(e){
             e.preventDefault();
+            e.stopPropagation(); // span 클릭 시 부모 <a>로 버블링되어 두 번 열리는 것 방지
             openButtonEditPopup(el, linkKey);
-          });
+          };
+          el.addEventListener('click', handler);
+          // ⚠️ 실제 이메일 버튼은 <a> 자체에 넉넉한 패딩이 있어서(예: padding:11px 4px,
+          // display:block), 텍스트(span) 바깥의 여백 부분을 클릭하면 이 핸들러가
+          // 아니라 <a>의 기본 동작(페이지 이동)이 그대로 실행됩니다 — 이게 "버튼
+          // 잘못 누르면 링크로 넘어가버린다"는 문제의 실제 원인이었습니다. 부모
+          // <a> 자체에도 같은 핸들러를 걸어서, 패딩 영역을 클릭해도 팝업이 뜨게 합니다.
+          var parentAnchor = el.closest('a');
+          if (parentAnchor) parentAnchor.addEventListener('click', handler);
           return; // contenteditable/focus/blur는 아래서 안 붙임
         }
         el.setAttribute('contenteditable', 'true');
@@ -203,12 +211,9 @@ export function renderGenerator(root, params) {
 
   function buildFormArea() {
     return el("section", { class: "gen-form-area" }, [
-      el("div", { class: "gen-topbar" }, [
-        el("a", { class: "gen-back", href: "#/campaigns" }, "← 캠페인 목록")
-      ]),
       el("div", { class: "gen-form-header" }, [
         el("h1", {}, existing ? `EDM 생성기 · ${existing.name}` : "EDM 생성기"),
-        el("p", { id: "gen-form-subtitle" }, "")
+        el("a", { class: "gen-back", href: "#/campaigns" }, "← 캠페인 목록")
       ]),
       el("div", { class: "gen-form-body", id: "gen-form-body" }),
       el("div", { class: "gen-form-footer" }, [
@@ -219,17 +224,19 @@ export function renderGenerator(root, params) {
         el("div", { class: "log-details", id: "log-details", style: "display:none;" }),
         el("div", { id: "guideline-badge", class: "guideline-badge", onclick: toggleGuidelineDetails }, "가이드라인 확인 중..."),
         el("div", { id: "guideline-results", style: "display:none;" }),
-        el("div", { class: "footer-btn-row" }, [
-          el("div", { class: "export-dropdown" }, [
-            el("button", { class: "btn primary export-btn", onclick: toggleExportMenu }, "내보내기 ▾"),
-            el("div", { class: "export-menu", id: "export-menu", style: "display:none;" }, [
-              el("button", { class: "export-menu-item", onclick: () => { closeExportMenu(); copyHtml(); } }, "HTML 복사"),
-              el("button", { class: "export-menu-item", onclick: () => { closeExportMenu(); downloadHtml(); } }, "파일 다운로드")
-            ])
+        el("div", { id: "gen-standard-export-area" }, [
+          el("div", { class: "footer-btn-row" }, [
+            el("div", { class: "export-dropdown" }, [
+              el("button", { class: "btn primary export-btn", onclick: toggleExportMenu }, "내보내기 ▾"),
+              el("div", { class: "export-menu", id: "export-menu", style: "display:none;" }, [
+                el("button", { class: "export-menu-item", onclick: () => { closeExportMenu(); copyHtml(); } }, "HTML 복사"),
+                el("button", { class: "export-menu-item", onclick: () => { closeExportMenu(); downloadHtml(); } }, "파일 다운로드")
+              ])
+            ]),
+            el("button", { class: "btn", onclick: runLinkCheck }, "🔗 링크 확인")
           ]),
-          el("button", { class: "btn", onclick: runLinkCheck }, "🔗 링크 확인")
+          el("div", { id: "link-check-results" })
         ]),
-        el("div", { id: "link-check-results" }),
         el("button", { class: "btn ghost", style: "width:100%;", onclick: saveDraft }, "임시저장")
       ])
     ]);
@@ -487,9 +494,7 @@ export function renderGenerator(root, params) {
 
   function renderForm() {
     formBody.innerHTML = "";
-    const subtitle = root.querySelector("#gen-form-subtitle");
     const t = resolveTemplate();
-    if (subtitle) subtitle.textContent = t ? `${t.purpose} · ${t.name}` : "";
 
     // 캠페인 설정: 한 번 정하면 되는 값들 (이 캠페인이 "뭔지" 정의)
     formBody.appendChild(groupHeader("캠페인 설정"));
@@ -500,15 +505,15 @@ export function renderGenerator(root, params) {
     // 이메일 콘텐츠: 실제로 이메일 본문에 들어가는 것들. AI 프롬프트는 "설정값"이 아니라
     // 카피/이미지를 만들어내는 콘텐츠 제작 보조 도구라 여기 속합니다.
     formBody.appendChild(groupHeader("이메일 콘텐츠"));
-    if (templateHasFieldType("product-field")) formBody.appendChild(sectionSeriesCodes());
     if (templateHasFieldType("coupon-field")) formBody.appendChild(sectionCoupon());
     formBody.appendChild(sectionAiPrompt());
+    if (templateHasFieldType("product-field")) formBody.appendChild(sectionSeriesCodes());
     if (templateHasFieldType("image")) formBody.appendChild(sectionImageReferencePool());
     formBody.appendChild(sectionDynamicFields());
   }
 
   function sectionCampaignName() {
-    return el("div", {}, [
+    return sectionWrap(null, "기본 정보", "high", [
       el("div", { class: "field", style: "margin-bottom:14px;" }, [
         el("label", {}, ["캠페인명 ", el("span", { class: "req-tag" }, "· 필수")]),
         el("input", {
@@ -590,7 +595,7 @@ export function renderGenerator(root, params) {
   }
 
   function sectionAiPrompt() {
-    return sectionWrap("AI", "AI 프롬프트", "ai", [
+    return sectionWrap("AI", "AI로 카피 자동 채우기", "ai", [
       el("div", { class: "field" }, [
         el("label", {}, "AI에게 요청할 내용 (선택 · 카피 생성에 반영됩니다)"),
         el("textarea", {
@@ -613,14 +618,14 @@ export function renderGenerator(root, params) {
     const t = resolveTemplate();
     const imageFields = t?.fields.filter(f => f.type === "image") || [];
     return sectionWrap("AI", "참고 이미지 + 슬롯별 설명", "ai", [
-      el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "등록한 소재는 아래 슬롯에서 체크박스로 골라 씁니다."),
+      el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;margin-bottom:10px;" }, "여기 등록한 소재는 아래 모든 이미지 슬롯이 자동으로 참고합니다."),
       ...pool.map((ref, i) => el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px;" }, [
         ref.url ? el("img", { src: ref.url, style: "width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0;" }) : null,
-        el("input", { type: "text", value: ref.label || "", placeholder: "이 이미지가 뭔지 짧게 (예: 제품 정면샷)", style: "flex:1;min-width:0;", oninput: e => { ref.label = e.target.value; } }),
+        el("input", { type: "text", value: ref.label || "", placeholder: "이 이미지가 뭔지 짧게 (예: 제품 정면샷)", style: "flex:1;min-width:0;padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;", oninput: e => { ref.label = e.target.value; } }),
         el("button", { class: "btn btn-sm ghost", style: "flex-shrink:0;", onclick: () => { pool.splice(i, 1); renderForm(); } }, "삭제")
       ])),
       el("div", { class: "row2" }, [
-        el("label", { class: "btn btn-sm upload-label" }, [
+        el("label", { class: "btn btn-sm upload-label", style: "text-align:center;justify-content:center;" }, [
           "파일로 추가",
           el("input", {
             type: "file", accept: "image/*", multiple: true, style: "display:none;",
@@ -641,6 +646,7 @@ export function renderGenerator(root, params) {
         ]),
         el("input", {
           type: "text", placeholder: "이미지 URL 붙여넣기 (Enter로 추가, 여러 개 가능)",
+          style: "padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;",
           onkeydown: e => {
             if (e.key === "Enter" && e.target.value.trim()) {
               pool.push({ url: e.target.value.trim(), label: "" });
@@ -935,10 +941,17 @@ export function renderGenerator(root, params) {
     const visibleFields = t.fields.filter(f => f.type !== "coupon-field" && f.type !== "product-field" && f.key !== "preheader" && f.key !== "customer_name");
     const groups = groupFieldsBySection(visibleFields);
 
+    // ⚠️ 2026-09 신설: 카피/이미지는 AI로 만들고 미리보기에서 바로 수정할 수
+    // 있게 됐으니, 이 "필드 하나하나 나열된 긴 목록"은 이제 주 진입점이 아니라
+    // 보조 수단입니다. 기본 정보/AI 프롬프트/참고 이미지 섹션과 달리, 여기는
+    // 평소엔 접어두고 필요할 때만 펼쳐보는 쪽이 화면을 덜 차지합니다.
+    if (!draft.dynamicSectionExpanded) draft.dynamicSectionExpanded = {};
     return el("div", {}, groups.map((g, idx) => {
       const isDeleted = g.sectionKey !== undefined && draft.hiddenSections.includes(g.sectionKey);
-      const headerExtra = g.sectionKey !== undefined
-        ? el("div", { class: "sec-toggle-wrap" }, [
+      const sectionId = g.sectionKey ?? g.name;
+      const expanded = !!draft.dynamicSectionExpanded[sectionId];
+      const toggleRow = g.sectionKey !== undefined
+        ? el("div", { class: "sec-toggle-wrap", onclick: e => e.stopPropagation() }, [
             el("span", { class: "sec-toggle-label" }, g.name === "CTA" ? "CTA 사용" : "섹션 사용"),
             toggleSwitch(!isDeleted, on => {
               if (on) draft.hiddenSections = draft.hiddenSections.filter(k => k !== g.sectionKey);
@@ -947,11 +960,14 @@ export function renderGenerator(root, params) {
             })
           ])
         : null;
+      const expandIndicator = el("span", { style: "font-size:11px;color:#999;margin-left:8px;" }, expanded ? "▴" : "▾");
+      const headerExtra = el("div", { style: "display:flex;align-items:center;" }, [toggleRow, expandIndicator]);
       return sectionWrap(null, g.name, "high", [
         isDeleted
           ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "이 섹션은 미리보기에서 제외됩니다.")
           : el("div", {}, g.fields.map(f => renderFieldInput(f)))
-      ], isDeleted ? "sec-deleted" : "", headerExtra);
+      ], (isDeleted ? "sec-deleted " : "") + (expanded ? "" : "collapsed"), headerExtra,
+        () => { draft.dynamicSectionExpanded[sectionId] = !expanded; renderForm(); });
     }));
   }
 
@@ -992,24 +1008,20 @@ export function renderGenerator(root, params) {
       // 같은 개별 조작이 필요할 때만 펼쳐서 쓰는 용도입니다.
       if (!meta.expanded) {
         const statusText = value && meta.processed ? "✅ 완료" : (value ? "🔗 URL 지정됨" : "비어있음");
-        return el("div", {
-          class: "field",
-          style: "display:flex;align-items:center;justify-content:space-between;background:#fff;border:1px solid #e2e4ec;border-radius:8px;padding:8px 12px;cursor:pointer;",
-          onclick: () => { draft.imageMeta[f.key] = { ...meta, expanded: true }; renderForm(); }
-        }, [
-          el("span", { style: "font-size:11px;font-weight:700;color:#555;" }, f.label),
-          el("span", { class: "slot-status", style: (value && meta.processed ? "color:#2e7d32;" : "color:#999;") + "font-size:11px;font-weight:700;" }, statusText + " ▾")
-        ]);
+        const statusBadge = el("span", {
+          style: (value && meta.processed ? "color:#2e7d32;" : "color:#999;") + "font-size:11px;font-weight:700;"
+        }, statusText + " ▾");
+        return sectionWrap(null, f.label, null, [], "collapsed",
+          statusBadge, () => { draft.imageMeta[f.key] = { ...meta, expanded: true }; renderForm(); });
       }
       const collapseBtn = el("span", {
-        style: "font-size:11px;color:#999;cursor:pointer;float:right;",
-        onclick: () => { draft.imageMeta[f.key] = { ...meta, expanded: false }; renderForm(); }
+        style: "font-size:11px;color:#999;cursor:pointer;",
+        onclick: e => { e.stopPropagation(); draft.imageMeta[f.key] = { ...meta, expanded: false }; renderForm(); }
       }, "▴ 접기");
 
       // 완료 상태 — 썸네일 + 배지 + 다시 업로드/URL 전환 + (가능하면) 추가 보정 요청
       if (value && meta.processed) {
-        return el("div", { class: "field" }, [
-          el("div", {}, [labelRow, collapseBtn]),
+        return sectionWrap(null, f.label, null, [
           el("div", { class: "image-field-filled" }, [
             el("img", { src: value, alt: "", class: "image-field-thumb" }),
             el("div", { class: "image-field-info" }, [
@@ -1021,7 +1033,7 @@ export function renderGenerator(root, params) {
           meta.instruction ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, `요청한 보정: "${meta.instruction}"`) : null,
           meta.fileBlob ? el("div", { class: "field-with-regen", style: "margin:6px 0;" }, [
             el("input", {
-              type: "text", value: meta.newInstruction || "", style: "flex:1;min-width:0;",
+              type: "text", value: meta.newInstruction || "", style: "flex:1;min-width:0;padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;",
               placeholder: "보정 요청 추가 · 예: 배경을 더 어둡게",
               oninput: e => { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], newInstruction: e.target.value }; }
             }),
@@ -1034,16 +1046,15 @@ export function renderGenerator(root, params) {
             el("button", { class: "btn btn-sm", onclick: () => { draft.imageMeta[f.key] = {}; onChange(""); renderForm(); } }, "다시 업로드"),
             el("button", { class: "btn btn-sm ghost", onclick: () => { draft.imageMeta[f.key] = { urlMode: true }; renderForm(); } }, "URL 직접 입력")
           ])
-        ]);
+        ], "", collapseBtn);
       }
 
       // URL 직접 입력 상태 — CLI로 만든 링크 등을 그대로 붙여넣는 기존 경로
       if (meta.urlMode || (value && !meta.processed)) {
-        return el("div", { class: "field" }, [
-          el("div", {}, [labelRow, collapseBtn]),
-          el("input", { type: "text", value, placeholder: "https://... (CLI로 만든 링크 등 붙여넣기)", oninput: e => onChange(e.target.value) }),
-          el("button", { class: "btn btn-sm ghost", onclick: () => { draft.imageMeta[f.key] = {}; renderForm(); } }, "업로드로 전환")
-        ]);
+        return sectionWrap(null, f.label, null, [
+          el("input", { type: "text", value, placeholder: "https://... (CLI로 만든 링크 등 붙여넣기)", style: "padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;", oninput: e => onChange(e.target.value) }),
+          el("button", { class: "btn btn-sm ghost", style: "margin-top:6px;", onclick: () => { draft.imageMeta[f.key] = {}; renderForm(); } }, "업로드로 전환")
+        ], "", collapseBtn);
       }
 
       // 비어있음 — 편집/합성을 미리 구분하지 않는 통합 입력. 파일 업로드·지시문 중
@@ -1065,12 +1076,12 @@ export function renderGenerator(root, params) {
         class: "btn btn-sm", disabled: uploading ? "disabled" : null,
         onclick: () => handleImageGenerate(f.key)
       }, uploading ? "처리 중..." : (meta.instruction?.trim() ? "✨ AI로 생성" : "업로드"));
-      return el("div", { class: "field" }, [
-        el("div", {}, [labelRow, collapseBtn]),
+      return sectionWrap(null, f.label, null, [
         pool.length ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" },
           `등록된 소재 ${pool.length}개를 자동으로 참고합니다.`) : null,
         el("textarea", {
           placeholder: "무엇을 원하는지 설명 (선택) · 예: 배경 제거 / 소재 참고해서 합성 / 비워두면 그냥 업로드만",
+          style: "width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;",
           value: meta.instruction || "",
           oninput: e => {
             const val = e.target.value;
@@ -1079,9 +1090,9 @@ export function renderGenerator(root, params) {
           }
         }),
         el("p", { class: "hint", style: "font-size:10px;color:#999;margin:3px 0 6px;" },
-          "위에 설명을 적으면 아래 버튼이 \"AI로 생성\"으로 바뀝니다. 설명 없이 파일만 있으면 그냥 \"업로드\"만 됩니다."),
+          "설명 적으면 버튼이 \"AI로 생성\"으로, 없으면 \"업로드\"만 됩니다."),
         el("div", { class: "row2", style: "margin-bottom:6px;" }, [
-          el("label", { class: "btn btn-sm upload-label" }, [
+          el("label", { class: "btn btn-sm upload-label", style: "text-align:center;justify-content:center;" }, [
             "소재 추가 (여러 장)",
             el("input", {
               type: "file", accept: "image/*", multiple: true, style: "display:none;",
@@ -1100,8 +1111,8 @@ export function renderGenerator(root, params) {
               }
             })
           ]),
-          el("label", { class: "btn btn-sm upload-label" }, [
-            pendingFileName ? `원본: ${pendingFileName}` : "이 사진 자체를 고칠 원본 (1장)",
+          el("label", { class: "btn btn-sm upload-label", style: "text-align:center;justify-content:center;" }, [
+            pendingFileName ? `원본: ${pendingFileName}` : "원본 교체 (1장)",
             el("input", {
               type: "file", accept: "image/*", style: "display:none;", disabled: uploading ? "disabled" : null,
               onchange: e => { if (e.target.files[0]) { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], pendingFile: e.target.files[0] }; renderForm(); } }
@@ -1112,7 +1123,7 @@ export function renderGenerator(root, params) {
           generateBtn,
           el("button", { class: "btn btn-sm ghost", onclick: () => { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], urlMode: true }; renderForm(); } }, "URL 직접 입력")
         ])
-      ]);
+      ], "", collapseBtn);
     }
     return el("div", { class: "field" }, [labelRow, el("input", { type: "text", value, "data-form-field": f.key, oninput: e => onChange(e.target.value) })]);
   }
@@ -1138,10 +1149,18 @@ export function renderGenerator(root, params) {
 
   function sectionSeriesCodes() {
     const slots = draft.seriesCodes;
-    const grid = el("div", { class: "series-grid" }, slots.map((code, i) =>
+    // ⚠️ 최대 15개(5줄)를 한꺼번에 다 펼쳐두면 화면이 길어지니, 기본 3줄(9개)만
+    // 보여주고 "더 보기"로 나머지를 펼칩니다. 이미 값이 채워진 슬롯이 9개
+    // 너머에 있으면(엑셀 업로드로 한 번에 채운 경우 등) 처음부터 펼쳐서 보여줘야
+    // "입력했는데 안 보인다"는 혼란이 없습니다.
+    const hasValueBeyond9 = slots.slice(9).some(c => c);
+    if (hasValueBeyond9 && !draft.seriesCodesExpanded) draft.seriesCodesExpanded = true;
+    const visibleCount = draft.seriesCodesExpanded ? 15 : 9;
+    const grid = el("div", { class: "series-grid" }, slots.slice(0, visibleCount).map((code, i) =>
       el("div", { class: "series-slot" }, [
         el("input", {
           type: "text", placeholder: `시리즈코드 ${i + 1}`, value: code,
+          style: "font-size:12.5px;border:1px solid #d0d0d0;border-radius:6px;font-family:inherit;outline:none;padding:7px 22px 7px 10px;",
           oninput: e => { slots[i] = e.target.value; }
         }),
         code ? el("button", { class: "rm", onclick: () => { slots[i] = ""; renderForm(); } }, "✕") : null
@@ -1149,9 +1168,13 @@ export function renderGenerator(root, params) {
     ));
     return sectionWrap(null, "시리즈 코드 입력 (최대 15개, 3×5)", "high", [
       grid,
+      !draft.seriesCodesExpanded ? el("button", {
+        class: "btn btn-sm ghost", style: "width:100%;margin-bottom:8px;",
+        onclick: () => { draft.seriesCodesExpanded = true; renderForm(); }
+      }, "+ 6개 더 보기 (최대 15개)") : null,
       el("div", { class: "row2" }, [
-        el("button", { class: "btn series-lookup-btn", onclick: lookupSeriesCodes }, "전체 조회"),
-        el("label", { class: "btn upload-label" }, [
+        el("button", { class: "btn series-lookup-btn", style: "justify-content:center;", onclick: lookupSeriesCodes }, "전체 조회"),
+        el("label", { class: "btn upload-label", style: "justify-content:center;text-align:center;" }, [
           "엑셀 업로드",
           el("input", {
             type: "file", accept: ".xlsx,.xls,.csv", style: "display:none;",
@@ -1159,7 +1182,7 @@ export function renderGenerator(root, params) {
           })
         ])
       ]),
-      el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "상품 데이터 자동 조회 · 엑셀은 1열 시리즈코드, 2열(선택) 가격(조회 결과에 가격 없을 때만 사용) · 조회 결과는 미리보기에 바로 반영됩니다.")
+      el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "엑셀: 1열 시리즈코드, 2열(선택) 가격 · 조회 결과가 미리보기에 바로 반영됩니다.")
     ]);
   }
 
@@ -1258,9 +1281,9 @@ export function renderGenerator(root, params) {
     ]);
   }
 
-  function sectionWrap(badge, title, kind, children, extraClass = "", headerExtra = null) {
+  function sectionWrap(badge, title, kind, children, extraClass = "", headerExtra = null, onHeaderClick = null) {
     return el("div", { class: "sec" + (extraClass ? " " + extraClass : "") }, [
-      el("div", { class: "sec-hd" }, [
+      el("div", { class: "sec-hd", onclick: onHeaderClick || null }, [
         el("div", { class: "sec-hd-left" }, [
           badge ? el("span", { class: "sec-badge" + (kind === "ai" ? " ai" : "") }, badge) : null,
           el("span", { class: "sec-title" }, title)
@@ -1379,7 +1402,24 @@ export function renderGenerator(root, params) {
     return { savedCampaign, droppedCount };
   }
 
+  /** LP(generatorLP.js)의 validateRequiredCampaignFields()와 동일한 검증을
+   *  EDM에도 적용합니다 — 예전엔 이 검증이 EDM 쪽에만 빠져있어서, 캠페인명
+   *  없이도 임시저장이 그냥 되어버리는 문제가 있었습니다. */
+  function validateRequiredCampaignFields() {
+    const missing = [];
+    if (!(draft.campaignName || "").trim()) missing.push("캠페인명");
+    if (!(draft.promotionName || "").trim()) missing.push("프로모션명");
+    if (!(draft.author || "").trim()) missing.push("작성자");
+    return missing;
+  }
+
   async function saveDraft(e) {
+    const missing = validateRequiredCampaignFields();
+    if (missing.length) {
+      toast(`필수 입력 항목을 채워주세요: ${missing.join(", ")}`);
+      log(`임시저장 실패 — 필수 항목 누락: ${missing.join(", ")}`);
+      return;
+    }
     const button = e?.currentTarget;
     if (button) button.disabled = true;
     try {
@@ -1510,6 +1550,7 @@ function buildInitialDraft(templateId, existing) {
     hiddenFields: [],
     coupon: { value: "10%", max: "50,000원", target: "전 상품 적용", note: "3만원 이상 구매 시", code: "WELCOME10", expiry: "2026.09.30" },
     seriesCodes: Array.from({ length: 15 }, () => ""),
+    seriesCodesExpanded: false,
     seriesPriceOverrides: {},
     products: [],
     offerNo: "",

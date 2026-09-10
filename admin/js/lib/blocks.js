@@ -381,25 +381,30 @@ function rowContainsOtherLiveField(html, key, hiddenSet) {
  *  {{image_N}}</a><!--...--> 처럼 닫는 태그가 끼어있어서, 그 경우도 인식하도록 (?:<\/a>)?를 넣었습니다.
  *  ⚠️ 원본 템플릿의 img 태그는 alt=""로 비어있어서 가이드라인 검사에서 "alt 없음" 경고가 뜹니다.
  *  values에 "{key}_alt" 값이 있으면(예: 상품명) 그걸로 채우고, 없으면 일반 안내 문구로 대체합니다. */
-function substituteImages(html, values) {
+function substituteImages(html, values, labelMap) {
   return html.replace(
     /\{\{(image_[a-zA-Z0-9_]+)\}\}(<\/a>)?<!--\s*발송 시 교체:\s*(<img[^>]*>)\s*-->/g,
     (match, key, closingTag, imgTag) => {
       const url = values[key];
       const closing = closingTag || "";
+      const label = labelMap?.[key] || key;
       if (url) {
         const altText = values[`${key}_alt`] || "상품/콘텐츠 이미지";
         const withSrc = imgTag.replace(`{{${key}}}`, esc(url));
         const withAlt = withSrc.replace(/alt="[^"]*"/, `alt="${esc(altText)}"`);
         // ⚠️ 미리보기 전용 식별용 — 왼쪽 폼의 "이미지1" 등과 오른쪽 미리보기의
         // 실제 위치를 매칭할 방법이 없어서, 어느 슬롯인지 호버로 확인할 수 있게
-        // <img> 태그 자체에 data-image-key를 심어둡니다. 발송용 실제 HTML에는
-        // 영향 없는 속성이라(이메일 클라이언트가 무시함) 그대로 둬도 안전합니다.
-        const withKey = withAlt.replace("<img ", `<img data-image-key="${esc(key)}" `);
+        // <img> 태그 자체에 data-image-key/data-image-label을 심어둡니다. 폼에
+        // 표시되는 라벨(예: "이미지 2")과 실제 키(예: image_7)가 항상 같은 숫자를
+        // 쓰는 게 아니라서(라벨은 실제 화면 순서 기준으로 재조정될 수 있음),
+        // 키에서 숫자만 뽑아 추측하면 폼과 다른 값이 나올 수 있습니다 — 그래서
+        // 폼이 실제로 보여주는 라벨 문자열을 그대로 심어서 100% 일치시킵니다.
+        // 발송용 실제 HTML에는 영향 없는 속성이라(이메일 클라이언트가 무시함)
+        // 그대로 둬도 안전합니다.
+        const withKey = withAlt.replace("<img ", `<img data-image-key="${esc(key)}" data-image-label="${esc(label)}" `);
         return withKey + closing;
       }
-      const num = (key.match(/(\d+)$/) || [])[1];
-      return `<span data-image-key="${esc(key)}" style="color:#c9a227;font-style:italic;font-size:11px;">이미지${num || ""}</span>` + closing;
+      return `<span data-image-key="${esc(key)}" data-image-label="${esc(label)}" style="color:#c9a227;font-style:italic;font-size:11px;">${esc(label)}</span>` + closing;
     }
   );
 }
@@ -468,14 +473,21 @@ export function assembleEdmHtml(templateId, values = {}, options = {}) {
   // 절대 <span>으로 감싸면 안 됩니다(속성값 안에서 쓰이므로).
   const textFieldKeys = new Set(
     (EDM_TEMPLATE_FIELDS[templateId]?.fields || [])
-      .filter(f => f.type === "text" || f.type === "textarea" || f.type === "button-label")
+      .filter(f => f.type === "text" || f.type === "textarea" || f.type === "button-label" || f.type === "coupon-field")
       .map(f => f.key)
   );
   const buttonLabelKeys = (EDM_TEMPLATE_FIELDS[templateId]?.fields || [])
     .filter(f => f.type === "button-label")
     .map(f => f.key);
   const linkFieldPairs = findLinkFieldPairs(raw, buttonLabelKeys);
-  html = substituteImages(html, finalValues);
+  // ⚠️ 미리보기 호버 툴팁이 폼과 정확히 같은 라벨을 보여주도록, 스키마의
+  // 실제 label 문자열을 그대로 맵으로 만들어 넘깁니다(키에서 숫자만 추측하면
+  // 라벨 재조정 시 폼과 어긋날 수 있음 — 실제로 이 문제를 겪었습니다).
+  const imageLabelMap = {};
+  for (const f of (EDM_TEMPLATE_FIELDS[templateId]?.fields || [])) {
+    if (f.type === "image") imageLabelMap[f.key] = f.label;
+  }
+  html = substituteImages(html, finalValues, imageLabelMap);
   html = substituteRest(html, finalValues, textFieldKeys, linkFieldPairs);
   html = collapseAdjacentSpacers(html);
   return html;

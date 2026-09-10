@@ -36,8 +36,9 @@ function delay(ms) {
 }
 
 /**
- * @param {{ pageType?: string, pageName?: string, categoryName?: string }} input
+ * @param {{ pageType?: string, pageName?: string, categoryName?: string, instruction?: string }} input
  *   pageType: "경제형" | "일반형" 등 (없으면 "일반형" 취급)
+ *   instruction: 마케터가 입력한 자유 프롬프트 (선택 — 실제 연동 시 정확도를 높이는 데 씁니다)
  * @returns {Promise<{ catchcopy: string, subjects: string[], cta: string }>}
  */
 export async function generateCopyLP(input = {}) {
@@ -63,4 +64,42 @@ export async function regenerateFieldLP(input = {}, field) {
   if (field === "catchcopy") return set.catchcopy;
   if (field === "cta") return set.cta;
   return set.subjects[Math.floor(Math.random() * set.subjects.length)];
+}
+
+/**
+ * ⚠️ 이벤트 LP 전용 — "캠페인 설정 > 템플릿 > 캠페인 URL > 콘텐츠" 순서의
+ * 콘텐츠 영역에서, 프롬프트 하나로 본문(KV 문구)과 SEO 메타(타이틀/설명/키워드)를
+ * 한 번에 채웁니다. EDM의 "AI로 카피 자동 채우기"와 같은 패턴 — 지금까지는
+ * 본문용 generateCopyLP()(pageType 기반, 프롬프트 없음)와 SEO용 generateSeoMeta()가
+ * 완전히 분리되어 있어서 두 번 따로 요청해야 했는데, 이 함수가 그 둘을 하나의
+ * 진입점으로 묶습니다.
+ * @param {{ instruction?: string, title?: string }} input
+ *   instruction: 마케터가 입력한 자유 프롬프트 (선택 — 비워도 동작은 하되, 있으면
+ *   실제 연동 시 훨씬 정확한 결과를 만드는 데 씁니다)
+ * @returns {Promise<{ kvBadge: string, kvHeadline: string, kvSubcopy: string,
+ *   seoTitle: string, seoDescription: string, seoKeywords: string[] }>}
+ */
+export async function generateEventLpContent(input = {}) {
+  if (CONFIG.copyApiUrl) {
+    const res = await fetch(CONFIG.copyApiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...input, target: "event-lp-full" })
+    });
+    if (!res.ok) throw new Error("이벤트 LP 콘텐츠 생성 API 오류: " + res.status);
+    return res.json();
+  }
+
+  // ---- 데모 목업 ----
+  await delay(700);
+  const instruction = (input.instruction || "").trim();
+  const topic = instruction || input.title || "신규 이벤트";
+  return {
+    kvBadge: "EVENT",
+    kvHeadline: instruction ? `${instruction.slice(0, 24)}<em>지금 확인하세요</em>` : "이번 기회, <em>놓치지 마세요</em>",
+    kvSubcopy: instruction ? `${instruction} — 지금 바로 만나보세요.` : "미스미가 준비한 특별한 혜택을 확인해보세요.",
+    seoTitle: `${topic} 안내`,
+    seoDescription: `${topic}에 대한 자세한 내용을 확인해보세요. 지금 바로 미스미에서 만나보세요.`,
+    seoKeywords: ["미스미", "이벤트", ...(instruction ? [instruction.split(" ")[0]] : [])]
+  };
 }
