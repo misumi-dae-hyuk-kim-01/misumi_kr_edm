@@ -117,11 +117,16 @@ export function checkGuidelinesLP(html, meta = {}) {
   // ⚠️ 경제형은 더 이상 widthPattern 숫자로 구분하지 않습니다 — 경제형도 총 폭은
   // 항상 1200px이고(LP_ECONOMY_LAYOUT.totalWidth), 내부 240/920 분할 여부만 pageType으로
   // 결정됩니다. 그래서 여기 검사도 widthPattern(총 폭)과 pageType(경제형 여부)을 따로 봅니다.
-  if (meta.widthPattern && !(meta.widthPattern in LP_WIDTH_PATTERNS)) {
-    issues.push({ level: "warning", message: `컨텐츠 폭(${meta.widthPattern}px)이 정의된 패턴(${Object.keys(LP_WIDTH_PATTERNS).join("/")}px)에 없습니다. 실제 지원 패턴인지 확인하세요.` });
-  }
-  if (!meta.widthPattern) {
-    issues.push({ level: "warning", message: "컨텐츠 폭 패턴이 선택되지 않았습니다." });
+  // ⚠️ 2026-09 — Evolution처럼 "고정폭 950/1200 중 하나"라는 개념 자체가 없는(자유
+  // 블록 조합형) 템플릿을 위해, meta.skipWidthCheck:true면 이 구간 전체를 건너뜁니다.
+  // 안 그러면 그런 템플릿은 항상 "폭 패턴이 선택되지 않았습니다"라는 거짓 경고를 받게 됩니다.
+  if (!meta.skipWidthCheck) {
+    if (meta.widthPattern && !(meta.widthPattern in LP_WIDTH_PATTERNS)) {
+      issues.push({ level: "warning", message: `컨텐츠 폭(${meta.widthPattern}px)이 정의된 패턴(${Object.keys(LP_WIDTH_PATTERNS).join("/")}px)에 없습니다. 실제 지원 패턴인지 확인하세요.` });
+    }
+    if (!meta.widthPattern) {
+      issues.push({ level: "warning", message: "컨텐츠 폭 패턴이 선택되지 않았습니다." });
+    }
   }
   // 경제형 페이지는 한국 한정 · 총 폭 1200px 고정입니다 — 다른 국가거나 총 폭이 1200이 아니면 위반.
   if (meta.pageType === LP_ECONOMY_LAYOUT.pageType) {
@@ -140,15 +145,17 @@ export function checkGuidelinesLP(html, meta = {}) {
     issues.push({ level: "warning", message: `타이틀이 35자를 초과합니다 (현재 ${meta.title.length}자) — 검색 결과에서 잘려 보일 수 있습니다.` });
   }
 
-  if (!meta.description) {
+  // ⚠️ 2026-09 — "필수 고정 문구가 없습니다" 검사를 삭제했습니다. 예전엔 마케터가
+  // 이 문구를 직접 타이핑해서 넣어야 했는데, 이제 withRequiredDescriptionSuffix()가
+  // 배포/조립 시점에 항상 자동으로 붙여주므로(타이틀 접미사와 동일 원칙) 이 검사가
+  // 항상 통과할 수밖에 없어 무의미해졌습니다. 대신 "고정 문구만 있고 마케터가 쓴
+  // 실질적인 내용이 하나도 없는 경우"(예: 디스크립션 칸을 아예 비워둔 채 배포)는
+  // 여전히 잡아야 하므로, 값이 고정 문구와 완전히 같은지(=실질 내용이 비어있었는지)로
+  // 판단합니다.
+  if (!meta.description || meta.description.trim() === LP_REQUIRED_DESCRIPTION_SUFFIX) {
     issues.push({ level: "error", message: "디스크립션이 비어있습니다." });
-  } else {
-    if (meta.description.length > 100) {
-      issues.push({ level: "warning", message: `디스크립션이 100자를 초과합니다 (현재 ${meta.description.length}자).` });
-    }
-    if (!meta.description.trim().endsWith(LP_REQUIRED_DESCRIPTION_SUFFIX)) {
-      issues.push({ level: "error", message: `디스크립션 마지막에 필수 고정 문구가 없습니다: "${LP_REQUIRED_DESCRIPTION_SUFFIX}"` });
-    }
+  } else if (meta.description.length > 100) {
+    issues.push({ level: "warning", message: `디스크립션이 100자를 초과합니다 (현재 ${meta.description.length}자).` });
   }
 
   if (!meta.keywords || !meta.keywords.length) {

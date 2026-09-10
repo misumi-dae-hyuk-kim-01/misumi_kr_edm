@@ -18,6 +18,19 @@ import { commonPartsLoaderScript } from "./lpCommonParts.js";
 // 5개 템플릿 전부 통일합니다.
 export const LP_TITLE_SUFFIX = " ｜ MISUMI｜미스미 종합 Web 카탈로그";
 
+// ⚠️ 2026-09 신설 — LP_TITLE_SUFFIX와 완전히 같은 원칙입니다. 디스크립션 끝에
+// 코딩가이드 C-4가 요구하는 필수 고정 문구(LP_REQUIRED_DESCRIPTION_SUFFIX)가
+// 없으면 가이드라인 위반으로 잡히는데, 마케터가 매번 이 문구를 직접 타이핑해서
+// 붙여야 했습니다 — 타이틀 접미사처럼 마케터가 신경 안 써도 항상 자동으로
+// 붙도록 통일합니다. 이미 그 문구로 끝나는 값이면 중복으로 또 붙이지 않습니다
+// (마케터가 예전 습관대로 직접 입력해뒀을 수 있는 경우를 대비).
+export function withRequiredDescriptionSuffix(description) {
+  const base = (description || "").trim();
+  if (!base) return LP_REQUIRED_DESCRIPTION_SUFFIX;
+  if (base.endsWith(LP_REQUIRED_DESCRIPTION_SUFFIX)) return base;
+  return `${base} ${LP_REQUIRED_DESCRIPTION_SUFFIX}`;
+}
+
 // ==========================================================================
 // 개별 블록 렌더 함수 (모두 동일 시그니처: (draft) => htmlString)
 // ==========================================================================
@@ -198,8 +211,91 @@ export const LP_PREVIEW_EDIT_STYLE = `
 `;
 export const LP_PREVIEW_EDIT_SCRIPT = `
 (function(){
+  // ⚠️ EDM 미리보기 편집(generator.js)의 openButtonEditPopup()을 그대로 이식했습니다 —
+  // "문구"와 "링크"가 세트인 필드(CTA 버튼 등)는 링크가 href 속성값이라 애초에
+  // 인라인 편집(contenteditable)이 불가능해서, 클릭하면 문구+링크를 한 팝업에서
+  // 같이 고치게 만듭니다.
+  function openButtonEditPopup(el, linkKey){
+    document.querySelectorAll('.__lp_btn_popup').forEach(function(p){ p.remove(); });
+    var anchor = el.closest('a');
+    var currentLink = anchor ? anchor.getAttribute('href') : '';
+    var rect = el.getBoundingClientRect();
+    var popup = document.createElement('div');
+    popup.className = '__lp_btn_popup';
+    popup.style.cssText = 'position:absolute;top:' + (rect.bottom + window.scrollY + 6) + 'px;left:' +
+      (rect.left + window.scrollX) + 'px;background:#fff;border:1px solid #d0d0d0;border-radius:8px;' +
+      'box-shadow:0 4px 16px rgba(0,0,0,.18);padding:12px;width:240px;z-index:9999;font-family:sans-serif;';
+    var labelInput = document.createElement('input');
+    labelInput.type = 'text';
+    labelInput.value = el.innerText;
+    labelInput.style.cssText = 'width:100%;box-sizing:border-box;padding:6px 8px;margin-bottom:6px;border:1px solid #ccc;border-radius:4px;font-size:12px;';
+    var linkInput = document.createElement('input');
+    linkInput.type = 'text';
+    linkInput.value = currentLink || '';
+    linkInput.placeholder = 'https://...';
+    linkInput.style.cssText = labelInput.style.cssText;
+    var saveBtn = document.createElement('button');
+    saveBtn.textContent = '저장';
+    saveBtn.style.cssText = 'flex:1;padding:6px;background:#0f218b;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer;';
+    var cancelBtn = document.createElement('button');
+    cancelBtn.textContent = '취소';
+    cancelBtn.style.cssText = 'flex:1;padding:6px;background:#eee;color:#333;border:none;border-radius:4px;font-size:12px;cursor:pointer;';
+    var btnRow = document.createElement('div');
+    btnRow.style.cssText = 'display:flex;gap:6px;';
+    btnRow.appendChild(saveBtn); btnRow.appendChild(cancelBtn);
+    var labelCap = document.createElement('div');
+    labelCap.textContent = '버튼 문구';
+    labelCap.style.cssText = 'font-size:10px;color:#999;margin-bottom:2px;';
+    var linkCap = document.createElement('div');
+    linkCap.textContent = '링크(클릭 시 이동)';
+    linkCap.style.cssText = 'font-size:10px;color:#999;margin-bottom:2px;';
+    popup.appendChild(labelCap); popup.appendChild(labelInput);
+    popup.appendChild(linkCap); popup.appendChild(linkInput);
+    popup.appendChild(btnRow);
+    document.body.appendChild(popup);
+    labelInput.focus();
+    function close(){ popup.remove(); document.removeEventListener('mousedown', onOutsideClick); }
+    function onOutsideClick(e){ if (!popup.contains(e.target)) close(); }
+    setTimeout(function(){ document.addEventListener('mousedown', onOutsideClick); }, 0);
+    saveBtn.addEventListener('click', function(){
+      var newLabel = labelInput.value;
+      var newLink = linkInput.value;
+      el.innerText = newLabel;
+      if (anchor) anchor.setAttribute('href', newLink);
+      window.parent.postMessage({ source: 'lp-preview-edit', field: el.getAttribute('data-field'), value: newLabel }, '*');
+      window.parent.postMessage({ source: 'lp-preview-edit', field: linkKey, value: newLink }, '*');
+      close();
+    });
+    cancelBtn.addEventListener('click', close);
+  }
   document.querySelectorAll('[data-field]').forEach(function(el){
+    var linkKey = el.getAttribute('data-link-field');
+    if (linkKey) {
+      el.style.cursor = 'pointer';
+      var handler = function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        openButtonEditPopup(el, linkKey);
+      };
+      el.addEventListener('click', handler);
+      var parentAnchor = el.closest('a');
+      if (parentAnchor) parentAnchor.addEventListener('click', handler);
+      return;
+    }
     el.setAttribute('contenteditable', 'true');
+    // ⚠️ EDM(generator.js)과 동일한 이유 — 빈 필드는 "[배지]" 같은 안내
+    // placeholder가 들어있는데, 그대로 클릭해서 타이핑하면 이 안내 문구 뒤에
+    // 이어붙어서 매번 직접 지워야 하는 불편이 있습니다. focus 시 "[...]"
+    // 패턴이면 전체 선택해둬서, 첫 타이핑이 자연스럽게 그 내용을 대체하게 합니다.
+    el.addEventListener('focus', function(){
+      if (/^\\[.*\\]$/.test(el.innerText.trim())) {
+        var range = document.createRange();
+        range.selectNodeContents(el);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    });
     el.addEventListener('blur', function(){
       window.parent.postMessage({ source: 'lp-preview-edit', field: el.getAttribute('data-field'), value: el.innerText }, '*');
     });
@@ -250,7 +346,7 @@ export function assembleLpHtml(draft, template, seoMeta = {}) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${esc((seoMeta.title || draft.catchcopy || "") + LP_TITLE_SUFFIX)}</title>
-<meta name="description" content="${esc(seoMeta.description || "")}">
+<meta name="description" content="${esc(withRequiredDescriptionSuffix(seoMeta.description))}">
 <meta name="keywords" content="${esc(keywordsAttr)}">
 <style>
   .lp-wrap { max-width: ${effectiveWidthPattern}px; }
@@ -421,9 +517,16 @@ function catalogBannerHtml(banners) {
       </ul>
     </div>`;
   }
-  const slides = list.map((b, i) =>
-    `        <li${i === 0 ? ' class="is-on"' : ""}><a href="${esc(b.href || "#")}" target="_blank" rel="noopener"><img src="${esc(b.img)}" alt="${esc(b.label || "")}"></a></li>`
-  ).join("\n");
+  const slides = list.map((b, i) => {
+    // ⚠️ 예전엔 링크가 없으면 href="#"을 썼는데, "#"은 "아무 동작 안 함"이 아니라
+    // 실제로 페이지 맨 위로 이동시키는 값입니다 — 관리자 도구 미리보기(해시 기반
+    // 라우터를 씀)에서 열었을 때 이게 캠페인 목록으로 튕겨나가는 원인이었습니다.
+    // 링크가 없으면 <a> 태그 자체를 안 씌우고 그냥 이미지만 놓는 게 안전합니다
+    // (클릭해도 정말 아무 일도 안 일어남).
+    const img = `<img src="${esc(b.img)}" alt="${esc(b.altText || b.label || "")}">`;
+    const inner = b.href ? `<a href="${esc(b.href)}" target="_blank" rel="noopener">${img}</a>` : img;
+    return `        <li${i === 0 ? ' class="is-on"' : ""}>${inner}</li>`;
+  }).join("\n");
   const btns = list.map((b, i) =>
     `        <li><button type="button"${i === 0 ? ' class="is-on"' : ""} data-slide="${i}">${esc(b.label || `배너 ${i + 1}`)}</button></li>`
   ).join("\n");
@@ -477,13 +580,23 @@ ${items}
  * 돌릴 때도 똑같은 값을 넘길 수 있게 합니다(안 그러면 HTML엔 기본값이 박혀 있는데
  * 검사기는 "타이틀이 비어있습니다"라고 잘못 판단하게 됩니다).
  *
- * ⚠️ 디스크립션 기본값엔 가이드라인 필수 고정 문구(LP_REQUIRED_DESCRIPTION_SUFFIX)를
- * 반드시 붙입니다 — 안 붙이면 매 그룹 페이지가 가이드라인 위반으로 잡힙니다.
+ * ⚠️ 2026-09 재수정 — 예전엔 여기서 타이틀/디스크립션이 비어있으면 자동으로
+ * 그럴듯한 문구(예: "{그룹명} 신상품 | 미스미 신상품 안내")를 채워넣었습니다.
+ * 그런데 이러면 "검증에 걸리는 값"과 "실제 배포되는 값"이 서로 달라져서
+ * (검증은 원본을, 배포는 폴백 채운 값을 봄) 로직이 꼬이고, "타이틀을 안
+ * 채웠는데 왜 가이드라인은 통과라고 나오지?"라는 혼란까지 낳았습니다.
+ * 폴백을 없애면 마케터가 정말 안 채웠을 때 실제 배포 페이지에도 정직하게
+ * 비어있는 채로 나가고, 가이드라인 검사도 그 상태를 있는 그대로 잡아냅니다
+ * (confirmCatalogExportGuards()가 배포 직전에 이 위반을 확인창으로 한 번 더
+ * 물어보므로, 실수로 빈 채 배포되는 걸 막는 최소한의 안전장치는 남아있습니다).
+ * 디스크립션의 가이드라인 필수 고정 문구(LP_REQUIRED_DESCRIPTION_SUFFIX)도
+ * 이제 폴백으로 대신 붙여주지 않습니다 — 마케터가 직접 디스크립션 끝에
+ * 포함시켜야 하고, 빠뜨리면 가이드라인이 정확히 "필수 문구 없음"으로 잡습니다.
  */
 export function resolveCatalogSeoMeta(group, totalCount, seoMeta = {}) {
   return {
-    title: (seoMeta.title || `${group.label} 신상품 | 미스미 신상품 안내`) + LP_TITLE_SUFFIX,
-    description: seoMeta.description || `한국미스미 ${group.label} 신상품 ${totalCount}건을 확인해보세요. ${LP_REQUIRED_DESCRIPTION_SUFFIX}`,
+    title: (seoMeta.title || "") + LP_TITLE_SUFFIX,
+    description: withRequiredDescriptionSuffix(seoMeta.description),
     keywords: seoMeta.keywords
   };
 }
@@ -674,7 +787,7 @@ a { color: var(--lp-accent); }
 a:hover { color: var(--lp-accent-dark); }
 
 /* ── 상단 타이틀 ───────────────────────────── */
-.lp-head { background: var(--lp-bg-soft); padding: 26px 20px 24px; text-align: center; }
+.lp-head { background: var(--lp-bg-soft); padding: 26px 20px 16px; text-align: center; }
 .lp-head h1 {
   margin: 0; font-size: 40px; font-weight: 700; line-height: 1.2;
   letter-spacing: -2px; display: inline-flex; align-items: flex-start; gap: 8px;
@@ -687,17 +800,17 @@ a:hover { color: var(--lp-accent-dark); }
 }
 .lp-sub { margin: 8px 0 0; font-size: 20px; font-weight: 500; letter-spacing: -1px; color: #505050; }
 
-.lp-inner { max-width: var(--lp-max); margin: 0 auto; padding: 28px 20px 80px; }
+.lp-inner { max-width: var(--lp-max); margin: 0 auto; padding: 0 20px 80px; }
 
 /* ── 탑배너 ───────────────────────────────── */
 .lp-banner { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
 .lp-banner-slides {
   flex: 1 1 520px; min-width: 0; margin: 0; padding: 0; list-style: none;
-  border: 1px solid var(--lp-line-soft); border-radius: 6px; overflow: hidden; background: #f6f8fa;
+  border: 1px solid var(--lp-line-soft); overflow: hidden; background: #f6f8fa;
 }
 .lp-banner-slides li { display: none; }
 .lp-banner-slides li.is-on { display: block; }
-.lp-banner-slides img { display: block; width: 100%; aspect-ratio: 1200 / 190; object-fit: cover; }
+.lp-banner-slides img { display: block; width: 100%; aspect-ratio: 900 / 189; object-fit: cover; }
 .lp-banner-btns {
   flex: 0 1 300px; min-width: 220px; display: flex; flex-direction: column;
   margin: 0; padding: 0; list-style: none;
@@ -854,10 +967,10 @@ a:hover { color: var(--lp-accent-dark); }
 }
 @media (max-width: 640px) {
   :root { --lp-card-min: 130px; }
-  .lp-head { padding: 20px 16px; }
+  .lp-head { padding: 20px 16px 12px; }
   .lp-head h1 { font-size: 28px; letter-spacing: -1.4px; }
   .lp-sub { font-size: 15px; letter-spacing: -0.6px; }
-  .lp-inner { padding: 18px 14px 60px; }
+  .lp-inner { padding: 0 14px 60px; }
   .lp-banner-btns { flex: 1 1 100%; }
   .p-grid { gap: 20px 10px; }
   .p-section-head h3 { font-size: 17px; }
@@ -1173,20 +1286,29 @@ export function normalizeHeadlineEm(headline) {
 }
 
 function eventKvBlock(draft, skin) {
-  const badgeHtml = draft.kvBadge ? `<div class="lp-kv-badge" data-field="kvBadge">${esc(draft.kvBadge)}</div>` : "";
-  const subcopyHtml = draft.kvSubcopy ? `<div class="lp-kv-subcopy" data-field="kvSubcopy">${esc(draft.kvSubcopy)}</div>` : "";
-  const headlineHtml = normalizeHeadlineEm(draft.kvHeadline);
+  // ⚠️ 2026-09 — EDM 미리보기(generator.js의 currentValues())와 동일한 패턴으로
+  // 바꿨습니다. 예전엔 값이 비어있으면 요소 자체를 안 그려서, 미리보기에서
+  // "여기 뭘 채워야 하는지" 전혀 알 수 없고 편집할 자리도 없었습니다 — 비어있어도
+  // "[배지]"/"[헤드라인]" 같은 안내 placeholder를 항상 보여주고, 그 자리를
+  // 클릭해서 바로 채울 수 있게 합니다.
+  // ⚠️ 헤드라인은 <em>강조</em> 마크업을 쓰는 특수 필드인데, contenteditable로
+  // 직접 편집하면 이 마크업 구조를 브라우저가 임의로 망가뜨릴 수 있어서 지금까지
+  // 편집을 막아뒀습니다. 이번 요청으로 편집 가능하게 열되, 미리보기에서 편집한
+  // 내용은 마크업 없는 순수 텍스트로 저장됩니다 — 강조를 쓰고 싶으면 왼쪽 폼에서
+  // <em>...</em>을 직접 입력해주세요(그 경우 미리보기엔 강조가 안 보이고 순수
+  // 텍스트로만 보이지만, 실제 배포 결과물엔 강조가 정상 적용됩니다).
+  const badgeHtml = `<div class="lp-kv-badge" data-field="kvBadge">${esc(draft.kvBadge || "[배지]")}</div>`;
+  const subcopyHtml = `<div class="lp-kv-subcopy" data-field="kvSubcopy">${esc(draft.kvSubcopy || "[서브카피]")}</div>`;
+  const headlineHtml = draft.kvHeadline ? normalizeHeadlineEm(draft.kvHeadline) : "[헤드라인]";
   const bgStyle = draft.kvImageUrl
     ? `background-image:url('${esc(draft.kvImageUrl)}');background-size:cover;background-position:center;`
     : `background:repeating-linear-gradient(135deg, ${skin.main}, ${skin.main} 12px, ${skin.mainHover} 12px, ${skin.mainHover} 24px);`;
-  // ⚠️ kvHeadline은 <em>강조</em> 마크업을 변환(normalizeHeadlineEm)해서 넣는데,
-  // contenteditable로 직접 편집하게 하면 이 <em> 구조가 깨지거나 편집 후 되돌릴
-  // 때 원래 마크업 형식을 잃어버립니다 — 그래서 여기는 data-field를 안 붙이고
-  // 왼쪽 폼에서만 편집하게 남겨둡니다.
+  // ⚠️ 2026-09 — data-field를 붙여서 편집 가능하게 열었습니다(위 함수 상단 설명
+  // 참고 — 편집하면 <em> 마크업이 사라지고 순수 텍스트가 됩니다).
   return `<div class="lp-kv" role="img" aria-label="${esc(draft.kvAlt || "")}" style="${bgStyle}">
     <div class="lp-kv-inner">
       ${badgeHtml}
-      <div class="lp-kv-headline">${headlineHtml}</div>
+      <div class="lp-kv-headline" data-field="kvHeadline">${headlineHtml}</div>
       ${subcopyHtml}
     </div>
   </div>`;
@@ -1307,12 +1429,22 @@ function eventStepsBlock(draft) {
 }
 
 function eventCtaBlock(draft) {
-  if (!draft.ctaPrimaryHref) return "";
-  const secondaryHtml = draft.ctaSecondaryHref
-    ? `<a href="${esc(draft.ctaSecondaryHref)}" class="lp-cta-btn lp-cta-btn--secondary" target="_blank" rel="noopener">${esc(draft.ctaSecondaryLabel || "")}</a>`
+  // ⚠️ 2026-09 — 예전엔 링크가 없으면(draft.ctaPrimaryHref 빈 값) CTA 블록
+  // 전체를 안 그렸는데, CTA는 폼에서 "필수"라고 표시해놓고 정작 기본값이
+  // 빈 문자열이라 마케터가 링크를 입력하기 전까진 미리보기에서 CTA가 통째로
+  // 사라져 보이는 문제가 있었습니다("블록으로 추가해야 보이나?"는 혼란의
+  // 원인). 카탈로그 배너와 같은 원칙 — 버튼은 항상 보여주되, 링크가 없으면
+  // href="#" 같은 가짜 값 대신 아예 <a>가 아닌 <span>으로 렌더링해서
+  // "눌러도 그냥 반응 없음"이 되게 합니다(실수로 깨진 링크가 나가는 것 방지).
+  const primaryTag = draft.ctaPrimaryHref ? "a" : "span";
+  const primaryHrefAttr = draft.ctaPrimaryHref ? ` href="${esc(draft.ctaPrimaryHref)}" target="_blank" rel="noopener"` : "";
+  const primaryHtml = `<${primaryTag} class="lp-cta-btn lp-cta-btn--primary"${primaryHrefAttr}><span data-field="ctaPrimaryLabel" data-link-field="ctaPrimaryHref">${esc(draft.ctaPrimaryLabel || "이벤트 응모하기")}</span></${primaryTag}>`;
+  const secondaryTag = draft.ctaSecondaryLabel ? (draft.ctaSecondaryHref ? "a" : "span") : null;
+  const secondaryHrefAttr = draft.ctaSecondaryHref ? ` href="${esc(draft.ctaSecondaryHref)}" target="_blank" rel="noopener"` : "";
+  const secondaryHtml = secondaryTag
+    ? `<${secondaryTag} class="lp-cta-btn lp-cta-btn--secondary"${secondaryHrefAttr}><span data-field="ctaSecondaryLabel" data-link-field="ctaSecondaryHref">${esc(draft.ctaSecondaryLabel || "")}</span></${secondaryTag}>`
     : "";
-  const primaryHtml = `<a href="${esc(draft.ctaPrimaryHref)}" class="lp-cta-btn lp-cta-btn--primary" target="_blank" rel="noopener">${esc(draft.ctaPrimaryLabel || "이벤트 응모하기")}</a>`;
-  const singleClass = draft.ctaSecondaryHref ? "" : " lp-cta--single";
+  const singleClass = secondaryTag ? "" : " lp-cta--single";
   return `<div class="lp-cta${singleClass}">${secondaryHtml}${primaryHtml}</div>`;
 }
 
@@ -1336,13 +1468,26 @@ function eventNoticeBlock(draft, skin) {
   const commonLines = (draft.noticeCommonIndexes || [])
     .filter(i => i >= 0 && i < NOTICE_COMMON_MASTER.length)
     .map(i => NOTICE_COMMON_MASTER[i]);
-  const customLines = (draft.noticeCustom || []).filter(Boolean);
-  const itemsHtml = [...commonLines, ...customLines].map(line => `<li>※ ${esc(line)}</li>`).join("\n");
-  const contactHtml = `<li>※ ${NOTICE_CONTACT_LINE.replace("event@misumi.co.kr", `<a href="mailto:event@misumi.co.kr" style="color:${skin.linkColor};text-decoration:underline;">event@misumi.co.kr</a>`)}</li>`;
+  // ⚠️ 공통 문구(법무 확인 텍스트, 체크박스로만 켜고 끔)는 절대 미리보기에서
+  // 편집 못 하게 data-field를 안 붙입니다 — 커스텀 문구(마케터가 직접 쓴 것)만
+  // 편집 가능하게 합니다.
+  const commonHtml = commonLines.map(line => `<li>※ ${esc(line)}</li>`).join("\n");
+  const customHtml = (draft.noticeCustom || []).map((line, i) =>
+    line ? `<li>※ <span data-field="noticeCustom.${i}">${esc(line)}</span></li>` : ""
+  ).join("\n");
+  // ⚠️ 2026-09 — "이벤트 관련 문의처"를 항상 자동으로 붙이던 걸, 체크박스로
+  // 켜고 끌 수 있게 바꿨습니다. noticeContactEnabled가 undefined(기존에 저장된
+  // 캠페인들 — 이 필드 자체가 생기기 전)면 true로 간주해서, 기존 캠페인을
+  // 다시 열었을 때 문의처가 갑자기 사라지는 회귀가 없도록 합니다.
+  const contactEnabled = draft.noticeContactEnabled !== false;
+  const contactHtml = contactEnabled
+    ? `<li>※ ${NOTICE_CONTACT_LINE.replace("event@misumi.co.kr", `<a href="mailto:event@misumi.co.kr" style="color:${skin.linkColor};text-decoration:underline;">event@misumi.co.kr</a>`)}</li>`
+    : "";
   return `<div class="lp-notice">
-    <strong class="lp-notice-heading">${esc(draft.noticeHeading || "응모 주의사항")}</strong>
+    <strong class="lp-notice-heading" data-field="noticeHeading">${esc(draft.noticeHeading || "응모 주의사항")}</strong>
     <ul class="lp-notice-list">
-      ${itemsHtml}
+      ${commonHtml}
+      ${customHtml}
       ${contactHtml}
     </ul>
   </div>`;
@@ -1448,9 +1593,15 @@ export function assembleEventLpHtml(draft, seoMeta = {}) {
   ].filter(Boolean).join("\n");
 
   const title = esc((seoMeta.title || draft.title || "") + LP_TITLE_SUFFIX);
-  const description = esc(seoMeta.description || draft.description || "");
+  const description = esc(withRequiredDescriptionSuffix(seoMeta.description || draft.description));
   const keywords = esc((seoMeta.keywords || []).join(", "));
 
+  // campaignKey 연동 완료 — 아래 템플릿의 css 경로는 draft.campaignKey를 씁니다.
+  // draft.id는 캠페인 키가 아직 확정 안 된 아주 짧은 시점(첫 배포/다운로드 전)을
+  // 위한 방어적 폴백일 뿐입니다. 이 설명은 여기(JS 코드 주석)에만 남기고, 실제
+  // 배포되는 HTML 안에는 절대 넣지 않습니다 — 예전엔 아래 템플릿 리터럴 안에
+  // HTML 주석으로 들어가 있어서, 다운로드한 페이지의 "소스 보기"를 하면 내부
+  // 구현 설명이 그대로 노출되는 문제가 있었습니다.
   return `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${DEPLOYMENT_LANG}" lang="${DEPLOYMENT_LANG}">
 <head>
@@ -1468,10 +1619,6 @@ export function assembleEventLpHtml(draft, seoMeta = {}) {
 @font-face{font-family:"GmarketSansBold";src:url("https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2001@1.1/GmarketSansBold.woff") format("woff");font-weight:normal;font-style:normal}
 </style>
 <link href="/lp/campaigns/${esc(draft.campaignKey || draft.id || "")}/css/style.css" rel="stylesheet" type="text/css" media="all" />
-<!-- ⚠️ 캠페인 키 체계({slug}_{YYMM}_{seq})가 draft.id에 아직 연동 전이라, 지금은
-     draft.id(예: lp-uuid)를 그대로 씁니다 — 캠페인 키 연동 작업이 끝나면 이 자리도
-     자동으로 새 키를 참조하게 됩니다(폴더 구조 자체는 이미 lp/campaigns/{key}/css/
-     로 확정되어 있어 이 부분만 나중에 값이 바뀝니다). -->
 <script type="text/javascript">
 <!--
 var agentType = "win16|win32|win64|mac|macintel";
@@ -1836,7 +1983,7 @@ export function assembleEconomyLineupHtml(data, view = "main", seoMeta = {}, cam
 
   const crumbLabel = view === "main" ? "경제형 전상품 분류" : "경제형 전체 라인업";
   const title = esc((seoMeta.title || "경제형 전체상품") + LP_TITLE_SUFFIX);
-  const description = esc(seoMeta.description || "");
+  const description = esc(withRequiredDescriptionSuffix(seoMeta.description));
   const keywords = esc((seoMeta.keywords || []).join(", "));
 
   const content = `<div class="tmpl-wrap">
@@ -3900,7 +4047,7 @@ export function assembleEvolutionHtml(draft) {
 <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${esc(m.title + LP_TITLE_SUFFIX)}</title>
-<meta name="description" content="${esc(m.desc)}" />
+<meta name="description" content="${esc(withRequiredDescriptionSuffix(m.desc))}" />
 <meta name="keywords" content="${esc((m.keywords || []).join(", "))}" />
 <link rel="icon" href="/favicon.ico" type="image/x-icon" />
 <link rel="canonical" href="${canonical}" />

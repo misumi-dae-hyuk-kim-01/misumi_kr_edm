@@ -34,7 +34,14 @@ export function checkFontSizeNotPercent(html, issues) {
 
 /** UTF-8 charset 메타 태그 존재 확인. 출처: codingguideline A-1 파일 형식 */
 export function checkUtf8Charset(html, issues) {
-  if (!/<meta\s+charset\s*=\s*["']?utf-8["']?/i.test(html)) {
+  // ⚠️ 2026-09 버그 수정 — HTML5 축약형(<meta charset="utf-8">)만 찾고 있어서,
+  // 구형 XHTML 스타일(<meta http-equiv="Content-Type" content="...charset=utf-8">
+  // — 이벤트LP/경제형라인업/Evolution이 실제로 쓰는 방식)은 UTF-8을 정확히
+  // 선언하고 있는데도 "메타 태그가 없습니다"라는 거짓 경고를 받고 있었습니다.
+  // 두 문법 다 인식하도록 정규식을 확장합니다.
+  const hasHtml5Charset = /<meta\s+charset\s*=\s*["']?utf-8["']?/i.test(html);
+  const hasXhtmlCharset = /<meta\s+http-equiv\s*=\s*["']content-type["'][^>]*charset\s*=\s*utf-8/i.test(html);
+  if (!hasHtml5Charset && !hasXhtmlCharset) {
     issues.push({ level: "error", message: "UTF-8 charset 메타 태그가 없습니다 — 한글이 깨져 보일 수 있습니다." });
   }
 }
