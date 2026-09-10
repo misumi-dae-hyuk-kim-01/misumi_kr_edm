@@ -39,11 +39,12 @@ HEADERS = {
 
 # 허용하는 key 형태: lp/campaigns/{campaignKey}/{fileName} 또는
 # lp/shared/{namespace}/{fileName} (lpDeploy.js의 buildLpDeployKey/
-# deployLpFilesToS3/deploySharedAssetsToS3 참고) — campaignKey·namespace·
-# fileName 모두 경로 구분자나 ".."를 포함할 수 없음. draft.id가 항상 안전한
-# 문자로 생성된다는 프론트 쪽 전제를 여기서도 다시 한번 서버 측에서 강제합니다
-# (신뢰 경계는 항상 서버에서 검증).
-LP_KEY_PATTERN = re.compile(r"^lp/(campaigns|shared)/[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+$")
+# deployLpFilesToS3/deploySharedAssetsToS3 참고) — campaignKey·namespace는
+# 경로 구분자를 포함할 수 없지만, fileName은 css/style.css·js/script.js처럼
+# 하위 폴더가 있는 경우가 있어 "/"를 허용합니다. 대신 fileName 문자 클래스에
+# "."이 있어서 정규식만으로는 ".."(상위 경로 이탈)을 못 막으므로, 아래
+# lambda_handler에서 ".." in key로 별도 차단합니다(신뢰 경계는 항상 서버에서 검증).
+LP_KEY_PATTERN = re.compile(r"^lp/(campaigns|shared)/[a-zA-Z0-9_-]+/[a-zA-Z0-9_./-]+$")
 
 
 def lambda_handler(event, context):
@@ -64,7 +65,7 @@ def lambda_handler(event, context):
     key          = body.get("key")
     content_type = body.get("contentType", "application/octet-stream")
 
-    if not key or not LP_KEY_PATTERN.match(key):
+    if not key or not LP_KEY_PATTERN.match(key) or ".." in key:
         return {"statusCode": 400, "headers": HEADERS,
                 "body": json.dumps({"error": "key가 없거나 허용된 형식(lp/campaigns/{campaignKey}/{fileName} 또는 lp/shared/{namespace}/{fileName})이 아닙니다."})}
 
