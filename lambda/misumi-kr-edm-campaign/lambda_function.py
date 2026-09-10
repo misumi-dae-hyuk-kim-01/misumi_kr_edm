@@ -1,5 +1,7 @@
 import json
 import time
+import uuid
+from copy import deepcopy
 from decimal import Decimal
 
 import boto3
@@ -271,14 +273,31 @@ def lambda_handler(event, context):
                 }
             )
 
-        new_campaign_id = "c" + str(int(time.time() * 1000))
+        new_campaign_id = "c" + uuid.uuid4().hex
 
-        cloned = dict(source)
+        cloned = deepcopy(source)
 
         cloned["campaignId"] = new_campaign_id
+        cloned.pop("id", None)
         cloned["name"] = source.get("name", "") + " (복제)"
         cloned["status"] = "초안"
         cloned["sourceCampaignId"] = campaign_id
+
+        draft = cloned.get("draftData")
+        if isinstance(draft, dict):
+            draft["id"] = new_campaign_id
+            draft["campaignName"] = cloned["name"]
+
+        if cloned.get("channel") == "LP":
+            # 배포 경로와 배포 기록은 복제본이 새로 만들어야 합니다.
+            # 예전 데이터의 최상위 필드도 비워서 프론트의 fallback을 차단합니다.
+            for target in [cloned] + ([draft] if isinstance(draft, dict) else []):
+                target["campaignKey"] = ""
+                target["campaignKeyOwnerId"] = ""
+                target["deployedUrl"] = ""
+                target["catalogDeployedUrls"] = []
+            if isinstance(draft, dict):
+                draft["sourceCampaignId"] = campaign_id
 
         table.put_item(
             Item=cloned,
@@ -296,4 +315,3 @@ def lambda_handler(event, context):
             "message": "Route not found"
         }
     )
-    

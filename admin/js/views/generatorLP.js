@@ -7,7 +7,7 @@ import { seedLpTemplates } from "../data/lpTemplates.js";
 import { checkGuidelinesLP, summarizeGuidelineIssuesLP, LP_WIDTH_PATTERNS, LP_ECONOMY_LAYOUT, DEPLOYMENT_COUNTRY } from "../lib/guidelineCheckLP.js";
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
 import { fetchSeriesInfo, fetchSeriesInfoBatch } from "../lib/seriesApi.js";
-import { deployLpToS3, deployLpFilesToS3, deploySharedAssetsToS3, resolveCampaignKey, buildCampaignKey, currentTimestamp } from "../lib/lpDeploy.js";
+import { deployLpToS3, deployLpFilesToS3, deploySharedAssetsToS3, resolveCampaignKey, restoreLpDeploymentState, buildCampaignKey, currentTimestamp } from "../lib/lpDeploy.js";
 import { resizeImage } from "../lib/imageResize.js";
 import { uploadToS3 } from "../lib/s3Upload.js";
 import { generateImage, generateAltTextFromImage } from "../lib/imageProcessApi.js";
@@ -29,7 +29,8 @@ const PAGE_TYPES = [
 export function renderGeneratorLP(root, params) {
   const editId = params.get("id");
   const existing = editId ? store.getCampaign(editId) : null;
-  const draft = buildInitialDraftLP(existing);
+  const sourceCampaign = existing?.sourceCampaignId ? store.getCampaign(existing.sourceCampaignId) : null;
+  const draft = restoreLpDeploymentState(buildInitialDraftLP(existing), existing, sourceCampaign);
 
   root.appendChild(el("div", { class: "gen-app" }, [
     el("div", { class: "gen-form-area" }, [
@@ -74,6 +75,7 @@ export function renderGeneratorLP(root, params) {
   const previewFrame = root.querySelector("#genlp-preview-frame-wrap");
   let latestGuidelineIssues = [];
   let logHistory = [];
+  let cachedPreviewTimestamp = null;
 
   // ⚠️ 미리보기 iframe 안에서 data-field 요소를 편집하고 blur하면 이 리스너로
   // 값이 전달됩니다. renderPreview() 안에 두면 호출될 때마다 리스너가 중복
@@ -1053,7 +1055,9 @@ export function renderGeneratorLP(root, params) {
           }),
           locked
             ? el("p", { class: "hint" }, "✅ 이미 배포되어 URL이 고정됐습니다 — 바꾸려면 새 캠페인으로 다시 시작해야 합니다.")
-            : el("p", { class: "hint" }, "첫 배포/다운로드 시 확정, 이후 변경 불가 (lp/campaigns/{슬러그}_{시각}/)")
+            : el("p", { class: "hint" }, draft.sourceCampaignId
+                ? "복제본은 독립된 URL을 사용합니다. 처음 배포/다운로드할 때 슬러그에 복제본 고유 ID와 생성 시각을 붙여 확정합니다."
+                : "처음 배포/다운로드하는 순간 확정되고, 그 뒤엔 못 바꿉니다. 최종 경로: lp/campaigns/{슬러그}_{생성시각(년월일시분초)}/")
         ])
       ])
     ]);
@@ -1061,9 +1065,8 @@ export function renderGeneratorLP(root, params) {
 
   // ⚠️ 미리보기용 타임스탬프를 렌더링할 때마다 새로 계산하면(previewCampaignKey가
   // renderPreview 때마다 호출되므로) 초가 계속 바뀌어서 미리보기 URL이 매번
-  // 달라 보이는 혼란이 생깁니다. 최초 1번만 계산해서 이 변수에 고정해두고,
+  // 달라 보이는 혼란이 생깁니다. 최초 1번만 계산해서 cachedPreviewTimestamp에 고정해두고,
   // 실제 배포 시점엔 어차피 resolveCampaignKey()가 진짜 값으로 덮어씁니다.
-  let cachedPreviewTimestamp = null;
 
   /** 미리보기 전용 — 실제 배포처럼 서버에 물어보지 않고, 이미 확정된 키가
    *  있으면 그걸 쓰고 없으면 "지금 슬러그로 배포하면 대략 이런 모양이 된다"를
@@ -1073,7 +1076,7 @@ export function renderGeneratorLP(root, params) {
   function previewCampaignKey() {
     if (draft.campaignKey) return draft.campaignKey;
     if (!cachedPreviewTimestamp) cachedPreviewTimestamp = currentTimestamp();
-    return buildCampaignKey(draft.slug || "", cachedPreviewTimestamp);
+    return buildCampaignKey(draft.slug || "", cachedPreviewTimestamp, draft.sourceCampaignId ? draft.id : "");
   }
 
 

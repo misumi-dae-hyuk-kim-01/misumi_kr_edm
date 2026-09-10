@@ -156,7 +156,8 @@ export async function deploySharedAssetsToS3(namespace, files, version) {
 }
 
 // ==========================================================================
-// 캠페인 키 규칙: {slug}_{YYMM}_{seq}
+// 캠페인 키 규칙: {slug}_{yymmddhhmmss}
+// 복제본은 슬러그 뒤에 고유 ID를 붙여 같은 초에 배포해도 경로가 겹치지 않습니다.
 // ⚠️ 슬러그 안에 언더스코어가 몇 개 있든 안전하게 다시 쪼갤 수 있도록,
 // 파싱은 반드시 "뒤에서부터" 합니다 — 앞에서부터 split하면 슬러그에 포함된
 // 언더스코어와 구분자용 언더스코어를 구별할 수 없습니다. 이 파일 밖에서
@@ -175,12 +176,7 @@ export function sanitizeSlug(input) {
   return slug || "campaign";
 }
 
-/** ⚠️ 2026-09 v3 변경: 캠페인 키를 {slug}_{YYMM}_{순번} → {slug}_{yymmddhhmmss}로
- *  바꿨습니다(개발팀 제안 반영). 초 단위까지 붙이면 두 사람이 같은 슬러그로
- *  정확히 같은 초에 배포할 확률이 사실상 0이라, 순번 방식이 안고 있던 동시성
- *  문제(백엔드 IfNoneMatch 필요)가 원천적으로 없어집니다 — findNextAvailableSeq()
- *  자체가 필요 없어져서 삭제했습니다.
- *  현재 시각을 yymmddhhmmss(초까지, 구분자 없이 12자리)로. 예: 2026-03-15
+/** 현재 시각을 yymmddhhmmss(초까지, 구분자 없이 12자리)로. 예: 2026-03-15
  *  14:05:09 → "260315140509" */
 export function currentTimestamp() {
   const now = new Date();
@@ -193,8 +189,39 @@ export function currentTimestamp() {
     + p2(now.getSeconds());
 }
 
-export function buildCampaignKey(slug, timestamp) {
-  return `${sanitizeSlug(slug)}_${timestamp}`;
+export function buildCampaignKey(slug, timestamp, cloneId = "") {
+  const suffix = cloneId ? `-copy-${sanitizeSlug(cloneId)}` : "";
+  return `${sanitizeSlug(slug)}${suffix}_${timestamp}`;
+}
+
+/** 기존 복제본이 물려받은 배포 정보를 편집 전에 분리합니다.
+ *  원본이 없고 키 소유 기록도 없는 복제본은 소유 여부를 검증할 수 없으므로 새 경로를 씁니다.
+ *  본인 소유가 확인되는 키는 재접속/재배포 시 그대로 유지합니다. */
+export function restoreLpDeploymentState(draft, campaign, sourceCampaign) {
+  const id = campaign?.campaignId || campaign?.id || draft.id;
+  const sourceCampaignId = campaign?.sourceCampaignId || "";
+  const ownerId = draft.campaignKeyOwnerId;
+  const sourceKeys = [sourceCampaign?.campaignKey, sourceCampaign?.draftData?.campaignKey].filter(Boolean);
+  const foreignOwner = ownerId && ownerId !== id;
+  const copiedDraftId = campaign?.draftData?.id && campaign.draftData.id !== id;
+  const inherited = foreignOwner || (sourceCampaignId && (
+    sourceKeys.includes(draft.campaignKey) ||
+    (!ownerId && (copiedDraftId || !sourceCampaign))
+  ));
+
+  return {
+    ...draft,
+    id,
+    sourceCampaignId,
+    ...(inherited ? {
+      campaignKey: "",
+      campaignKeyOwnerId: "",
+      deployedUrl: "",
+      catalogDeployedUrls: []
+    } : {
+      campaignKeyOwnerId: draft.campaignKey ? id : ""
+    })
+  };
 }
 
 /** ⚠️ 항상 뒤에서부터 파싱합니다 — 슬러그에 언더스코어가 있어도 안전합니다.
@@ -214,8 +241,8 @@ export function parseCampaignKey(key) {
  * 담당합니다:
  *   - draft에 이미 campaignKey가 있으면(=이전에 한 번이라도 배포/키 확정을
  *     했으면) 그대로 반환합니다 — slug를 그 사이에 고쳤어도 무시합니다.
- *   - 없으면 지금 draft.slug + 현재 타임스탬프로 새로 만들고, draft.campaignKey에
- *     저장해서 잠급니다.
+ *   - 없으면 슬러그와 현재 시각으로 새로 만들고 저장합니다. 복제본은 고유 ID도
+ *     포함해 원본 및 다른 복제본과 경로가 겹치지 않게 합니다.
  * ⚠️ 2026-09 v3: 순번 확인을 위해 S3에 HEAD 요청을 보내던 것(findNextAvailableSeq)이
  * 없어져서, 이 함수가 이제 동기적으로도 계산 가능하지만 기존 호출부와의 호환을
  * 위해 async는 유지합니다.
@@ -226,7 +253,8 @@ export function parseCampaignKey(key) {
  */
 export async function resolveCampaignKey(draft) {
   if (draft.campaignKey) return draft.campaignKey;
-  const key = buildCampaignKey(draft.slug, currentTimestamp());
+  const key = buildCampaignKey(draft.slug, currentTimestamp(), draft.sourceCampaignId ? draft.id : "");
   draft.campaignKey = key;
+  draft.campaignKeyOwnerId = draft.id;
   return key;
 }
