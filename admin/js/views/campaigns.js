@@ -97,14 +97,25 @@ export function renderCampaigns(root) {
     return navigate("generator", { id: c.id });
   }
 
+  /** 목록 정렬 기준: 최종수정일 내림차순(최근 작업한 것이 위).
+   *  ⚠️ 예전엔 정렬이 아예 없어서, 첫 로딩 때는 서버의 DynamoDB scan 순서(= 정렬 보장
+   *  없음, 사실상 무작위)로, 그 뒤엔 store의 배열 조작 순서(신규/복제는 맨 위, 수정은
+   *  제자리)로 뒤죽박죽이었습니다. "최종수정일" 컬럼이 있는데 그 기준으로 정렬되지
+   *  않아 최근 작업한 캠페인을 찾기 어려웠습니다.
+   *  ⚠️ 값이 "2026.09.10 14:32"처럼 0으로 채워진 고정 형식이라 문자열 비교로 충분합니다
+   *  (Date 파싱 불필요 — lib/datetime.js 참고). 시각이 없는 옛 데이터("2026.09.10")가
+   *  섞여 있어도 그날 00:00으로 취급되어 자연스럽게 아래에 놓입니다.
+   *  updatedAt이 아예 없는 옛 캠페인은 createdAt으로 대신 비교합니다. */
+  function sortByUpdatedDesc(list) {
+    const key = c => c.updatedAt || c.createdAt || "";
+    return [...list].sort((a, b) => key(b).localeCompare(key(a)));
+  }
+
   function renderTable() {
     tableHost.innerHTML = "";
-    // ⚠️ 정렬 없이 store.campaigns를 그대로 쓰면 저장 순서(대체로 오래된 것부터)
-    // 그대로 나와서, 최근에 작업한 캠페인을 찾으려면 스크롤을 계속 내려야 했습니다.
-    // createdAt이 "YYYY.MM.DD" 문자열이라 내림차순 문자열 비교로 최신순이 정확히
-    // 나옵니다. store.campaigns를 직접 sort()하면 원본 배열 순서 자체가 바뀌어
-    // 버리므로(다른 화면에 영향 줄 수 있음), 복사본을 만들어서 정렬합니다.
-    let rows = [...store.campaigns].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    // ⚠️ store.campaigns를 그대로 정렬하면 원본 배열이 뒤바뀝니다(sort는 제자리 정렬) —
+    // sortByUpdatedDesc()가 복사본을 만들어 반환합니다.
+    let rows = sortByUpdatedDesc(store.campaigns);
     if (filters.channel !== "전체") rows = rows.filter(c => (c.channel || "EDM") === filters.channel);
     if (filters.purpose !== "전체") rows = rows.filter(c => c.purpose === filters.purpose);
     if (filters.status !== "전체") rows = rows.filter(c => c.status === filters.status);

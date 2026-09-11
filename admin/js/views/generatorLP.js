@@ -7,9 +7,10 @@ import { seedLpTemplates } from "../data/lpTemplates.js";
 import { checkGuidelinesLP, summarizeGuidelineIssuesLP, LP_WIDTH_PATTERNS, LP_ECONOMY_LAYOUT, DEPLOYMENT_COUNTRY } from "../lib/guidelineCheckLP.js";
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
 import { fetchSeriesInfo, fetchSeriesInfoBatch } from "../lib/seriesApi.js";
-import { deployLpToS3, deployLpFilesToS3, deploySharedAssetsToS3, resolveCampaignKey, buildCampaignKey, currentTimestamp } from "../lib/lpDeploy.js";
+import { deployLpToS3, deployLpFilesToS3, deploySharedAssetsToS3, resolveCampaignKey, restoreLpDeploymentState, buildCampaignKey, currentTimestamp } from "../lib/lpDeploy.js";
 import { resizeImage } from "../lib/imageResize.js";
 import { uploadToS3 } from "../lib/s3Upload.js";
+import { nowDate, nowDateTime } from "../lib/datetime.js";
 import { generateImage, generateAltTextFromImage } from "../lib/imageProcessApi.js";
 
 const LP_TEMPLATES = seedLpTemplates();
@@ -29,7 +30,8 @@ const PAGE_TYPES = [
 export function renderGeneratorLP(root, params) {
   const editId = params.get("id");
   const existing = editId ? store.getCampaign(editId) : null;
-  const draft = buildInitialDraftLP(existing);
+  const sourceCampaign = existing?.sourceCampaignId ? store.getCampaign(existing.sourceCampaignId) : null;
+  const draft = restoreLpDeploymentState(buildInitialDraftLP(existing), existing, sourceCampaign);
 
   root.appendChild(el("div", { class: "gen-app" }, [
     el("div", { class: "gen-form-area" }, [
@@ -74,6 +76,7 @@ export function renderGeneratorLP(root, params) {
   const previewFrame = root.querySelector("#genlp-preview-frame-wrap");
   let latestGuidelineIssues = [];
   let logHistory = [];
+  let cachedPreviewTimestamp = null;
 
   // ⚠️ 미리보기 iframe 안에서 data-field 요소를 편집하고 blur하면 이 리스너로
   // 값이 전달됩니다. renderPreview() 안에 두면 호출될 때마다 리스너가 중복
@@ -478,22 +481,13 @@ export function renderGeneratorLP(root, params) {
       ])
     ]);
   }
-
-  /** EDM 생성기의 registerAsset()과 동일한 목적/구조입니다 — 재사용 라이브러리(에셋관리)에
-   *  등록해야 다른 캠페인에서도 이 배너 이미지를 찾아 재사용할 수 있고, sourceCampaignId를
-   *  남겨야 "이 이미지가 어느 캠페인에서 만들어졌는지" 추적이 됩니다. 지금까지는 LP 쪽에
-   *  이 헬퍼가 없어서 배너를 업로드해도 에셋관리 목록에 전혀 나타나지 않았습니다.
-   *  ⚠️ 카테고리는 "히어로 배경"을 씁니다 — 카탈로그 배너와 EDM/LP의 상단 히어로 이미지는
-   *  둘 다 "페이지 맨 위의 프로모션 이미지"라는 본질이 같아서, 예전에 "배너 이미지"라는
-   *  별도 카테고리를 만들었던 건 채널별로 이름만 다르게 붙인 중복이었습니다. 하나로
-   *  합쳐야 나중에 "상단 이미지 전부 찾기"가 카테고리 필터 하나로 됩니다. */
   function registerBannerAsset(filename, url, blob) {
     const id = "a" + Date.now() + Math.random().toString(16).slice(2);
     store.addAsset({
       id,
       filename,
       category: "히어로 배경",
-      uploadedAt: new Date().toISOString().slice(0, 10).replace(/-/g, "."),
+      uploadedAt: nowDate(),
       variants: { LP1200: { url, sizeKB: Math.round((blob?.size || 0) / 1024), isDemoUrl: !url.startsWith("http") } },
       source: "generator",
       sourceCampaignId: draft.id,
@@ -528,17 +522,6 @@ export function renderGeneratorLP(root, params) {
         resultBlob = await generateImage({ file, referenceFiles: materials.map(m => m.file), instruction, purpose: draft.seoTitle || "신상품카탈로그" });
       }
       const resized = await resizeImage(resultBlob, 1200);
-      // ⚠️ 2026-09 버그 수정 — 예전엔 alt를 배포/다운로드 시점에 fillMissingBannerAltTexts()가
-      // "S3에 이미 올라간 이미지를 fetch()로 다시 가져와서" 만들었는데, S3 버킷에 브라우저의
-      // 재조회(GET)를 허용하는 CORS 설정이 없으면 이 fetch 자체가 "Failed to fetch"로 실패해서
-      // alt가 끝내 안 채워지는 문제가 있었습니다. 지금 이 시점엔 방금 리사이징한 원본이
-      // 브라우저 메모리(resized)에 이미 있으므로, S3에 올리기 전에 여기서 바로 alt를
-      // 만들면 그 fetch 자체가 필요 없어집니다.
-      try {
-        draft.catalogBanners[index].altText = await generateAltTextFromImage(resized, draft.seoTitle || "신상품카탈로그");
-      } catch (e) {
-        log(`배너 ${index + 1} alt 생성 실패(업로드는 계속 진행): ` + e.message);
-      }
       const filename = file?.name || `banner_${index + 1}.png`;
       const url = await uploadToS3(resized, filename, "LP");
       draft.catalogBanners[index].img = url;
@@ -997,12 +980,6 @@ export function renderGeneratorLP(root, params) {
    *  deployCatalog()가 S3에 올리는 파일 목록과 동일한 구성입니다 — 배포 전에 로컬에서
    *  실제 파일들을 한 번 열어보고 싶을 때 씁니다(일반 LP의 downloadHtml()과 같은 역할). */
   /** 배포/다운로드 직전, 이미지가 있는 배너 중 altText가 아직 없는 것만 채웁니다.
-   *  ⚠️ 2026-09 — "업로드"/"AI 생성" 경로는 이제 handleCatalogBannerGenerate()가
-   *  S3에 올리기 전에 이미 alt를 채우므로, 이 함수는 사실상 "URL 직접 입력" 경로로
-   *  들어온 배너(브라우저에 원본 파일이 없어서 S3 URL을 다시 fetch해야만 하는 경우)
-   *  만을 위한 보조 안전장치입니다. 그 경우도 대상이 우리 S3가 아닌 외부 URL이면
-   *  CORS로 실패할 수 있는데, 이건 브라우저 보안 정책상 근본적으로 피할 수 없는
-   *  한계입니다(외부 서버가 CORS를 허용해야만 가능).
    *  ⚠️ b.label은 안 건드립니다 — label은 alt이자 동시에 화면에 보이는 버튼
    *  텍스트라서, vision 결과로 덮어쓰면 버튼에 긴 문장이 뜨는 사고가 납니다.
    *  altText는 label과 별개의 필드로, HTML의 alt 속성에서만 label보다 우선
@@ -1147,17 +1124,7 @@ export function renderGeneratorLP(root, params) {
       ]));
     }
     if (failed.length) {
-      // ⚠️ 예전엔 실패한 파일명만 회색 텍스트 한 줄로 나열해서 눈에 잘 안 띄고,
-      // 정작 "왜 실패했는지"도 화면엔 안 보였습니다(로그를 펼쳐야만 보임).
-      // 성공 박스(.guide-pass)와 대칭되게 실패도 눈에 띄는 박스로, 파일마다
-      // 실제 에러 메시지까지 바로 화면에서 보이도록 바꿨습니다.
-      failed.forEach(f => {
-        host.appendChild(el("div", { class: "guide-result guide-fail" }, [
-          el("div", {}, `❌ ${f.name}`),
-          el("div", { style: "font-weight:400;font-size:11px;margin-top:2px;" }, f.error || "(에러 메시지 없음)")
-        ]));
-        log(`배포 실패 상세 — ${f.name}: ${f.error || "(에러 메시지 없음)"}`);
-      });
+      host.appendChild(el("p", { class: "hint" }, `배포 실패한 파일: ${failed.map(f => f.name).join(", ")}`));
     }
   }
 
@@ -1251,7 +1218,9 @@ export function renderGeneratorLP(root, params) {
           }),
           locked
             ? el("p", { class: "hint" }, "✅ 배포 완료 — URL 변경 불가")
-            : el("p", { class: "hint" }, "첫 배포/다운로드 시 확정, 이후 변경 불가 (lp/campaigns/{슬러그}_{시각}/)")
+            : el("p", { class: "hint" }, draft.sourceCampaignId
+                ? "복제본은 독립된 URL을 사용합니다. 처음 배포/다운로드할 때 슬러그에 복제본 고유 ID와 생성 시각을 붙여 확정합니다."
+                : "처음 배포/다운로드하는 순간 확정되고, 그 뒤엔 못 바꿉니다. 최종 경로: lp/campaigns/{슬러그}_{생성시각(년월일시분초)}/")
         ])
       ])
     ]);
@@ -1259,9 +1228,8 @@ export function renderGeneratorLP(root, params) {
 
   // ⚠️ 미리보기용 타임스탬프를 렌더링할 때마다 새로 계산하면(previewCampaignKey가
   // renderPreview 때마다 호출되므로) 초가 계속 바뀌어서 미리보기 URL이 매번
-  // 달라 보이는 혼란이 생깁니다. 최초 1번만 계산해서 이 변수에 고정해두고,
+  // 달라 보이는 혼란이 생깁니다. 최초 1번만 계산해서 cachedPreviewTimestamp에 고정해두고,
   // 실제 배포 시점엔 어차피 resolveCampaignKey()가 진짜 값으로 덮어씁니다.
-  let cachedPreviewTimestamp = null;
 
   /** 미리보기 전용 — 실제 배포처럼 서버에 물어보지 않고, 이미 확정된 키가
    *  있으면 그걸 쓰고 없으면 "지금 슬러그로 배포하면 대략 이런 모양이 된다"를
@@ -1271,7 +1239,7 @@ export function renderGeneratorLP(root, params) {
   function previewCampaignKey() {
     if (draft.campaignKey) return draft.campaignKey;
     if (!cachedPreviewTimestamp) cachedPreviewTimestamp = currentTimestamp();
-    return buildCampaignKey(draft.slug || "", cachedPreviewTimestamp);
+    return buildCampaignKey(draft.slug || "", cachedPreviewTimestamp, draft.sourceCampaignId ? draft.id : "");
   }
 
 
@@ -1469,7 +1437,6 @@ export function renderGeneratorLP(root, params) {
       ])
     ]);
   }
-
   async function handleEventKvUpload(file) {
     draft.kvUploading = true;
     renderForm();
@@ -1526,7 +1493,6 @@ export function renderGeneratorLP(root, params) {
       renderForm(); renderPreview();
     }
   }
-
   function sectionEventLpSummary() {
     const rows = draft.summaryRows;
     const rowsHtml = rows.map((row, i) => el("div", { class: "field", style: "border-bottom:1px solid #f0f0f0;padding-bottom:8px;margin-bottom:8px;" }, [
@@ -1603,7 +1569,6 @@ export function renderGeneratorLP(root, params) {
       ])
     ]);
   }
-
   function sectionEventLpSteps() {
     const items = draft.stepItems;
     const icons = ["cart", "click", "form", "upload", "check"];
@@ -2518,7 +2483,6 @@ export function renderGeneratorLP(root, params) {
       if (badge) { badge.className = "guideline-badge badge-fail"; badge.textContent = "❌ " + e.message; }
     }
   }
-
   /** 카탈로그 모드 미리보기 — 완료된 그룹 중 첫 번째를 보여줍니다.
    *  가이드라인은 그룹마다 결과가 달라질 수 있어 배지는 비워두고, 그룹별 카드에서
    *  각각 확인하도록 안내합니다(화면이 여러 장이라 배지 하나로 요약하기 어려움). */
@@ -2999,13 +2963,11 @@ export function renderGeneratorLP(root, params) {
       type: "랜딩페이지",
       segment: "-",
       status: statusOverride || existing?.status || "초안",
-      createdAt: existing ? existing.createdAt : new Date().toISOString().slice(0, 10).replace(/-/g, "."),
-      // ⚠️ 2026-09 버그 수정 — EDM(generator.js)의 draftToCampaign()과 완전히
-      // 같은 이유입니다. 이 필드가 아예 없어서, 캠페인 목록의 "최종수정일" 칸이
-      // createdAt(날짜만, 안 바뀜)으로 대체 표시되고 있었는데, "복제" 기능만
-      // 백엔드 API가 시:분까지 포함된 서버 타임스탬프를 채워줘서 유독 복제한
-      // 캠페인만 시간까지 나오는 불일치가 있었습니다.
-      updatedAt: new Date().toISOString().slice(0, 16).replace("T", " ").replace(/-/g, "."),
+      createdAt: existing ? existing.createdAt : nowDate(),
+      // ⚠️ 예전엔 LP만 updatedAt을 아예 안 넣었습니다. 목록이 최종수정일 내림차순으로
+      // 정렬되면서(campaigns.js), LP는 몇 번을 수정해도 createdAt으로만 비교되어
+      // 계속 아래에 묻히는 문제가 됩니다 — EDM(generator.js)과 동일하게 맞춥니다.
+      updatedAt: nowDateTime(),
       promotionName: draft.promotionName || "",
       draftData: { ...draft, catalogBanners: savableBanners, kvMaterials: savableKvMaterials }
     };
