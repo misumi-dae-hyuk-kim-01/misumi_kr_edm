@@ -15,6 +15,29 @@ let filters = { channel: "전체", purpose: "전체", status: "전체", searchSc
 let page = 1;
 const PAGE_SIZE = 10;
 
+// ⚠️ 2026-09 신설 — EDM/LP가 저장 시 직접 채우는 updatedAt("YYYY.MM.DD HH:MM")과
+// 캠페인 "복제" 시 백엔드 clone API가 그대로 내려주는 값(전체 ISO 타임스탬프,
+// 예: "2026-09-10T15:39:10.000Z")의 형식이 서로 달라서, 복제한 캠페인만 표시가
+// 다르게 보이는 문제가 있었습니다. 어떤 형식으로 들어오든 화면엔 항상 같은
+// 모양("YYYY.MM.DD HH:MM")으로 보이도록 여기서 한 번 더 정규화합니다.
+// ⚠️ 2026-09 재수정 — 처음엔 "복제한 캠페인만 시간이 보인다"는 불일치를
+// "모두 시간까지 보이게" 통일하는 방향으로 고쳤는데, 다시 "시간 자체를 아예
+// 안 보여주는 게 낫다"는 방향으로 정리합니다. 저장하는 값(updatedAt) 자체는
+// 시:분까지 그대로 남겨둡니다 — 나중에 필요해지면 데이터가 이미 있으니
+// 화면 쪽만 다시 바꾸면 됩니다. 여기서는 "화면에 보여줄 때만" 날짜까지 자릅니다.
+function formatUpdatedAt(value) {
+  if (!value) return "";
+  // 이미 우리가 만든 형식("YYYY.MM.DD HH:MM")이든, 캠페인 복제 시 백엔드가
+  // 주는 전체 ISO 타임스탬프든, 앞의 "YYYY.MM.DD" 10글자만 잘라서 보여줍니다.
+  const normalized = /^\d{4}\.\d{2}\.\d{2}/.test(value) ? value : (() => {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return value;
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}`;
+  })();
+  return normalized.slice(0, 10);
+}
+
 export function renderCampaigns(root) {
   root.appendChild(
     el("div", { class: "page-head" }, [
@@ -144,7 +167,7 @@ export function renderCampaigns(root) {
         el("td", { style: "color:#666;" }, c.purpose || "-"),
         el("td", {}, c.status ? el("span", { class: "badge " + (statusBadge[c.status] || "gray") }, c.status) : "-"),
         el("td", { style: "color:#666;" }, c.createdAt),
-        el("td", { style: "color:#666;" }, c.updatedAt || c.createdAt || "-"),
+        el("td", { style: "color:#666;" }, formatUpdatedAt(c.updatedAt) || c.createdAt || "-"),
         el("td", {}, el("div", { class: "row-actions" }, [
           el("button", { class: "btn btn-sm", onclick: () => editRoute(c) }, "편집"),
           el("button", {

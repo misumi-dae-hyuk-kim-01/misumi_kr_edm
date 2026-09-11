@@ -63,6 +63,12 @@
   width:100%;padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;
 }
 .field input:focus,.field select:focus,.field textarea:focus{border-color:#0F218B;}
+/* ⚠️ select는 브라우저 기본 disabled 스타일(회색)이 잘 나오는데, input은 다른
+   전역 스타일에 색상이 덮여서 비활성화 상태인데도 활성 상태처럼 보이는 문제가
+   있었습니다(슬러그 잠금 vs 템플릿 잠금 UI가 서로 다르게 보임). 원인이 무엇이든
+   상관없이 항상 같은 결과가 나오도록, 두 태그 모두에 명시적으로 스타일을
+   지정합니다. */
+.field input:disabled,.field select:disabled{background:#f0f0f0;color:#888;cursor:not-allowed;}
 .field textarea{min-height:40px;resize:vertical;line-height:1.5;}
 .field .hint{font-size:10px;color:#999;margin-top:3px;}
 /* ⚠️ .hint-warn/.hint-danger는 .guideline-badge.badge-warn/.badge-fail과 똑같은
@@ -168,6 +174,15 @@
 .guideline-badge.badge-warn{background:#fff4e0;color:#a9660a;}
 .guideline-badge.badge-fail{background:#fde8e8;color:#c62828;}
 .guideline-badge:hover{filter:brightness(0.96);}
+/* ⚠️ .guideline-badge는 원래 클릭해서 상세 목록을 펼치는 용도로 만들어져서
+   cursor:pointer와 hover 효과가 기본으로 붙어있습니다. 그런데 같은 모양을
+   "그냥 정보만 보여주는" 용도(카탈로그 그룹 상태, 상품 개수 등)로도 재사용하면서,
+   그런 자리들은 눌러도 아무 일도 안 일어나는데 마우스를 올리면 밝기가 바뀌어서
+   "클릭 가능한 버튼"처럼 오해하게 만들었습니다. 이 클래스를 같이 붙이면 커서와
+   hover 효과 둘 다 확실히 꺼집니다(인라인 style="cursor:default"만으로는
+   :hover 의사클래스를 못 끄기 때문에 별도 클래스가 필요했습니다). */
+.guideline-badge.badge-static{cursor:default;}
+.guideline-badge.badge-static:hover{filter:none;}
 
 /* ---------- 미리보기 영역 ---------- */
 .gen-preview-area{padding:20px;overflow-y:auto;background:#f0f2f5;min-width:0;max-height:100vh;}

@@ -838,32 +838,10 @@ export function renderGenerator(root, params) {
     log(aiUsed ? `이미지 생성 완료: ${filename}` : `이미지 업로드 완료: ${filename}`);
   }
 
-  /** 개별 슬롯의 "비어있음" 상태 전용 — AI를 전혀 안 태우고, 갖고 있는 파일을 그대로
-   *  올립니다. handleImageGenerate()는 meta.instruction이 있으면(①번 참고 이미지
-   *  섹션에서 이 슬롯에 설명을 적어뒀을 수 있음, 같은 데이터를 공유하므로) AI 생성으로
-   *  빠지는데, 여기 버튼은 "업로드"라고 표시되므로 실제 동작도 항상 순수 업로드여야
-   *  합니다 — 그래서 instruction을 아예 무시하는 별도 함수로 분리했습니다. */
-  async function handlePlainUpload(key) {
-    const meta = draft.imageMeta[key] || {};
-    const file = meta.pendingFile;
-    if (!file) { toast("파일을 먼저 선택해주세요"); return; }
-    draft.imageUploading = key;
-    renderForm();
-    try {
-      const resized = await resizeImage(file, inferImageMaxWidth(key));
-      const finalUrl = await uploadToS3(resized, file.name, "EDM");
-      draft.fieldValues[key] = finalUrl;
-      draft.imageMeta[key] = { ...draft.imageMeta[key], filename: file.name, processed: true, aiProcessed: false, fileBlob: resized };
-      draft.imageMeta[key].assetId = registerAsset(key, file.name, finalUrl, resized, "", false);
-      log(`이미지 업로드 완료: ${file.name}`);
-    } catch (e) {
-      log(`업로드 실패(${key}): ` + e.message);
-      toast("업로드에 실패했습니다: " + e.message);
-    } finally {
-      draft.imageUploading = null;
-      renderForm(); renderPreview();
-    }
-  }
+  // ⚠️ 2026-08-31 신설했던 handlePlainUpload(key)는 결국 어디서도 호출되지 않는
+  // 죽은 코드였습니다 — handleImageGenerate()가 이미 "지시문 없으면 순수 업로드,
+  // 있으면 AI 생성"을 알아서 분기하므로(generateAndStoreImage 참고) 별도 함수가
+  // 필요 없었습니다. 혼란 방지를 위해 제거합니다.
 
   async function handleImageGenerate(key) {
     const meta = draft.imageMeta[key] || {};
@@ -1061,8 +1039,8 @@ export function renderGenerator(root, params) {
             }, uploading ? "처리 중..." : "보정 요청")
           ]) : null,
           el("div", { class: "row2" }, [
-            el("button", { class: "btn btn-sm", onclick: () => { draft.imageMeta[f.key] = {}; onChange(""); renderForm(); } }, "다시 업로드"),
-            el("button", { class: "btn btn-sm ghost", onclick: () => { draft.imageMeta[f.key] = { urlMode: true }; renderForm(); } }, "URL 직접 입력")
+            el("button", { class: "btn btn-sm", style: "justify-content:center;", onclick: () => { draft.imageMeta[f.key] = {}; onChange(""); renderForm(); } }, "다시 업로드"),
+            el("button", { class: "btn btn-sm ghost", style: "justify-content:center;", onclick: () => { draft.imageMeta[f.key] = { urlMode: true }; renderForm(); } }, "URL 직접 입력")
           ])
         ], "", collapseBtn);
       }
@@ -1071,7 +1049,16 @@ export function renderGenerator(root, params) {
       if (meta.urlMode || (value && !meta.processed)) {
         return sectionWrap(null, f.label, null, [
           el("input", { type: "text", value, placeholder: "https://... (CLI로 만든 링크 등 붙여넣기)", style: "padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;", oninput: e => onChange(e.target.value) }),
-          el("button", { class: "btn btn-sm ghost", style: "margin-top:6px;", onclick: () => { draft.imageMeta[f.key] = {}; renderForm(); } }, "업로드로 전환")
+          el("button", { class: "btn btn-sm ghost", style: "margin-top:6px;", onclick: () => {
+            // ⚠️ 2026-09 버그 수정 — imageMeta만 초기화하고 필드값(URL 텍스트,
+            // draft.fieldValues[key])은 안 비워서, "value && !meta.processed"
+            // 조건에 다시 걸려 URL 입력 화면으로 즉시 되돌아가고 있었습니다
+            // ("업로드로 전환"을 눌렀는데 아무 변화 없이 그 자리에 머무는 것처럼
+            // 보여서 "영역이 닫혀버린다"는 느낌을 줬습니다). 필드값도 같이 비웁니다.
+            draft.imageMeta[f.key] = {};
+            onChange("");
+            renderForm();
+          } }, "업로드로 전환")
         ], "", collapseBtn);
       }
 
@@ -1084,7 +1071,6 @@ export function renderGenerator(root, params) {
       // 자동으로 참고한다"로 단순화했습니다 — 설명 입력창과 AI 생성 버튼은
       // 개별 슬롯만 새로 만들고 싶을 때를 위해 남겨둡니다.
       const pool = draft.imageReferencePool || [];
-      const pendingFileName = meta.pendingFile?.name;
       // ⚠️ 버튼 하나만 참조해뒀다가, 아래 textarea의 oninput에서 폼 전체를 다시
       // 그리지 않고 이 버튼의 글자만 직접 바꿉니다 — renderForm()을 매 키 입력마다
       // 부르면 포커스가 날아가는 문제가 있어서(실제로 겪었음) 그 방식을 버렸는데,
@@ -1130,10 +1116,21 @@ export function renderGenerator(root, params) {
             })
           ]),
           el("label", { class: "btn btn-sm upload-label", style: "text-align:center;justify-content:center;" }, [
-            pendingFileName ? `원본: ${pendingFileName}` : "원본 교체 (1장)",
+            "원본 교체 (1장)",
             el("input", {
               type: "file", accept: "image/*", style: "display:none;", disabled: uploading ? "disabled" : null,
-              onchange: e => { if (e.target.files[0]) { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], pendingFile: e.target.files[0] }; renderForm(); } }
+              // ⚠️ 2026-09 버그 수정 — 예전엔 파일을 고르면 draft.imageMeta[key].pendingFile에
+              // "대기"만 시키고, 실제 업로드/반영은 별도로 "업로드" 버튼(generateBtn)을
+              // 한 번 더 눌러야만 일어났습니다. 그런데 파일을 고르면 버튼 텍스트가
+              // "원본: {파일명}"으로 바뀌어서 "선택 완료 = 반영 완료"처럼 보였고, 그
+              // 아래 별도 버튼을 또 눌러야 한다는 안내도 없어서 "업로드했는데 왜 반영이
+              // 안 되지"라는 혼란의 정확한 원인이었습니다. 카탈로그 배너/이벤트LP KV와
+              // 동일하게, 파일을 고르는 즉시 바로 처리되도록 통일합니다.
+              onchange: e => {
+                if (!e.target.files[0]) return;
+                draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], pendingFile: e.target.files[0] };
+                handleImageGenerate(f.key);
+              }
             })
           ])
         ]),
