@@ -488,7 +488,7 @@ export function renderGeneratorLP(root, params) {
       filename,
       category: "히어로 배경",
       uploadedAt: nowDate(),
-      variants: { LP1200: { url, sizeKB: Math.round((blob?.size || 0) / 1024), isDemoUrl: !url.startsWith("http") } },
+      variants: { LP: { url, sizeKB: Math.round((blob?.size || 0) / 1024), isDemoUrl: !url.startsWith("http") } },
       source: "generator",
       sourceCampaignId: draft.id,
       aiProcessed: false
@@ -2926,7 +2926,7 @@ export function renderGeneratorLP(root, params) {
       log(`임시저장 실패 — 필수 항목 누락: ${missing.join(", ")}`);
       return;
     }
-    const { campaign, droppedCount } = draftToCampaignLP();
+    const { campaign, droppedCount } = draftToCampaignLP("초안");
     store.upsertCampaign(campaign);
     if (droppedCount > 0) {
       toast(`임시저장했습니다 (⚠ 아직 AI 생성에 안 쓴 새 배너 소재 ${droppedCount}개는 저장 대상이 아니라 제외됐습니다 — 브라우저를 닫으면 사라집니다)`);
