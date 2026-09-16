@@ -3,9 +3,9 @@ import { el, toast, esc } from "../lib/dom.js";
 import { navigate } from "../router.js";
 import { generateCopy, regenerateField } from "../lib/copyGenerator.js";
 import { generateImage, generateAltTextFromImage } from "../lib/imageProcessApi.js";
-import { resizeImage, EDM_IMAGE_MAX_DIM } from "../lib/imageResize.js";
+import { resizeImage, resizeImageToRatio, EDM_IMAGE_MAX_DIM } from "../lib/imageResize.js";
 import { uploadToS3 } from "../lib/s3Upload.js";
-import { assembleEdmHtml } from "../lib/blocks.js";
+import { assembleEdmHtml, assembleFreeformEdmHtml, EDM_HEADER_TYPES, EDM_SECTION_TYPES } from "../lib/blocks.js";
 import { checkGuidelines, summarizeGuidelineIssues } from "../lib/guidelineCheck.js";
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
 import { fetchSeriesInfo } from "../lib/seriesApi.js";
@@ -18,6 +18,11 @@ import { EDM_TEMPLATE_HTML } from "../data/edmTemplateHtml.js";
 // 통일했습니다. 이유: edm-no10(육성)에 상품그리드가 들어가는 등, "상품계냐 아니냐"와
 // "목적이 뭐냐"는 서로 무관한 축이라는 게 실제 템플릿에서 확인됐기 때문입니다.
 const PURPOSES = ["온보딩", "육성", "이탈방지", "상품소개", "쿠폰", "내근영업"];
+// ⚠️ 2026-09 신설 — "완전 프리 템플릿"(헤더+섹션 자유 조합) 파일럿을 가리키는
+// 특수 templateId. EDM_TEMPLATE_FIELDS/EDM_TEMPLATE_HTML 어디에도 이 id가
+// 없어서 resolveTemplate()이 자연스럽게 null을 반환하고, 이걸 이용해
+// renderForm()에서 일반 템플릿 폼과 분기합니다.
+const FREEFORM_TEMPLATE_ID = "freeform";
 // "히어로 필드"로 보는 키 목록 — 이 목록에 없는 필드가 아직 제목(c_headline)도 나오기
 // 전에 등장하면, 그건 히어로가 아니라 "제목 없는 콘텐츠 블록"(NO.16의 main_1/sub_1 같은
 // [B08] 텍스트 블록)일 가능성이 높습니다. groupFieldsBySection()에서 사용합니다.
@@ -201,7 +206,21 @@ export function renderGenerator(root, params) {
   window.addEventListener("message", e => {
     if (e.data?.source !== "edm-preview-edit") return;
     const { field, value } = e.data;
-    draft.fieldValues[field] = value;
+    // ⚠️ 2026-09 신설 — 프리템플릿 섹션 필드는 "인스턴스id::key" 형태로
+    // 네임스페이스가 붙어 옵니다(같은 섹션을 여러 번 추가해도 값이 안 섞이게
+    // assembleFreeformEdmHtml이 이렇게 심어둠). 구분자가 있으면 해당 섹션
+    // 인스턴스의 값 저장소에, 없으면(헤더 필드 등 기존 방식) draft.fieldValues에
+    // 그대로 저장합니다.
+    const sepIdx = field.indexOf("::");
+    if (sepIdx !== -1) {
+      const instanceId = field.slice(0, sepIdx);
+      const key = field.slice(sepIdx + 2);
+      if (!draft.freeformSectionValues) draft.freeformSectionValues = {};
+      if (!draft.freeformSectionValues[instanceId]) draft.freeformSectionValues[instanceId] = {};
+      draft.freeformSectionValues[instanceId][key] = value;
+    } else {
+      draft.fieldValues[field] = value;
+    }
     const formInput = formBody.querySelector(`[data-form-field="${field}"]`);
     if (formInput) formInput.value = value;
     log(`미리보기에서 "${field}" 수정됨`);
@@ -423,6 +442,22 @@ export function renderGenerator(root, params) {
    *  ⚠️ "이 필드가 어느 섹션에 속하는가"는 필드 자신의 번호가 아니라, groupFieldsBySection()과
    *  똑같은 기준(문서 순서상 바로 앞의 c_headline_N)으로 판단해야 폼에서 보이는 그룹과
    *  실제로 숨겨지는 범위가 일치합니다 — 번호가 재사용되는 템플릿(NO.1 등)에서 특히 중요합니다. */
+  // ⚠️ 2026-09 신설(파일럿) — 링크확인/복사/다운로드 등 여러 곳에서 "최종
+  // 조립된 HTML"이 필요한데, 전부 assembleEdmHtml(draft.templateId, ...)를
+  // 반복 호출하고 있었습니다. 프리템플릿은 이 함수로 못 만들어서(EDM_TEMPLATE_HTML에
+  // "freeform"이 없음), 분기를 한 곳에 모아 재사용합니다.
+  function getFinalEdmHtml() {
+    if (draft.templateId === FREEFORM_TEMPLATE_ID) {
+      if (!draft.freeformHeaderId) return null; // 헤더도 아직 안 골랐으면 만들 게 없음
+      return assembleFreeformEdmHtml(draft.freeformHeaderId, draft.freeformSectionIds || [], {
+        ...draft.fieldValues,
+        sections: draft.freeformSectionValues || {}
+      });
+    }
+    const { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans } = computeHiddenUnits();
+    return assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans });
+  }
+
   function computeHiddenUnits() {
     const t = resolveTemplate();
     if (!t) return { hiddenRowKeys: [], hiddenCardKeys: [], hiddenSectionSpans: [] };
@@ -495,6 +530,27 @@ export function renderGenerator(root, params) {
 
   function renderForm() {
     formBody.innerHTML = "";
+
+    // ⚠️ 2026-09 신설(파일럿 1단계) — "완전 프리 템플릿"을 고르면 기존 18개
+    // 고정 템플릿과는 완전히 다른 화면(헤더 6종 선택 → 이후 섹션 조합은 다음
+    // 단계에서 이어감)을 보여줍니다. resolveTemplate()이 이 경우 null을
+    // 반환하므로(EDM_TEMPLATE_FIELDS에 "freeform" id가 없음), 아래 일반 폼
+    // 로직(coupon-field 체크 등)을 타지 않도록 여기서 먼저 분기해서 return합니다.
+    if (draft.templateId === FREEFORM_TEMPLATE_ID) {
+      formBody.appendChild(groupHeader("캠페인 설정"));
+      formBody.appendChild(sectionCampaignName());
+      formBody.appendChild(sectionPurposeAndTemplate());
+      formBody.appendChild(groupHeader("자유 조합 템플릿 (파일럿)"));
+      formBody.appendChild(sectionFreeformHeaderPicker());
+      if (draft.freeformHeaderId) {
+        formBody.appendChild(sectionFreeformSectionPicker());
+        formBody.appendChild(sectionFreeformAiPrompt());
+        formBody.appendChild(sectionFreeformImagePool());
+        formBody.appendChild(sectionFreeformValueInputs());
+      }
+      return;
+    }
+
     const t = resolveTemplate();
 
     // 캠페인 설정: 한 번 정하면 되는 값들 (이 캠페인이 "뭔지" 정의)
@@ -562,10 +618,17 @@ export function renderGenerator(root, params) {
       el("select", {
         style: "margin-top:10px;width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;",
         onchange: e => switchTemplate(e.target.value)
-      }, templatesForPurpose.map(([id, info]) =>
-        el("option", { value: id, ...(id === draft.templateId ? { selected: "selected" } : {}) }, info.name)
-      )),
-      t ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" },
+      }, [
+        // ⚠️ 2026-09 신설(파일럿) — 특정 목적(purpose)에 종속되지 않는 특수
+        // 옵션이라 templatesForPurpose 목록과 별도로 맨 위에 고정합니다.
+        el("option", { value: FREEFORM_TEMPLATE_ID, ...(draft.templateId === FREEFORM_TEMPLATE_ID ? { selected: "selected" } : {}) }, "✨ 자유 조합 템플릿 (파일럿)"),
+        ...templatesForPurpose.map(([id, info]) =>
+          el("option", { value: id, ...(id === draft.templateId ? { selected: "selected" } : {}) }, info.name)
+        )
+      ]),
+      draft.templateId === FREEFORM_TEMPLATE_ID
+        ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "히어로와 섹션을 자유롭게 골라 조합하는 파일럿 기능입니다.")
+        : t ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" },
         `입력 항목 ${t.fields.filter(f => f.type !== "coupon-field" && f.type !== "product-field").length}개`
         + (templateHasFieldType("coupon-field") ? " + 쿠폰 정보" : "")
         + (templateHasFieldType("product-field") ? " + 상품 그리드(시리즈 코드 조회)" : "")) : null
@@ -636,7 +699,7 @@ export function renderGenerator(root, params) {
             // 저장한다" 원칙에 맞춰, 이제 File을 그대로 풀에 보관만 하고 실제
             // 업로드는 하지 않습니다 — object URL로 미리보기 썸네일만 만듭니다.
             onchange: e => {
-              const files = [...e.target.files];
+              const files = filterImageFiles([...e.target.files]);
               if (!files.length) return;
               files.forEach(file => {
                 pool.push({ file, url: URL.createObjectURL(file), label: file.name });
@@ -794,16 +857,79 @@ export function renderGenerator(root, params) {
   // 이미지까지). 전부 600px(EDM 전체 폭)로 리사이징하면 좁은 슬롯엔 필요 이상으로 큰
   // 파일을 만들게 됩니다. raw HTML에서 그 필드 바로 앞에 나오는 width="N"을 읽어와서
   // 실제 슬롯 폭에 맞춰 리사이징합니다. 못 찾으면(상품그리드 등) EDM 표준폭으로 대신합니다.
-  function inferImageMaxWidth(key) {
+  // ⚠️ 2026-09 신설 — EDM은 이메일 본문에 그대로 들어가는 이미지 슬롯이라,
+  // 동영상 등 이미지가 아닌 파일이 들어가면 <img> 태그가 렌더링을 못 해
+  // 미리보기가 깨집니다(이메일 클라이언트 대부분이 <video>도 지원 안 함 —
+  // 에셋관리처럼 "저장소" 용도가 아니라 실제 발송될 이미지 자리이므로 여기는
+  // 엄격하게 막는 게 맞습니다). accept="image/*"는 파일 선택창의 힌트일 뿐
+  // 강제성이 없어서(사용자가 "모든 파일"로 바꾸면 우회됨), 선택 직후 한 번 더
+  // 확실하게 걸러냅니다.
+  function filterImageFiles(files) {
+    const imageFiles = files.filter(f => f.type.startsWith("image/"));
+    const rejectedCount = files.length - imageFiles.length;
+    if (rejectedCount > 0) {
+      toast(`이미지 파일이 아니라서 ${rejectedCount}개는 제외했습니다 (동영상 등은 이메일에서 재생되지 않습니다)`);
+    }
+    return imageFiles;
+  }
+
+  /** ⚠️ 2026-09 신설 — 각 이미지 슬롯은 템플릿 HTML 안에 이미 목표 width/height가
+   *  명시되어 있습니다(예: <td width="176" height="110">{{image_1}}</td>). 이걸
+   *  찾아서 resizeImageToRatio()에 넘기면, 원본 비율과 무관하게 슬롯이 기대하는
+   *  비율로 자동 크롭됩니다("가로는 맞는데 세로가 제한 없이 길어지는" 문제 해결).
+   *  inferImageMaxWidth()와 같은 방식(placeholder 바로 앞 600자 이내에서 탐색 —
+   *  400자였다가 일부 템플릿에서 매칭 실패해 600자로 확대)으로 height까지 같이
+   *  찾습니다 — 못 찾으면 { width: null, height: null }을 반환해서 호출부가
+   *  안전하게 기존 resizeImage()로 폴백하게 합니다. */
+  function inferImageTargetSize(key) {
     const html = EDM_TEMPLATE_HTML[draft.templateId];
-    if (!html) return EDM_IMAGE_MAX_DIM;
+    if (!html) return { width: null, height: null };
     const idx = html.indexOf(`{{${key}}}`);
-    if (idx === -1) return EDM_IMAGE_MAX_DIM;
-    const before = html.slice(Math.max(0, idx - 400), idx);
-    const matches = [...before.matchAll(/width="(\d+)"/g)];
-    if (!matches.length) return EDM_IMAGE_MAX_DIM;
-    const w = parseInt(matches[matches.length - 1][1], 10);
-    return w > 0 ? w : EDM_IMAGE_MAX_DIM;
+    if (idx === -1) return { width: null, height: null };
+    const before = html.slice(Math.max(0, idx - 600), idx);
+    // width="176" height="110"이 같은 태그 안에 있는 경우가 많지만, 일부
+    // 템플릿(예: edm-no15h-product)은 width가 부모 <table>에, height가 그 안의
+    // <td>에 나뉘어 있어서 "같은 태그 안"이라는 전제가 항상 성립하지 않습니다
+    // — [^>]* 로 태그(>) 경계를 못 넘게 막아뒀던 걸 풀어서, 조금 떨어져 있어도
+    // 찾게 합니다. 너무 멀리 있는 걸 잘못 잡을 위험은 위 600자 범위 제한과,
+    // 아래에서 "placeholder에 가장 가까운 매칭"을 쓰는 것으로 방지합니다.
+    const matches = [...before.matchAll(/width="(\d+)"[\s\S]*?height="(\d+)"/g)];
+    if (!matches.length) return { width: null, height: null };
+    const last = matches[matches.length - 1];
+    const w = parseInt(last[1], 10);
+    const h = parseInt(last[2], 10);
+    return (w > 0 && h > 0) ? { width: w, height: h } : { width: null, height: null };
+  }
+
+  /** ⚠️ 2026-09 신설 — "URL 직접 입력"으로 붙여넣은 이미지는 업로드/AI생성과 달리
+   *  resizeImageToRatio()를 안 거칩니다(이미 만들어진 링크를 그대로 쓰는 용도라
+   *  애초에 파일 자체가 없음). 원격 URL의 이미지를 클라이언트에서 자동으로
+   *  크롭하려면 <canvas>로 픽셀을 다뤄야 하는데, 그러려면 그 서버가 CORS를
+   *  허용해야만 안전하게 동작합니다 — 임의의 외부 URL에 대해 이걸 항상
+   *  기대할 수 없어서, 자동 교정 대신 "비율이 슬롯과 다르면 명확히 경고"하는
+   *  쪽을 택합니다. 실제 이미지 치수(naturalWidth/Height)를 읽는 것 자체는
+   *  CORS와 무관하게 항상 가능합니다(픽셀 데이터를 읽는 것과 달리 크기만
+   *  읽는 건 제약이 없음).
+   *  @param {string} url
+   *  @param {{width:number, height:number}} target
+   *  @param {(warning: string|null) => void} onResult */
+  function checkUrlAspectRatio(url, target, onResult) {
+    if (!url || !target.width || !target.height) { onResult(null); return; }
+    const probe = new Image();
+    probe.onload = () => {
+      const targetRatio = target.width / target.height;
+      const actualRatio = probe.naturalWidth / probe.naturalHeight;
+      // 10% 이상 차이나면 육안으로도 어색해 보이는 수준이라 판단해서 경고합니다.
+      const diff = Math.abs(actualRatio - targetRatio) / targetRatio;
+      if (diff > 0.1) {
+        const guess = actualRatio > targetRatio ? "가로로 넓어서 안 잘리고 위아래 여백이 생기거나" : "세로로 길어서 슬롯보다 아래로 넘칠";
+        onResult(`⚠ 이 이미지의 비율이 슬롯(${target.width}:${target.height})과 달라서 ${guess} 수 있습니다. 원본을 슬롯 비율에 맞게 잘라서 다시 올려주세요.`);
+      } else {
+        onResult(null);
+      }
+    };
+    probe.onerror = () => onResult(null); // 로드 자체가 안 되면(CORS, 깨진 링크 등) 판단 보류
+    probe.src = url;
   }
 
   /** 이미지 슬롯의 통합 핸들러 — 파일/참고풀선택/지시문 중 있는 대로 조합해서 넘기고,
@@ -827,7 +953,19 @@ export function renderGenerator(root, params) {
       resultBlob = await generateImage({ file, referenceFiles, referenceUrls, instruction, purpose });
       aiUsed = true;
     }
-    const resized = await resizeImage(resultBlob, inferImageMaxWidth(key));
+    // ⚠️ 2026-09 — 예전엔 원본 비율을 그대로 유지한 채 긴 변만 줄여서, 슬롯이
+    // 기대하는 비율(예: 176:110)과 원본 비율이 다르면 "가로는 맞는데 세로가
+    // 제한 없이 길어지는" 문제가 있었습니다. 템플릿에 이미 박혀있는 목표
+    // width/height를 찾아서 그 비율로 중앙 기준 크롭합니다 — 못 찾으면
+    // resizeImageToRatio()가 알아서 기존 resizeImage()와 동일하게 동작합니다.
+    // ⚠️ 2026-09 버그 수정 — 마지막 인자(해상도 상한)로 inferImageMaxWidth(key)
+    // (슬롯의 작은 표시 크기, 예: 176)를 넘기고 있었는데, 이러면 크롭 후 실제
+    // 저장되는 이미지가 176x110처럼 매우 낮은 해상도로 강제로 눌려서 "화질이
+    // 떨어진다"는 문제가 있었습니다. EDM 표준 최대 해상도(600, 이 안에서는
+    // 고화질 유지)를 기준으로 삼습니다 — 비율은 crop 단계에서 이미 슬롯에
+    //맞게 확정되므로, 해상도만 별개로 넉넉하게 가져갑니다.
+    const targetSize = inferImageTargetSize(key);
+    const resized = await resizeImageToRatio(resultBlob, targetSize.width, targetSize.height, EDM_IMAGE_MAX_DIM);
     const filename = file?.name || `generated_${key}.png`;
     const finalUrl = await uploadToS3(resized, filename, "EDM");
     draft.fieldValues[key] = finalUrl;
@@ -898,7 +1036,14 @@ export function renderGenerator(root, params) {
         instruction: meta.newInstruction,
         purpose: t?.purpose
       });
-      const url = await uploadToS3(resultBlob, meta.filename, "EDM");
+      // ⚠️ 2026-09 버그 수정 — 일반 업로드/AI생성(generateAndStoreImage)은
+      // resizeImageToRatio()로 슬롯 비율에 맞게 크롭하는데, 재보정만 이 단계가
+      // 빠져 있어서 AI 서버가 돌려준 원본 비율 그대로 저장되고 있었습니다 —
+      // "AI 보정 후에는 미리보기 슬롯 세로값을 무시하고 길어진다"는 문의의
+      // 정확한 원인입니다. 동일하게 크롭을 적용합니다.
+      const targetSize = inferImageTargetSize(key);
+      const resized = await resizeImageToRatio(resultBlob, targetSize.width, targetSize.height, EDM_IMAGE_MAX_DIM);
+      const url = await uploadToS3(resized, meta.filename, "EDM");
       draft.fieldValues[key] = url;
       // ⚠️ 2026-09 변경: alt는 이제 배포/다운로드 시점에 이미지를 직접 분석해서
       // 만듭니다 — 여기서 지시문 기반으로 임시 대입하지 않습니다(handleImageGenerate
@@ -906,7 +1051,7 @@ export function renderGenerator(root, params) {
       // 재보정한 새 버전만 남기고, 이 필드의 예전 버전 에셋은 지웁니다 — 안 그러면 보정을
       // 시도할 때마다 안 쓰는 예전 이미지가 에셋 목록에 계속 쌓입니다.
       if (meta.assetId) store.deleteAsset(meta.assetId);
-      const newAssetId = registerAsset(key, meta.filename, url, resultBlob, meta.newInstruction, true);
+      const newAssetId = registerAsset(key, meta.filename, url, resized, meta.newInstruction, true);
       draft.imageMeta[key] = { ...meta, instruction: meta.newInstruction, newInstruction: "", aiProcessed: true, processed: true, assetId: newAssetId };
       log(`보정 완료: ${meta.filename}`);
     } catch (e) {
@@ -923,6 +1068,761 @@ export function renderGenerator(root, params) {
       el("input", { type: "checkbox", checked: checked ? "checked" : null, onchange: e => onChange(e.target.checked) }),
       el("span", { class: "toggle-track" })
     ]);
+  }
+
+  // ⚠️ 2026-09 신설(파일럿 1단계) — 완전 프리 템플릿의 첫 화면: 6종 헤더 중
+  // 하나를 고르는 카드 목록입니다. 다음 단계(섹션 추가/필드 입력/미리보기
+  // 연결)는 아직 없고, 지금은 "헤더를 고르면 선택 상태가 저장된다"까지만
+  // 동작합니다 — 전체를 한 번에 만들지 않고 단계별로 검증하며 진행 중입니다.
+  // ⚠️ 2026-09 — 필드 목록을 전부 나열하던 것("필드 5개: 배지 문구, 고객명...")이
+  // 카드마다 너무 장황해서, 라벨 + 그 헤더의 실제 색상 스와치만 남기는 심플한
+  // 형태로 바꿨습니다. 필드 구성은 어차피 헤더를 고른 뒤 3단계에서 직접 보이니
+  // 여기서 미리 나열할 필요가 크지 않습니다.
+  const HEADER_SWATCHES = {
+    onboarding: ["#0F218B", "#FFCC00"],
+    nurture: ["#FFFFFF", "#0F218B"],
+    winback: ["#000000", "#FFCC00"],
+    product: ["#000000", "#FFCC00"],
+    coupon: ["#FFFFFF", "#E53935"],
+    insideSales: ["#0F218B", "#FFFFFF"],
+    winbackService: ["#EDF1F8", "#0F218B"],
+    productH: ["#0F218B", "#FFFFFF"],
+    productV: ["#FFFFFF", "#0F218B"]
+  };
+  function sectionFreeformHeaderPicker() {
+    // ⚠️ 2026-09 — 9개 카드가 항상 펼쳐져 있어서 화면을 너무 많이 차지한다는
+    // 지적이 있었습니다. 이미지 슬롯과 동일한 패턴(sectionWrap의 collapsed
+    // 상태)을 재사용해서, 히어로를 이미 골랐으면 기본은 접힌 한 줄 요약만
+    // 보이고 클릭해야 펼쳐지게 만들었습니다 — 골랐던 걸 바꾸고 싶을 때만
+    // 펼쳐서 쓰는 용도입니다.
+    // ⚠️ 2026-09 — 처음엔 "제목을 감싸는 선" 지적을 sectionWrap()의 바깥
+    // 테두리로 오해해서 없앴는데, 실제로 지적하신 건 카드 하나하나(예:
+    // "파랑+노랑 스트라이프, 알약형 배지")를 감싸는 굵은 테두리(border:2px)
+    // 였습니다. 바깥은 원래(sectionWrap)대로 되돌리고, 카드 쪽 테두리를
+    // 1px·옅은 색으로 완화합니다.
+    if (draft.freeformHeaderId && !draft.freeformHeaderPickerExpanded) {
+      const label = EDM_HEADER_TYPES[draft.freeformHeaderId].label;
+      const badge = el("span", { style: "color:#0F218B;font-size:11px;font-weight:700;" }, `✅ ${label} ▾`);
+      return sectionWrap(null, "1단계 · 히어로 선택", null, [], "collapsed",
+        badge, () => { draft.freeformHeaderPickerExpanded = true; renderForm(); });
+    }
+    const collapseBtn = draft.freeformHeaderId
+      ? el("span", {
+          style: "font-size:11px;color:#999;cursor:pointer;",
+          onclick: e => { e.stopPropagation(); draft.freeformHeaderPickerExpanded = false; renderForm(); }
+        }, "▴ 접기")
+      : null;
+    return sectionWrap(null, "1단계 · 히어로 선택", "high", [
+      el("div", { style: "display:flex;flex-direction:column;gap:8px;" },
+        Object.entries(EDM_HEADER_TYPES).map(([id, header]) => {
+          const isSelected = draft.freeformHeaderId === id;
+          const swatches = HEADER_SWATCHES[id] || ["#ccc", "#eee"];
+          return el("div", {
+            style: `border:1px solid ${isSelected ? "#0F218B" : "#eee"};border-radius:8px;padding:9px 12px;cursor:pointer;background:${isSelected ? "#F0F3FF" : "#fff"};display:flex;align-items:center;gap:10px;`,
+            onclick: () => { draft.freeformHeaderId = id; draft.freeformHeaderPickerExpanded = true; renderForm(); renderPreview(); }
+          }, [
+            el("div", { style: `flex-shrink:0;width:22px;height:22px;border-radius:5px;border:1px solid #ddd;background:linear-gradient(135deg,${swatches[0]} 50%,${swatches[1]} 50%);` }),
+            el("div", { style: "font-size:12.5px;font-weight:700;color:#1a1a1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" },
+              (isSelected ? "✅ " : "") + header.label)
+          ]);
+        })
+      ),
+      draft.freeformHeaderId
+        ? el("p", { class: "hint", style: "margin-top:10px;color:#0F218B;" },
+            `"${EDM_HEADER_TYPES[draft.freeformHeaderId].label}" 선택됨.`)
+        : el("p", { class: "hint", style: "margin-top:10px;" }, "히어로를 하나 선택하세요.")
+    ], "", collapseBtn);
+  }
+
+  // ⚠️ 2026-09 신설(파일럿 2단계) — 헤더 아래에 넣을 섹션들을 자유롭게
+  // 추가/삭제/순서변경합니다. draft.freeformSectionIds는 "추가한 순서대로"
+  // 담긴 배열이라, 같은 섹션(예: 이미지카드 3단)을 여러 번 추가해서 반복
+  // 사용할 수도 있습니다(그래서 Set이 아니라 배열).
+  // ⚠️ 2026-09 재설계 — 같은 섹션 종류를 두 번 추가하면 값이 서로 섞이는
+  // 문제가 있어서, 각 섹션은 이제 고유 id를 가진 {id, type} 객체입니다.
+  // 그 인스턴스의 입력값은 draft.freeformSectionValues[id] 아래에 따로
+  // 저장되어 완전히 독립적입니다.
+  function sectionFreeformSectionPicker() {
+    const instances = draft.freeformSectionIds;
+    if (!draft.freeformSectionValues) draft.freeformSectionValues = {};
+    return sectionWrap(null, "2단계 · 섹션 구성", "high", [
+      instances.length
+        ? el("div", { style: "display:flex;flex-direction:column;gap:6px;margin-bottom:14px;" },
+            instances.map((inst, idx) => {
+              const section = EDM_SECTION_TYPES[inst.type];
+              return el("div", { style: "display:flex;align-items:center;gap:8px;border:1px solid #e0e0e0;border-radius:6px;padding:8px 10px;" }, [
+                el("span", { style: "font-size:11px;color:#999;width:16px;" }, String(idx + 1)),
+                el("span", { style: "flex:1;font-size:12px;" }, section ? section.label : `(알 수 없음: ${inst.type})`),
+                el("button", {
+                  class: "btn btn-sm ghost", disabled: idx === 0 ? "disabled" : null,
+                  onclick: () => { [instances[idx - 1], instances[idx]] = [instances[idx], instances[idx - 1]]; renderForm(); renderPreview(); }
+                }, "↑"),
+                el("button", {
+                  class: "btn btn-sm ghost", disabled: idx === instances.length - 1 ? "disabled" : null,
+                  onclick: () => { [instances[idx + 1], instances[idx]] = [instances[idx], instances[idx + 1]]; renderForm(); renderPreview(); }
+                }, "↓"),
+                el("button", {
+                  class: "btn btn-sm danger",
+                  onclick: () => {
+                    instances.splice(idx, 1);
+                    delete draft.freeformSectionValues[inst.id];
+                    renderForm(); renderPreview();
+                  }
+                }, "삭제")
+              ]);
+            }))
+        : el("p", { class: "hint", style: "margin-bottom:10px;font-size:11px;color:#999;" }, "아직 추가한 섹션이 없습니다. 아래에서 골라 추가하세요."),
+      el("div", { style: "display:flex;flex-wrap:wrap;gap:8px;" },
+        // ⚠️ 2026-09 — Object.entries()로 정의 순서 그대로 나열했더니
+        // "하단 CTA 버튼"과 "하단 CTA 버튼 2개(나란히)"처럼 성질이 비슷한
+        // 것끼리 떨어져 있어서 찾기 불편하다는 지적이 있었습니다. 카드류
+        // (이미지+카피 계열) → CTA/버튼류 → 텍스트/이미지 단독 → 쿠폰 →
+        // 상품/아이콘(특수) 순서로, 비슷한 것끼리 인접하게 명시적으로
+        // 정렬합니다. 여기 없는 새 섹션 종류가 추가되면 자동으로 맨 뒤에
+        // 붙습니다(빠뜨려도 안전).
+        (() => {
+          const GROUP_ORDER = [
+            "bigImage", "simpleCard", "imageCardWithButton",
+            "twoColCards", "imageCards", "linkCardsWithDesc", "miniIconGrid",
+            "textCopy",
+            "couponBox",
+            "productGrid",
+            "ctaButton", "twoCtaButtons"
+          ];
+          const rest = Object.keys(EDM_SECTION_TYPES).filter(k => !GROUP_ORDER.includes(k));
+          return [...GROUP_ORDER, ...rest].filter(sid => EDM_SECTION_TYPES[sid]);
+        })().map(sid => {
+          const section = EDM_SECTION_TYPES[sid];
+          return el("button", {
+            class: "btn btn-sm",
+            onclick: () => {
+              const id = "sec" + Date.now() + Math.random().toString(16).slice(2);
+              instances.push({ id, type: sid });
+              draft.freeformSectionValues[id] = {};
+              renderForm(); renderPreview();
+            }
+          }, "+ " + section.label);
+        })
+      ),
+    ]);
+  }
+
+  // ⚠️ 2026-09 — 섹션 HTML 안에서 {{image_N}}가 들어있는 태그의 width/height를
+  // 찾아서 목표 크기로 씁니다. inferImageTargetSize()(고정 템플릿 전용, 여러
+  // 템플릿을 검색)와 같은 발상이지만, 이건 섹션 하나의 HTML 문자열 안에서만
+  // 찾으면 되니 훨씬 간단합니다.
+  function inferFreeformImageTargetSize(sectionType, key) {
+    const section = EDM_SECTION_TYPES[sectionType];
+    if (!section) return { width: null, height: null };
+    const idx = section.html.indexOf(`{{${key}}}`);
+    if (idx === -1) return { width: null, height: null };
+    const before = section.html.slice(Math.max(0, idx - 600), idx);
+    const matches = [...before.matchAll(/width="(\d+)"[\s\S]*?height="(\d+)"/g)];
+    if (!matches.length) return { width: null, height: null };
+    const last = matches[matches.length - 1];
+    const w = parseInt(last[1], 10), h = parseInt(last[2], 10);
+    return (w > 0 && h > 0) ? { width: w, height: h } : { width: null, height: null };
+  }
+
+  // ⚠️ 2026-09 재구성 — "소재추가/원본교체/AI생성/URL직접입력"을 고정 템플릿과
+  // 동일하게 갖추면서, 참고 이미지 풀(draft.imageReferencePool)도 그대로
+  // 공유해서 씁니다 — 이 풀은 필드별로 안 나뉘고 항상 전역 하나라, 프리템플릿의
+  // 모든 이미지 슬롯도 고정 템플릿과 똑같이 "여기 등록해두면 모든 슬롯이 자동
+  // 참고"가 됩니다. 지시문 없이 파일만 있으면 AI 호출 없이 그냥 업로드하고
+  // (기존 handleFreeformImageUpload와 동일), 지시문이 있으면(파일 유무 무관)
+  // AI 생성 API를 호출합니다.
+  async function generateAndStoreFreeformImage(sectionType, key, values, { file, instruction, metaKey } = {}) {
+    const pool = draft.imageReferencePool || [];
+    if (!file && !instruction?.trim() && !pool.length) {
+      toast("파일을 선택하거나 지시문을 입력하거나, 소재를 하나 이상 등록해주세요");
+      return;
+    }
+    draft.generating = true;
+    renderForm();
+    try {
+      let resultBlob, aiUsed;
+      if (!instruction?.trim() && file) {
+        log(`이미지 업로드 중... (${file.name})`);
+        resultBlob = file;
+        aiUsed = false;
+      } else {
+        log("AI 이미지 생성 중...");
+        const refFiles = pool.filter(r => r.file).map(r => r.file);
+        const refUrls = pool.filter(r => !r.file && r.url).map(r => r.url);
+        resultBlob = await generateImage({ file, referenceFiles: refFiles, referenceUrls: refUrls, instruction, purpose: draft.purpose });
+        aiUsed = true;
+      }
+      const target = inferFreeformImageTargetSize(sectionType, key);
+      const resized = target.width
+        ? await resizeImageToRatio(resultBlob, target.width, target.height, EDM_IMAGE_MAX_DIM)
+        : await resizeImage(resultBlob, EDM_IMAGE_MAX_DIM);
+      const filename = file?.name || `generated_${key}.png`;
+      const url = await uploadToS3(resized, filename, "EDM");
+      values[key] = url;
+      // ⚠️ 2026-09 신설 — metaKey가 있으면(개별 슬롯 UI에서 호출) 고정 템플릿과
+      // 동일한 "완료 상태"(썸네일+배지+재업로드) 표시를 위한 메타를 채웁니다.
+      // 일괄 생성(runGenerateAllFreeformImages)처럼 metaKey 없이 부르면 이 단계는
+      // 조용히 건너뜁니다(하위 호환).
+      if (metaKey) {
+        values[metaKey] = { ...(values[metaKey] || {}), filename, processed: true, instruction, aiProcessed: aiUsed, expanded: true };
+      }
+      log("완료");
+    } catch (e) {
+      log("오류: " + e.message);
+    } finally {
+      draft.generating = false;
+      values[`${key}__uploading`] = false;
+      renderForm();
+      renderPreview();
+    }
+  }
+
+  // ⚠️ 2026-09 신설 — 개별 슬롯 UI(펼침 상태)에서 쓰는 얇은 래퍼. g(그룹)와
+  // key만 넘기면 metaKey(`${key}__meta`)까지 알아서 채워서
+  // generateAndStoreFreeformImage를 호출합니다.
+  async function generateAndStoreFreeformImageWithMeta(g, key, { file, instruction } = {}) {
+    await generateAndStoreFreeformImage(g.sectionType, key, g.values, { file, instruction, metaKey: `${key}__meta` });
+  }
+
+  // ⚠️ 2026-09 신설 — 고정 템플릿의 handleRecorrect()와 동일한 "추가 보정 요청"
+  // 기능. 원본 File(Blob)은 인스턴스 값에 안 남겨두므로(저장 시 손실되는 문제와
+  // 동일한 이유로 애초에 안 씀), 항상 이미 저장된 URL을 참고 이미지 1번으로
+  // 넘겨서 편집을 요청합니다.
+  async function handleFreeformRecorrect(g, key) {
+    const metaKey = `${key}__meta`;
+    const meta = g.values[metaKey] || {};
+    const savedUrl = g.values[key];
+    if (!savedUrl || !meta.newInstruction?.trim()) return;
+    g.values[`${key}__uploading`] = true;
+    renderForm();
+    log(`보정 재요청 중... (${meta.filename})`);
+    try {
+      const pool = draft.imageReferencePool || [];
+      const refFiles = pool.filter(r => r.file).map(r => r.file);
+      const refUrls = pool.filter(r => !r.file && r.url).map(r => r.url);
+      const resultBlob = await generateImage({
+        referenceFiles: refFiles,
+        referenceUrls: [savedUrl, ...refUrls],
+        instruction: meta.newInstruction,
+        purpose: draft.purpose
+      });
+      const target = inferFreeformImageTargetSize(g.sectionType, key);
+      const resized = target.width
+        ? await resizeImageToRatio(resultBlob, target.width, target.height, EDM_IMAGE_MAX_DIM)
+        : await resizeImage(resultBlob, EDM_IMAGE_MAX_DIM);
+      const url = await uploadToS3(resized, meta.filename, "EDM");
+      g.values[key] = url;
+      g.values[metaKey] = { ...meta, instruction: meta.newInstruction, newInstruction: "", aiProcessed: true };
+      log("보정 완료");
+    } catch (e) {
+      log("오류: " + e.message);
+    } finally {
+      g.values[`${key}__uploading`] = false;
+      renderForm();
+      renderPreview();
+    }
+  }
+
+
+  // ⚠️ 2026-09 신설(파일럿 3단계) — 헤더와 각 섹션 인스턴스의 실제 값을
+  // 입력하는 폼. 이미지 필드는 URL 직접 입력과 실제 파일 업로드(섹션에 박힌
+  // 목표 크기로 자동 크롭) 둘 다 지원합니다.
+  // ⚠️ 2026-09 신설 — 고정 템플릿의 runGenerateCopy()는 resolveTemplate()이
+  // null이면(프리템플릿) 그냥 return해버려서 프리템플릿에선 동작을 안 합니다.
+  // 하나로 합쳐서 부르면 같은 섹션을 두 번 추가했을 때 결과가 어느 인스턴스
+  // 것인지 구분이 안 되므로, 그룹(헤더 또는 섹션 인스턴스 1개) 단위로 개별
+  // 호출하도록 만듭니다.
+  async function runGenerateCopyForGroup(g) {
+    const textKeys = g.fields.filter(f => f.type === "text" || f.type === "button-label").map(f => f.key);
+    if (!textKeys.length) return;
+    draft.generating = true;
+    renderForm();
+    log("AI 카피 생성 요청...");
+    try {
+      const result = await generateCopy(draft.purpose, textKeys, draft.aiPrompt);
+      Object.assign(g.values, result);
+      log("AI 카피 생성 완료");
+    } catch (e) {
+      log("오류: " + e.message);
+    } finally {
+      draft.generating = false;
+      renderForm();
+      renderPreview();
+    }
+  }
+
+  // ⚠️ 2026-09 신설 — 상품그리드 섹션 인스턴스 하나(g)의 시리즈코드 3개를 조회해서
+  // brandName_N/seriesName_N/price_N/image_N/link_N을 채웁니다. 기존
+  // lookupSeriesCodes()와 로직은 같지만, draft.products(전역)가 아니라 이
+  // 인스턴스의 values에만 반영합니다.
+  async function lookupSeriesCodesForGroup(g) {
+    const codes = (g.values.__seriesCodes || []).map(c => String(c || "").trim()).filter(Boolean);
+    if (!codes.length) { toast("시리즈 코드를 1개 이상 입력하세요"); return; }
+    log(`시리즈 코드 ${codes.length}건 조회 중...`);
+    const results = await Promise.all(codes.slice(0, 15).map(async code => {
+      try {
+        const product = await fetchSeriesInfo(code);
+        if (!product.price && g.values.__priceOverrides?.[code]) {
+          product.price = g.values.__priceOverrides[code];
+        }
+        if (!product.name) log(`⚠ 시리즈 코드 "${code}"의 상품을 찾지 못했습니다.`);
+        return product;
+      } catch (e) {
+        log(`⚠ 시리즈 코드 "${code}" 조회 실패: ${e.message}`);
+        return { code };
+      }
+    }));
+    results.forEach((p, i) => {
+      const n = i + 1;
+      g.values[`seriesName_${n}`] = p.name;
+      g.values[`price_${n}`] = p.price ? `${p.price}원~` : "";
+      g.values[`image_${n}`] = p.image;
+      g.values[`image_${n}_alt`] = p.name || "상품 이미지";
+      g.values[`brandName_${n}`] = p.brandName || p.brand || "MISUMI";
+      g.values[`link_${n}`] = p.code ? withUtm(`https://kr.misumi-ec.com/vona2/detail/${encodeURIComponent(p.code)}/`) : "";
+    });
+    const successCount = results.filter(p => p.name).length;
+    log(`시리즈 조회 완료 — 성공 ${successCount}건${results.length - successCount ? ` · 실패 ${results.length - successCount}건` : ""}`);
+    toast(`상품 데이터 ${successCount}건을 불러왔습니다`);
+    renderForm();
+    renderPreview();
+  }
+
+  async function handleSeriesExcelUploadForGroup(file, g) {
+    if (typeof window === "undefined" || !window.XLSX) {
+      toast("엑셀 업로드 기능을 불러오지 못했습니다");
+      return;
+    }
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = window.XLSX.read(buf, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      const priceByCode = {};
+      const codes = [];
+      for (const r of rows) {
+        const code = String(r[0] ?? "").trim();
+        if (!code || !/\d/.test(code)) continue;
+        codes.push(code);
+        const price = String(r[1] ?? "").trim();
+        if (price) priceByCode[code] = price.replace(/[^\d]/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+      }
+      if (!codes.length) { toast("엑셀에서 시리즈 코드를 찾지 못했습니다"); return; }
+      if (codes.length > 15) log(`⚠ 엑셀에 ${codes.length}개가 있어 처음 15개만 반영했습니다 (상품그리드 한도)`);
+      g.values.__seriesCodes = Array.from({ length: 15 }, (_, i) => codes[i] || "");
+      g.values.__priceOverrides = priceByCode;
+      g.values.__seriesCodesExpanded = codes.length > 9;
+      log(`엑셀에서 시리즈 코드 ${Math.min(codes.length, 15)}건을 불러왔습니다`);
+      renderForm();
+      await lookupSeriesCodesForGroup(g);
+    } catch (e) {
+      toast("엑셀 파일을 읽는 중 오류가 발생했습니다");
+      log("오류: " + e.message);
+    }
+  }
+
+  // ⚠️ 2026-09 신설 — 헤더 + 각 섹션 인스턴스를 "그룹"(공통 처리 단위) 목록으로
+  // 만드는 로직을 재사용 가능하게 뽑았습니다. 폼 렌더링뿐 아니라, 아래 전역
+  // 일괄 생성(카피/이미지) 함수도 정확히 같은 그룹 목록이 필요합니다.
+  function buildFreeformGroups() {
+    if (!draft.freeformHeaderId) return [];
+    const header = EDM_HEADER_TYPES[draft.freeformHeaderId];
+    const groups = [
+      { title: `히어로 — ${header.label}`, fields: header.fields, values: draft.fieldValues, sectionType: null, namespace: null }
+    ];
+    draft.freeformSectionIds.forEach((inst, idx) => {
+      const section = EDM_SECTION_TYPES[inst.type];
+      if (!section) return;
+      if (!draft.freeformSectionValues[inst.id]) draft.freeformSectionValues[inst.id] = {};
+      groups.push({ title: `${idx + 1}. ${section.label}`, fields: section.fields, values: draft.freeformSectionValues[inst.id], sectionType: inst.type, namespace: inst.id });
+    });
+    return groups;
+  }
+
+  // ⚠️ 2026-09 신설 — 고정 템플릿처럼 "전역 일괄 버튼 + 개별 슬롯 버튼도
+  // 그대로 유지"하는 구조를 프리템플릿에도 적용합니다. 모든 그룹(헤더+각
+  // 섹션 인스턴스)을 순회하며 텍스트 필드를 한 번에 채웁니다. 상품그리드는
+  // AI 카피 대상이 아니라서(runGenerateCopyForGroup이 이미 그렇게 처리) 자연히
+  // 건너뜁니다.
+  async function runGenerateAllFreeformCopy() {
+    const groups = buildFreeformGroups().filter(g => g.fields.some(f => f.type === "text" || f.type === "button-label") && g.sectionType !== "productGrid");
+    if (!groups.length) { toast("카피를 채울 필드가 없습니다"); return; }
+    for (const g of groups) await runGenerateCopyForGroup(g);
+  }
+
+  // ⚠️ 2026-09 신설 — 고정 템플릿의 runGenerateAllImages()와 동일한 규칙:
+  // 참고 이미지 풀이 있어야 하고, "이 슬롯에 뭘 원하는지" 프롬프트를 미리
+  // 적어둔 슬롯만 대상으로 삼습니다(값이 이미 있는 슬롯은 건너뜀 — 실수로
+  // 덮어쓰지 않게).
+  async function runGenerateAllFreeformImages() {
+    const pool = draft.imageReferencePool || [];
+    if (!pool.length) { toast("먼저 소재를 하나 이상 등록해주세요"); return; }
+    const targets = [];
+    for (const g of buildFreeformGroups()) {
+      for (const f of g.fields) {
+        if (f.type === "image" && !g.values[f.key] && (g.values[`${f.key}__meta`]?.instruction || "").trim()) {
+          targets.push({ g, f });
+        }
+      }
+    }
+    if (!targets.length) { toast("각 이미지 슬롯에 어떤 이미지가 필요한지 설명을 먼저 적어주세요"); return; }
+    draft.generating = true;
+    renderForm();
+    log(`AI 이미지 일괄 생성 시작... (${targets.length}개 슬롯, 소재 ${pool.length}개)`);
+    let done = 0, failed = 0;
+    for (const { g, f } of targets) {
+      try {
+        await generateAndStoreFreeformImage(g.sectionType, f.key, g.values, { instruction: g.values[`${f.key}__meta`]?.instruction, metaKey: `${f.key}__meta` });
+        done++;
+      } catch (e) {
+        failed++;
+        log(`실패(${f.key}): ` + e.message);
+      }
+    }
+    log(`AI 이미지 일괄 생성 완료 — 성공 ${done}건${failed ? ` · 실패 ${failed}건` : ""}`);
+    draft.generating = false;
+    renderForm();
+    renderPreview();
+  }
+
+  // ⚠️ 2026-09 신설 — 3단계 상단에 두는 전역 도구: 등록된 소재 썸네일(요청
+  // 사항 — "뭘 추가했는지 안 보인다"), 소재 추가, 전역 일괄 생성 버튼 2개.
+  // 개별 그룹/슬롯의 버튼은 그대로 두고(고정 템플릿과 동일한 이중 구조),
+  // 이건 그 위에 놓이는 "한 번에 다 하고 싶을 때"용 지름길입니다.
+  // ⚠️ 2026-09 재구성 — "이미지 소재 + 일괄 생성" 하나에 카피/이미지를 같이
+  // 뒀었는데, 고정 템플릿은 이 둘을 완전히 별개 섹션으로 둡니다:
+  // sectionAiPrompt("AI로 카피 자동 채우기" — 전역 톤 프롬프트 하나로 모든
+  // 텍스트 필드에 공통 적용) / sectionImageReferencePool("참고 이미지 +
+  // 슬롯별 설명" — 소재는 공용, 지시문은 슬롯마다 따로). 두 UI/기능의 성격이
+  // 근본적으로 달라서(하나는 "톤 지침 하나로 전체 적용", 하나는 "슬롯마다
+  // 다른 지시") 합쳐두면 헷갈립니다. 프리템플릿도 완전히 동일하게 둘로
+  // 나눕니다.
+  function sectionFreeformAiPrompt() {
+    return sectionWrap("AI", "AI로 카피 자동 채우기", "ai", [
+      el("div", { class: "field" }, [
+        el("label", {}, "AI에게 요청할 내용 (선택 · 카피 생성에 반영됩니다)"),
+        el("textarea", {
+          placeholder: "예: 구매담당자 대상, 신뢰감 있는 톤으로 / FA·금형부품 신제품 카탈로그 강조",
+          oninput: e => { draft.aiPrompt = e.target.value; }
+        }, draft.aiPrompt || "")
+      ]),
+      el("button", {
+        class: "ai-btn", disabled: draft.generating ? "disabled" : null,
+        onclick: runGenerateAllFreeformCopy
+      }, draft.generating ? "생성 중..." : "✨ AI로 카피 자동 채우기")
+    ]);
+  }
+
+  function sectionFreeformImagePool() {
+    const pool = draft.imageReferencePool || [];
+    const imageTargets = [];
+    for (const g of buildFreeformGroups()) {
+      for (const f of g.fields) {
+        if (f.type === "image") imageTargets.push({ g, f });
+      }
+    }
+    return sectionWrap("AI", "참고 이미지 + 슬롯별 설명", "ai", [
+      el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;margin-bottom:10px;" }, "여기 등록한 소재는 아래 모든 이미지 슬롯이 자동으로 참고합니다."),
+      ...pool.map((ref, i) => el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px;" }, [
+        ref.url ? el("img", { src: ref.url, style: "width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0;" }) : null,
+        el("input", { type: "text", value: ref.label || "", placeholder: "이 이미지가 뭔지 짧게 (예: 제품 정면샷)", style: "flex:1;min-width:0;padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;", oninput: e => { ref.label = e.target.value; } }),
+        el("button", { class: "btn btn-sm ghost", style: "flex-shrink:0;", onclick: () => { pool.splice(i, 1); renderForm(); } }, "삭제")
+      ])),
+      el("div", { class: "row2" }, [
+        el("label", { class: "btn btn-sm upload-label", style: "text-align:center;justify-content:center;" }, [
+          "파일로 추가",
+          el("input", {
+            type: "file", accept: "image/*", multiple: true, style: "display:none;",
+            onchange: e => {
+              const files = [...e.target.files].filter(f => f.type.startsWith("image/"));
+              if (!files.length) return;
+              files.forEach(f => pool.push({ file: f, url: URL.createObjectURL(f), label: f.name }));
+              draft.imageReferencePool = pool;
+              renderForm();
+            }
+          })
+        ]),
+        el("input", {
+          type: "text", placeholder: "이미지 URL 붙여넣기 (Enter로 추가, 여러 개 가능)",
+          style: "padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;",
+          onkeydown: e => {
+            if (e.key === "Enter" && e.target.value.trim()) {
+              pool.push({ url: e.target.value.trim(), label: "" });
+              e.target.value = "";
+              renderForm();
+            }
+          }
+        })
+      ]),
+      pool.length && imageTargets.length ? el("div", { style: "margin-top:10px;padding-top:10px;border-top:1px solid #eee;" }, [
+        el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "슬롯마다 필요한 걸 적어주세요 (비우면 건너뜀):"),
+        ...imageTargets.map(({ g, f }) => el("div", { class: "row2", style: "align-items:center;margin-bottom:6px;" }, [
+          el("label", { style: "width:110px;flex-shrink:0;font-size:11px;font-weight:700;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" }, `${g.title.replace(/^\d+\.\s*/, "")} · ${f.label}`),
+          el("input", {
+            type: "text", value: g.values[`${f.key}__meta`]?.instruction || "",
+            placeholder: "예: 제품 정면샷을 파란 배경에 합성",
+            oninput: e => { g.values[`${f.key}__meta`] = { ...(g.values[`${f.key}__meta`] || {}), instruction: e.target.value }; }
+          })
+        ])),
+        el("button", {
+          class: "ai-btn", style: "width:100%;margin-top:4px;", disabled: draft.generating ? "disabled" : null,
+          onclick: runGenerateAllFreeformImages
+        }, draft.generating ? "생성 중..." : "✨ AI로 이미지 일괄 생성")
+      ]) : null
+    ]);
+  }
+
+  // ⚠️ 2026-09 재구성 — 이미지 필드는 텍스트 필드(.field 안의 라벨+토글)와
+  // 완전히 다른 구조가 필요합니다. 고정 템플릿은 이미지 슬롯 하나하나를
+  // sectionWrap()으로 감싸서 실제 테두리+배경색(.sec, .sec-hd CSS)이 있는
+  // 카드로 만드는데, 예전 버전은 이 sectionWrap()을 안 쓰고 일반 div로만
+  // 흉내 내서 시각적으로 완전히 달랐습니다("빨간 테두리로 표시해주신 모양과
+  // 다르다"는 지적의 정확한 원인). 이제 고정 템플릿과 똑같이 sectionWrap()을
+  // 직접 반환합니다.
+  function renderFreeformImageField(g, f) {
+    const metaKey = `${f.key}__meta`;
+    const meta = g.values[metaKey] || {};
+    const value = g.values[f.key];
+    const pool = draft.imageReferencePool || [];
+    const uploading = g.values[`${f.key}__uploading`];
+
+    if (!meta.expanded) {
+      const statusText = value && meta.processed ? "✅ 완료" : (value ? "🔗 URL 지정됨" : "비어있음");
+      const statusBadge = el("span", {
+        style: (value && meta.processed ? "color:#2e7d32;" : "color:#999;") + "font-size:11px;font-weight:700;"
+      }, statusText + " ▾");
+      return sectionWrap(null, f.label, null, [], "collapsed",
+        statusBadge, () => { g.values[metaKey] = { ...meta, expanded: true }; renderForm(); });
+    }
+    const collapseBtn = el("span", {
+      style: "font-size:11px;color:#999;cursor:pointer;",
+      onclick: e => { e.stopPropagation(); g.values[metaKey] = { ...meta, expanded: false }; renderForm(); }
+    }, "▴ 접기");
+
+    // 완료 상태
+    if (value && meta.processed) {
+      return sectionWrap(null, f.label, null, [
+        el("div", { class: "image-field-filled" }, [
+          el("img", { src: value, alt: "", class: "image-field-thumb" }),
+          el("div", { class: "image-field-info" }, [
+            el("p", { class: "image-field-name" }, meta.filename || "이미지"),
+            el("span", { class: "badge " + (meta.aiProcessed ? "green" : "blue") }, meta.aiProcessed ? "AI 보정 완료" : "업로드 완료"),
+            el("span", { class: "badge blue" }, "S3 저장됨")
+          ])
+        ]),
+        meta.instruction ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, `요청한 보정: "${meta.instruction}"`) : null,
+        el("div", { class: "field-with-regen", style: "margin:6px 0;" }, [
+          el("input", {
+            type: "text", value: meta.newInstruction || "", style: "flex:1;min-width:0;padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;",
+            placeholder: "보정 요청 추가 · 예: 배경을 더 어둡게",
+            oninput: e => { g.values[metaKey] = { ...g.values[metaKey], newInstruction: e.target.value }; }
+          }),
+          el("button", {
+            class: "btn btn-sm", style: "flex-shrink:0;white-space:nowrap;", disabled: uploading ? "disabled" : null,
+            onclick: () => handleFreeformRecorrect(g, f.key)
+          }, uploading ? "처리 중..." : "보정 요청")
+        ]),
+        el("div", { class: "row2" }, [
+          el("button", { class: "btn btn-sm", style: "justify-content:center;", onclick: () => { g.values[metaKey] = { expanded: true }; g.values[f.key] = ""; renderForm(); } }, "다시 업로드"),
+          el("button", { class: "btn btn-sm ghost", style: "justify-content:center;", onclick: () => { g.values[metaKey] = { expanded: true, urlMode: true }; renderForm(); } }, "URL 직접 입력")
+        ])
+      ], "", collapseBtn);
+    }
+
+    // URL 직접 입력 상태
+    if (meta.urlMode || (value && !meta.processed)) {
+      return sectionWrap(null, f.label, null, [
+        el("input", {
+          type: "text", value: value || "", placeholder: "https://... (CLI로 만든 링크 등 붙여넣기)",
+          style: "padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;",
+          "data-form-field": `${g.namespace ? g.namespace + "::" : ""}${f.key}`,
+          oninput: e => { g.values[f.key] = e.target.value; renderPreview(); g.values[metaKey] = { ...g.values[metaKey], urlWarning: null }; },
+          onchange: e => {
+            const url = e.target.value.trim();
+            if (!url) return;
+            const target = inferFreeformImageTargetSize(g.sectionType, f.key);
+            checkUrlAspectRatio(url, target, warning => {
+              g.values[metaKey] = { ...g.values[metaKey], urlWarning: warning };
+              renderForm();
+            });
+          }
+        }),
+        meta.urlWarning ? el("p", { class: "hint", style: "color:#c0392b;margin-top:4px;" }, meta.urlWarning) : null,
+        el("button", {
+          class: "btn btn-sm ghost", style: "margin-top:6px;",
+          onclick: () => { g.values[metaKey] = { expanded: true }; g.values[f.key] = ""; renderForm(); }
+        }, "업로드로 전환")
+      ], "", collapseBtn);
+    }
+
+    // 빈 상태
+    return sectionWrap(null, f.label, null, [
+      pool.length ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" },
+        `등록된 소재 ${pool.length}개를 자동으로 참고합니다.`) : null,
+      el("textarea", {
+        placeholder: "무엇을 원하는지 설명 (선택) · 예: 배경 제거 / 소재 참고해서 합성 / 비워두면 그냥 업로드만",
+        style: "width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;",
+        value: meta.instruction || "",
+        oninput: e => { g.values[metaKey] = { ...g.values[metaKey], instruction: e.target.value }; }
+      }),
+      el("p", { class: "hint", style: "font-size:10px;color:#999;margin:3px 0 6px;" },
+        "설명 적으면 버튼이 \"AI로 생성\"으로, 없으면 \"업로드\"만 됩니다."),
+      el("div", { class: "row2", style: "margin-bottom:6px;" }, [
+        el("label", { class: "btn btn-sm upload-label", style: "text-align:center;justify-content:center;" }, [
+          "소재 추가 (여러 장)",
+          el("input", {
+            type: "file", accept: "image/*", multiple: true, style: "display:none;",
+            onchange: e => {
+              const files = [...e.target.files].filter(f2 => f2.type.startsWith("image/"));
+              if (!files.length) return;
+              files.forEach(f2 => pool.push({ file: f2, url: URL.createObjectURL(f2), label: f2.name }));
+              draft.imageReferencePool = pool;
+              renderForm();
+            }
+          })
+        ]),
+        el("label", { class: "btn btn-sm upload-label", style: "text-align:center;justify-content:center;" }, [
+          "원본 교체 (1장)",
+          el("input", {
+            type: "file", accept: "image/*", style: "display:none;", disabled: uploading ? "disabled" : null,
+            onchange: async e => {
+              const file = e.target.files[0];
+              if (!file || !file.type.startsWith("image/")) { toast("이미지 파일만 선택할 수 있습니다"); return; }
+              g.values[`${f.key}__uploading`] = true;
+              renderForm();
+              await generateAndStoreFreeformImageWithMeta(g, f.key, { file, instruction: meta.instruction });
+            }
+          })
+        ])
+      ]),
+      el("div", { class: "image-upload-row" }, [
+        el("button", {
+          class: "btn btn-sm", disabled: uploading ? "disabled" : null,
+          onclick: async () => {
+            g.values[`${f.key}__uploading`] = true;
+            renderForm();
+            await generateAndStoreFreeformImageWithMeta(g, f.key, { instruction: meta.instruction });
+          }
+        }, uploading ? "처리 중..." : (meta.instruction?.trim() ? "✨ AI로 생성" : "업로드")),
+        el("button", {
+          class: "btn btn-sm ghost",
+          onclick: () => { g.values[metaKey] = { ...g.values[metaKey], urlMode: true }; renderForm(); }
+        }, "URL 직접 입력")
+      ])
+    ], "", collapseBtn);
+  }
+
+  function sectionFreeformValueInputs() {
+    if (!draft.freeformHeaderId) return null;
+    const groups = buildFreeformGroups();
+
+    // ⚠️ 미리보기에서 직접 편집하면 postMessage로 이 폼도 동기화되는데(위
+    // window.addEventListener("message", ...) 참고), 그때 field 값과 정확히
+    // 같은 문자열로 이 입력창을 찾아야 합니다 — namespace가 있으면
+    // "instanceId::key" 형태로 동일하게 맞춥니다.
+    // ⚠️ 2026-09 신설 — 상품그리드 블록도 고정 템플릿의 sectionSeriesCodes()와
+    // 같은 흐름(시리즈코드 입력 → 전체조회 → brandName/seriesName/price/image/link
+    // 자동 채움, 엑셀 업로드 포함)을 씁니다. draft.products(전역, 고정 템플릿 전용)가
+    // 아니라 인스턴스별 values.__seriesCodes 배열에 저장해서, 상품그리드를 여러 번
+    // 추가해도 서로 독립적으로 동작합니다.
+    // ⚠️ 2026-09 — 원래 3개로 축소했었는데, "기존 템플릿 블록 그대로" 요청에 따라
+    // 실제 15개(5줄×3열) 전체를 그대로 가져왔습니다. 한꺼번에 15칸을 다 펼치면
+    // 폼이 너무 길어지니, 기존 sectionSeriesCodes()와 동일하게 기본 9개만 보이고
+    // "더 보기"로 나머지를 펼치는 UX를 그대로 재사용합니다.
+    const renderProductGridFields = g => {
+      if (!g.values.__seriesCodes) g.values.__seriesCodes = Array(15).fill("");
+      const codes = g.values.__seriesCodes;
+      const hasValueBeyond9 = codes.slice(9).some(c => c);
+      if (hasValueBeyond9 && !g.values.__seriesCodesExpanded) g.values.__seriesCodesExpanded = true;
+      const visibleCount = g.values.__seriesCodesExpanded ? 15 : 9;
+      return [
+        el("div", { class: "series-grid" }, codes.slice(0, visibleCount).map((code, i) =>
+          el("div", { class: "series-slot" }, [
+            el("input", {
+              type: "text", placeholder: `시리즈코드 ${i + 1}`, value: code,
+              style: "font-size:12.5px;border:1px solid #d0d0d0;border-radius:6px;font-family:inherit;outline:none;padding:7px 22px 7px 10px;",
+              oninput: e => { codes[i] = e.target.value; }
+            }),
+            code ? el("button", { class: "rm", onclick: () => { codes[i] = ""; renderForm(); } }, "✕") : null
+          ])
+        )),
+        !g.values.__seriesCodesExpanded ? el("button", {
+          class: "btn btn-sm ghost", style: "width:100%;margin-bottom:8px;",
+          onclick: () => { g.values.__seriesCodesExpanded = true; renderForm(); }
+        }, "+ 6개 더 보기 (최대 15개)") : null,
+        el("div", { class: "row2" }, [
+          el("button", { class: "btn series-lookup-btn", style: "justify-content:center;", onclick: () => lookupSeriesCodesForGroup(g) }, "전체 조회"),
+          el("label", { class: "btn upload-label", style: "justify-content:center;text-align:center;" }, [
+            "엑셀 업로드",
+            el("input", {
+              type: "file", accept: ".xlsx,.xls,.csv", style: "display:none;",
+              onchange: e => { if (e.target.files[0]) handleSeriesExcelUploadForGroup(e.target.files[0], g); }
+            })
+          ])
+        ]),
+        el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "엑셀: 1열 시리즈코드, 2열(선택) 가격 · 최대 15개까지 반영됩니다.")
+      ];
+    };
+    const formFieldId = g => (g.namespace ? `${g.namespace}::` : "");
+    // ⚠️ 2026-09 신설 — 쿠폰 블록은 일반 텍스트 입력창 6개를 나열하는 것보다,
+    // 기존 고정 템플릿의 sectionCoupon()과 같은 전용 UI(2열 배치, 도움말,
+    // 쿠폰코드 9자 제한)가 훨씬 쓰기 편합니다. draft.coupon(고정 템플릿 전용
+    // 단일 값)이 아니라 인스턴스별 values에 저장하도록 살짝 바꿔 재사용합니다.
+    const renderCouponFields = g => {
+      const c = g.values;
+      const setNs = key => (val => { c[key] = val; renderPreview(); });
+      return [
+        el("div", { class: "row2" }, [
+          field("할인율/금액", c.coupon_value, setNs("coupon_value")),
+          field("최대 할인 금액 (단위 포함, 예: 50,000원)", c.coupon_max, setNs("coupon_max"))
+        ]),
+        el("div", { class: "row2" }, [
+          field("적용 대상", c.coupon_target, setNs("coupon_target")),
+          field("주의 문구", c.coupon_note, setNs("coupon_note"))
+        ]),
+        el("div", { class: "row2" }, [
+          field("쿠폰 코드 (최대 9자)", c.coupon_code, v => { c.coupon_code = v.slice(0, 9); renderPreview(); }, { maxlength: 9 }),
+          field("사용 기한", c.coupon_expiry, setNs("coupon_expiry"))
+        ])
+      ];
+    };
+    return sectionWrap(null, "3단계 · 내용 입력", "high",
+      groups.map((g, gi) => el("div", {
+        style: `margin-bottom:14px;${gi < groups.length - 1 ? "padding-bottom:14px;border-bottom:1px solid #eee;" : ""}`
+      }, [
+        el("div", {
+          style: "font-size:11.5px;font-weight:700;color:#555;margin-bottom:8px;"
+        }, g.title),
+        el("div", {}, [
+        ...(g.sectionType === "couponBox" ? renderCouponFields(g)
+          : g.sectionType === "productGrid" ? renderProductGridFields(g)
+          : g.fields.map(f => {
+          // ⚠️ 2026-09 신설 — 텍스트("카피") 필드마다 사용 여부 토글을 추가.
+          // 이미지/링크 필드는 대상이 아닙니다(카피, 즉 문구 필드만 켜고 끌
+          // 이유가 있음 — 이미지는 URL을 비우면 이미 "안 씀"과 동일하고,
+          // 링크는 문구 필드와 항상 세트로만 존재해서 따로 끌 이유가 없음).
+          const isHidden = f.type === "text" && !!g.values[`${f.key}__hidden`];
+          if (f.type === "image") return renderFreeformImageField(g, f);
+          return el("div", { class: "field", style: "margin-bottom:8px;" }, [
+            el("div", { class: "field-label-row", style: "display:flex;align-items:center;justify-content:space-between;" }, [
+              el("label", { style: "font-size:11px;" }, f.label),
+              f.type === "text"
+                ? toggleSwitch(!isHidden, on => {
+                    g.values[`${f.key}__hidden`] = !on;
+                    renderForm(); renderPreview();
+                  })
+                : null
+            ]),
+            el("input", {
+              "data-form-field": formFieldId(g) + f.key,
+              type: "text", value: g.values[f.key] || "", disabled: isHidden ? "disabled" : null,
+              oninput: e => { g.values[f.key] = e.target.value; renderPreview(); }
+            })
+          ]);
+        }))
+        ])
+      ]))
+    );
   }
 
   function sectionDynamicFields() {
@@ -1039,8 +1939,8 @@ export function renderGenerator(root, params) {
             }, uploading ? "처리 중..." : "보정 요청")
           ]) : null,
           el("div", { class: "row2" }, [
-            el("button", { class: "btn btn-sm", style: "justify-content:center;", onclick: () => { draft.imageMeta[f.key] = {}; onChange(""); renderForm(); } }, "다시 업로드"),
-            el("button", { class: "btn btn-sm ghost", style: "justify-content:center;", onclick: () => { draft.imageMeta[f.key] = { urlMode: true }; renderForm(); } }, "URL 직접 입력")
+            el("button", { class: "btn btn-sm", style: "justify-content:center;", onclick: () => { draft.imageMeta[f.key] = { expanded: true }; onChange(""); renderForm(); } }, "다시 업로드"),
+            el("button", { class: "btn btn-sm ghost", style: "justify-content:center;", onclick: () => { draft.imageMeta[f.key] = { expanded: true, urlMode: true }; renderForm(); } }, "URL 직접 입력")
           ])
         ], "", collapseBtn);
       }
@@ -1048,14 +1948,32 @@ export function renderGenerator(root, params) {
       // URL 직접 입력 상태 — CLI로 만든 링크 등을 그대로 붙여넣는 기존 경로
       if (meta.urlMode || (value && !meta.processed)) {
         return sectionWrap(null, f.label, null, [
-          el("input", { type: "text", value, placeholder: "https://... (CLI로 만든 링크 등 붙여넣기)", style: "padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;", oninput: e => onChange(e.target.value) }),
+          el("input", {
+            type: "text", value, placeholder: "https://... (CLI로 만든 링크 등 붙여넣기)",
+            style: "padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;width:100%;box-sizing:border-box;",
+            oninput: e => { onChange(e.target.value); draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], urlWarning: null }; },
+            // ⚠️ 2026-09 신설 — 입력을 마치고 포커스를 벗어나는 시점에(타이핑할
+            // 때마다가 아니라) 실제 이미지 비율을 확인해서, 슬롯과 안 맞으면
+            // 경고를 보여줍니다. 자동으로 고쳐주진 못하지만(원격 URL이라
+            // CORS 문제로 클라이언트에서 안전하게 크롭하기 어려움), 적어도
+            // "왜 미리보기가 슬롯보다 길게 나오는지"는 명확히 알 수 있습니다.
+            onchange: e => {
+              const url = e.target.value.trim();
+              if (!url) return;
+              checkUrlAspectRatio(url, inferImageTargetSize(f.key), warning => {
+                draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], urlWarning: warning };
+                renderForm();
+              });
+            }
+          }),
+          meta.urlWarning ? el("p", { class: "hint", style: "color:#c0392b;margin-top:4px;" }, meta.urlWarning) : null,
           el("button", { class: "btn btn-sm ghost", style: "margin-top:6px;", onclick: () => {
-            // ⚠️ 2026-09 버그 수정 — imageMeta만 초기화하고 필드값(URL 텍스트,
-            // draft.fieldValues[key])은 안 비워서, "value && !meta.processed"
-            // 조건에 다시 걸려 URL 입력 화면으로 즉시 되돌아가고 있었습니다
-            // ("업로드로 전환"을 눌렀는데 아무 변화 없이 그 자리에 머무는 것처럼
-            // 보여서 "영역이 닫혀버린다"는 느낌을 줬습니다). 필드값도 같이 비웁니다.
-            draft.imageMeta[f.key] = {};
+            // ⚠️ 2026-09 재수정 — imageMeta를 완전히 {}로 초기화하면(예전 수정),
+            // "접기/펼치기" 기능이 나중에 추가되면서 그 안에 있던 expanded:true
+            // 상태까지 같이 날아가서, 필드값은 정확히 비워지는데 섹션 자체가
+            // 접힌 한 줄로 줄어드는 새로운 형태의 같은 문제("영역이 닫혀버림")가
+            // 재발했습니다. expanded는 유지한 채로 나머지만 초기화합니다.
+            draft.imageMeta[f.key] = { expanded: true };
             onChange("");
             renderForm();
           } }, "업로드로 전환")
@@ -1106,7 +2024,7 @@ export function renderGenerator(root, params) {
               // 하려는 의도입니다. 슬롯마다 소재를 따로 관리하면 "이 슬롯엔 있는데
               // 저 슬롯엔 없네" 하는 혼란이 다시 생기기 때문입니다.
               onchange: e => {
-                const files = [...e.target.files];
+                const files = filterImageFiles([...e.target.files]);
                 if (!files.length) return;
                 files.forEach(file => {
                   pool.push({ file, url: URL.createObjectURL(file), label: file.name });
@@ -1127,8 +2045,9 @@ export function renderGenerator(root, params) {
               // 안 되지"라는 혼란의 정확한 원인이었습니다. 카탈로그 배너/이벤트LP KV와
               // 동일하게, 파일을 고르는 즉시 바로 처리되도록 통일합니다.
               onchange: e => {
-                if (!e.target.files[0]) return;
-                draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], pendingFile: e.target.files[0] };
+                const [file] = filterImageFiles([...e.target.files].slice(0, 1));
+                if (!file) return;
+                draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], pendingFile: file };
                 handleImageGenerate(f.key);
               }
             })
@@ -1310,6 +2229,66 @@ export function renderGenerator(root, params) {
   }
 
   function renderPreview() {
+    // ⚠️ 2026-09 신설(파일럿) — 프리템플릿은 아직 값 입력 폼이 없어서
+    // currentValues()가 기존 로직대로면 resolveTemplate()이 null이라 항상
+    // {}(빈 값)를 반환합니다. 그래도 assembleFreeformEdmHtml은 값이 없는
+    // 필드를 [key] 형태로 자연스럽게 보여주므로, 지금 단계(헤더만 선택)에서도
+    // "이 헤더가 실제로 어떻게 생겼는지" 미리보기가 바로 뜹니다 — 값 입력
+    // UI는 다음 단계에서 추가할 예정입니다.
+    if (draft.templateId === FREEFORM_TEMPLATE_ID) {
+      previewFrame.innerHTML = "";
+      if (!draft.freeformHeaderId) {
+        previewFrame.appendChild(el("p", { style: "padding:20px;color:#999;font-size:12.5px;" }, "히어로를 선택하면 미리보기가 나타납니다."));
+        latestGuidelineIssues = [];
+        const badge = root.querySelector("#guideline-badge");
+        badge.className = "guideline-badge";
+        badge.textContent = "";
+        return;
+      }
+      const html = assembleFreeformEdmHtml(draft.freeformHeaderId, draft.freeformSectionIds || [], {
+        ...draft.fieldValues,
+        sections: draft.freeformSectionValues || {}
+      });
+      // ⚠️ 2026-09 신설 — 다른(고정) 템플릿처럼 미리보기에서 텍스트/CTA 링크를
+      // 직접 수정할 수 있게 합니다. (EDM_SHELL_OPEN에 <head>가 생긴 뒤로는
+      // 고정 템플릿과 동일하게 </head> 앞에 넣습니다.)
+      // ⚠️ 2026-09 — 한때 빈 필드를 CSS(:empty::before)로 "(클릭해서 입력)"류
+      // 안내를 띄우려 했었는데, 그 안내가 항상 회색·이탤릭 고정이라 "그
+      // 자리 고유의 색상/폰트를 안 지킨다"는 지적을 받았습니다. blocks.js의
+      // assembleFreeformEdmHtml이 이제 고정 템플릿과 동일하게 "[라벨]"을
+      // 실제 텍스트 값으로 채워 넣으므로(CSS 트릭이 아니라 진짜 콘텐츠),
+      // 여기서는 별도 스타일을 추가할 필요가 없습니다.
+      const previewHtml = html
+        .replace("</head>", `<style>${EDM_PREVIEW_EDIT_STYLE}</style></head>`)
+        .replace("</body>", `<script>${EDM_PREVIEW_EDIT_SCRIPT}</script></body>`);
+      const iframe = el("iframe", { srcdoc: previewHtml });
+      // ⚠️ 2026-09 버그 수정 — 토글을 켜고 끌 때마다 iframe이 새로 만들어지고
+      // load 이벤트로 높이를 재는데, 정확한 원인은 못 찾았지만 실제로
+      // "토글 후 화면 아래에 말도 안 되게 긴 여백이 생긴다"는 문제가
+      // 재현됐습니다(scrollHeight가 비정상적으로 큰 값을 반환하는 것으로
+      // 추정 — 짧은 순간 연속으로 재생성되는 iframe들의 load 이벤트가 겹치는
+      // 경쟁 상태일 가능성). 원인 규명과 별개로, 이메일 콘텐츠가 실제로 8000px를
+      // 넘을 일은 없으니 상한선을 둬서 잘못된 측정값이 화면을 통째로 망가뜨리지
+      // 못하게 방어합니다. once:true로 이 iframe이 교체된 뒤에도 옛 리스너가
+      // 남아 있다가 뒤늦게 발동하는 경우도 차단합니다.
+      iframe.addEventListener("load", () => {
+        try {
+          const h = iframe.contentWindow.document.documentElement.scrollHeight;
+          iframe.style.height = Math.min(Math.max(h, 300), 8000) + "px";
+        } catch (e) { /* 크로스오리진 등의 이유로 측정 불가하면 기존 min-height 그대로 둠 */ }
+      }, { once: true });
+      previewFrame.appendChild(iframe);
+
+      latestGuidelineIssues = checkGuidelines(html);
+      const summary = summarizeGuidelineIssues(latestGuidelineIssues);
+      const badge = root.querySelector("#guideline-badge");
+      badge.className = "guideline-badge " + (latestGuidelineIssues.length === 0 ? "badge-pass" : summary.errors ? "badge-fail" : "badge-warn");
+      badge.textContent = latestGuidelineIssues.length === 0
+        ? "✅ 가이드라인 통과"
+        : `${summary.errors ? "❌" : "⚠️"} 위반 ${summary.errors}건 · 경고 ${summary.warnings}건`;
+      return;
+    }
+
     const { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans } = computeHiddenUnits();
     const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans });
     const previewHtml = html
@@ -1320,12 +2299,14 @@ export function renderGenerator(root, params) {
     // ⚠️ iframe은 기본적으로 안의 콘텐츠 길이에 맞춰 스스로 커지지 않아서, 고정 높이만
     // 줘두면 긴 템플릿은 내부 스크롤이 생겨 답답해 보입니다. 로드 완료 후 실제 콘텐츠
     // 높이를 측정해서 iframe 자체의 높이를 그만큼 맞춰줍니다 (짧은 템플릿은 짧게).
+    // ⚠️ 2026-09 — 프리템플릿 쪽에서 이 측정값이 비정상적으로 커지는 문제가
+    // 재현되어(정확한 원인 미확정), 여기도 동일하게 상한선+once를 둡니다.
     iframe.addEventListener("load", () => {
       try {
         const h = iframe.contentWindow.document.documentElement.scrollHeight;
-        iframe.style.height = Math.max(h, 300) + "px";
+        iframe.style.height = Math.min(Math.max(h, 300), 8000) + "px";
       } catch (e) { /* 크로스오리진 등의 이유로 측정 불가하면 기존 min-height 그대로 둠 */ }
-    });
+    }, { once: true });
     previewFrame.appendChild(iframe);
 
     latestGuidelineIssues = checkGuidelines(html);
@@ -1362,8 +2343,8 @@ export function renderGenerator(root, params) {
   }
 
   async function runLinkCheck() {
-    const { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans } = computeHiddenUnits();
-    const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans });
+    const html = getFinalEdmHtml();
+    if (!html) { toast("먼저 히어로를 선택하세요"); return; }
     log("링크/이미지 확인 중...");
     const results = await checkAllLinks(html);
     const summary = summarizeLinkResults(results);
@@ -1405,8 +2386,10 @@ export function renderGenerator(root, params) {
       name: (draft.campaignName || "").trim() || "(캠페인명 미입력)",
       author: (draft.author || "").trim() || "(작성자 미입력)",
       channel: "EDM",
-      purpose: t?.purpose || "",
-      templateName: t?.name || "", // 목록엔 안 보이지만, 다른 용도로 쓸 수 있어 데이터는 유지
+      purpose: t?.purpose || draft.purpose || "", // ⚠️ 프리템플릿은 resolveTemplate()이 null이라
+      // t?.purpose가 항상 빈 문자열이 되는데, 그러면 캠페인 목록의 "목적" 필터에 안 걸립니다.
+      // 사용자가 이미 목적 탭에서 고른 draft.purpose를 폴백으로 씁니다.
+      templateName: t?.name || (draft.templateId === FREEFORM_TEMPLATE_ID ? "자유 조합 템플릿" : ""),
       status: statusOverride || existing?.status || "초안",
       createdAt: existing ? existing.createdAt : nowDate(), // 작성일: 최초 생성 시점, 이후 안 바뀜
       // ⚠️ 최종수정일에만 시:분을 붙입니다 — 목록이 이 값으로 정렬되는데(campaigns.js),
@@ -1423,10 +2406,13 @@ export function renderGenerator(root, params) {
     const { campaign, droppedCount } = draftToCampaign(statusOverride);
     const savedCampaign = await store.upsertCampaign(campaign);
     draft.id = savedCampaign.id;
-    existing = savedCampaign; // ⚠️ existing이 최초 진입 시점 값으로 고정돼 있으면, 내보내기로 "완료"
-    // 상태를 저장한 뒤 다시 임시저장할 때 draftToCampaign()이 옛 existing.status(초안 등)를
-    // 참조해서 "완료"가 "초안"으로 되돌아가는 버그가 생깁니다. 매번 저장할 때마다 최신값으로
-    // 갱신해서 이 문제를 막습니다.
+    existing = savedCampaign; // ⚠️ existing을 저장 직후 최신값으로 갱신해둡니다 — 안 그러면
+    // 다음 저장 때 draftToCampaign()의 existing?.status 폴백이 오래된 값을 참조하게 됩니다.
+    // ⚠️ 2026-09 버그 수정 — "완료" 상태였던 캠페인을 다시 열어 수정한 뒤 "임시저장"을
+    // 누르면(=persistCampaign() 인자 없이 호출), existing.status가 이미 "완료"라서
+    // 계속 "완료"로 남아있는 문제가 있었습니다("임시저장만 했는데도 완료로 표시된다"는
+    // 문의의 원인). 이제 임시저장 버튼은 항상 "초안"을 명시적으로 넘기므로, 이 폴백은
+    // (이론상 도달할 일이 없지만) 안전망으로만 남겨둡니다.
     return { savedCampaign, droppedCount };
   }
 
@@ -1451,7 +2437,7 @@ export function renderGenerator(root, params) {
     const button = e?.currentTarget;
     if (button) button.disabled = true;
     try {
-      const { droppedCount } = await persistCampaign();
+      const { droppedCount } = await persistCampaign("초안");
       if (droppedCount > 0) {
         toast(`임시저장했습니다 (⚠ 아직 AI 생성에 안 쓴 새 소재 ${droppedCount}개는 저장 대상이 아니라 제외됐습니다 — 브라우저를 닫으면 사라집니다)`);
         log(`임시저장 완료 — 미사용 신규 소재 ${droppedCount}개는 저장 안 됨(재접속 시 다시 추가 필요)`);
@@ -1484,8 +2470,8 @@ export function renderGenerator(root, params) {
   }
 
   async function copyHtml() {
-    const { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans } = computeHiddenUnits();
-    const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans });
+    const html = getFinalEdmHtml();
+    if (!html) { toast("먼저 히어로를 선택하세요"); return; }
     if (!(await confirmExportGuards(html))) return;
     if (!navigator.clipboard) {
       toast("복사에 실패했습니다 (브라우저 권한 확인)");
@@ -1540,8 +2526,8 @@ export function renderGenerator(root, params) {
 
   async function downloadHtml() {
     await fillMissingImageAltTexts();
-    const { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans } = computeHiddenUnits();
-    const html = assembleEdmHtml(draft.templateId, currentValues(), { hiddenRowKeys, hiddenCardKeys, hiddenSectionSpans });
+    const html = getFinalEdmHtml();
+    if (!html) { toast("먼저 히어로를 선택하세요"); return; }
     if (!(await confirmExportGuards(html))) return;
     const blob = new Blob([html], { type: "text/html" });
     const a = document.createElement("a");
@@ -1582,7 +2568,13 @@ function buildInitialDraft(templateId, existing) {
     seriesPriceOverrides: {},
     products: [],
     offerNo: "",
-    generating: false
+    generating: false,
+    // ⚠️ 2026-09 신설(파일럿) — "완전 프리 템플릿" 전용 상태. 일반 템플릿과
+    // 무관해서 다른 필드들과 섞이지 않게 이름을 분리했습니다. freeformSectionIds는
+    // 추가한 순서대로 담긴 배열(같은 종류를 여러 번 추가할 수도 있어서 배열).
+    freeformHeaderId: null,
+    freeformSectionIds: [],
+    freeformSectionValues: {}
   };
   if (existing?.draftData) {
     return {

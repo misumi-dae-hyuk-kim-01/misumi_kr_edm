@@ -3,9 +3,15 @@
    자기만의 패딩(26px 32px)+스크롤(max-height:100vh)을 갖고 있어서 이중으로 겹쳐 스크롤이
    4개(좌우 각 2개)로 보이는 문제가 있었습니다. .gen-app을 담고 있을 때만 래퍼의 패딩/스크롤을
    풀어서 생성기 자체 레이아웃이 화면 전체를 그대로 쓰게 합니다. */
+/* ⚠️ 2026-09 — .gen-app에 overflow:hidden;max-height:100vh를 추가로 걸어봤으나,
+   프리템플릿에서 우측에 별도 스크롤바가 하나 더 생기는 새 문제가 생겨서 되돌립니다.
+   min-height:100vh만 유지하고, 실제 방어는 아래 두 grid item의 min-height:0(grid의
+   "min-height:auto가 콘텐츠 크기를 강제한다" 함정을 깨는 것)에 맡깁니다 — 이렇게 하면
+   각 컬럼이 자기 안에서만(overflow-y:auto) 스크롤되고, .gen-app 자체나 그 바깥으로는
+   새 스크롤 컨테이너가 안 생깁니다. */
 .gen-app{display:grid;grid-template-columns:480px 1fr;min-height:100vh;}
 .content:has(.gen-app){padding:0;overflow:hidden;max-height:100vh;}
-.gen-form-area{background:#fff;border-right:1px solid #e0e0e0;display:flex;flex-direction:column;max-height:100vh;}
+.gen-form-area{background:#fff;border-right:1px solid #e0e0e0;display:flex;flex-direction:column;max-height:100vh;min-height:0;min-width:0;}
 .gen-back{font-size:12px;color:#888;}
 .gen-back:hover{color:#0F218B;}
 .gen-form-header{padding:12px 22px 12px;border-bottom:1px solid #eee;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:12px;}
@@ -58,7 +64,7 @@
 .form-group-header:first-child{border-top:none;margin-top:0;padding-top:0;}
 .field{margin-bottom:10px;}
 .field:last-child{margin-bottom:0;}
-.field label{display:block;font-size:11px;font-weight:700;color:#555;margin-bottom:4px;}
+.field label{display:block;font-size:10.5px;font-weight:700;color:#555;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .field input,.field select,.field textarea{
   width:100%;padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;
 }
@@ -74,6 +80,7 @@
 /* ⚠️ .hint-warn/.hint-danger는 .guideline-badge.badge-warn/.badge-fail과 똑같은
    색을 씁니다 — 일관된 "주의/차단" 의미를 팀 전체 UI에서 색으로 재사용하기 위함.
    기존엔 이 색을 여러 곳에서 style="color:#..."로 매번 인라인 반복했었습니다. */
+.hint{font-size:11px;color:#999;}
 .hint.hint-warn{color:#a9660a;font-weight:600;}
 .hint.hint-danger{color:#c62828;font-weight:600;}
 /* 미리보기 조립 실패 시(예: 이벤트LP 혜택 6개 이상 등) 가운데 크게 띄우는 에러 메시지 —
@@ -185,7 +192,7 @@
 .guideline-badge.badge-static:hover{filter:none;}
 
 /* ---------- 미리보기 영역 ---------- */
-.gen-preview-area{padding:20px;overflow-y:auto;background:#f0f2f5;min-width:0;max-height:100vh;}
+.gen-preview-area{padding:20px;overflow-y:auto;background:#f0f2f5;min-width:0;min-height:0;max-height:100vh;}
 .gen-preview-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
 .gen-preview-header h2{font-size:14px;font-weight:700;}
 .view-toggle{display:flex;gap:4px;}

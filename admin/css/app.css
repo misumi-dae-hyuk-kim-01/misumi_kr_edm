@@ -63,13 +63,13 @@ button{font-family:inherit;}
 .search-text-input{border-radius:0 7px 7px 0!important;width:180px;}
 
 /* ---------- Table ---------- */
-.tbl-wrap{background:#fff;border-radius:10px;border:1px solid #e8e8e8;overflow:hidden;}
-table.tbl{width:100%;border-collapse:collapse;}
+.tbl-wrap{background:#fff;border-radius:10px;border:1px solid #e8e8e8;overflow-x:auto;}
+table.tbl{width:100%;border-collapse:collapse;min-width:640px;}
 table.tbl th{
   text-align:left;font-size:11px;color:#888;font-weight:700;padding:11px 14px;
-  background:#f7f8fa;border-bottom:1px solid #e8e8e8;white-space:nowrap;
+  background:#f7f8fa;border-bottom:1px solid #e8e8e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
-table.tbl td{padding:12px 14px;font-size:12.5px;border-bottom:1px solid #f0f0f0;vertical-align:middle;}
+table.tbl td{padding:12px 14px;font-size:12.5px;border-bottom:1px solid #f0f0f0;vertical-align:middle;overflow:hidden;}
 table.tbl tr:last-child td{border-bottom:none;}
 table.tbl tr:hover td{background:#fafbfd;}
 
@@ -96,6 +96,7 @@ table.tbl-assets td:nth-child(8){width:16%;}
 .cell-truncate{max-width:220px;}
 .cell-truncate-text,.cell-truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .asset-thumb{width:40px;height:40px;object-fit:cover;border-radius:6px;display:block;background:#f0f0f0;}
+.asset-thumb--file{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;line-height:1;}
 .size-target-picker{display:flex;gap:14px;flex-wrap:wrap;padding:10px 12px;background:#f7f8fa;border-radius:8px;margin-top:6px;}
 .size-target-item{display:flex;align-items:center;gap:6px;font-size:12px;color:#444;cursor:pointer;}
 .size-target-item input{width:14px;height:14px;}
@@ -112,6 +113,7 @@ table.tbl-assets td:nth-child(8){width:16%;}
 .asset-grid-check{position:absolute;top:8px;left:8px;width:16px;height:16px;z-index:2;}
 .asset-grid-thumb{width:100%;height:100px;object-fit:cover;display:block;background:#f5f5f5;}
 .asset-grid-thumb--empty{display:flex;align-items:center;justify-content:center;color:#aaa;font-size:11px;}
+.asset-grid-thumb--file{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:#f5f5f5;}
 .asset-grid-name{font-size:11px;font-weight:700;color:#1a1a1a;padding:6px 8px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .asset-grid-card > div:last-child{padding:0 8px;}
 .promo-link-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:600;color:#0F218B;background:#e6efff;padding:1px 7px;border-radius:10px;margin-top:3px;}
@@ -159,10 +161,14 @@ table.tbl-assets td:nth-child(8){width:16%;}
 
 /* ---------- Pagination ---------- */
 .pagination{display:flex;justify-content:flex-end;align-items:center;gap:6px;margin-top:14px;font-size:12px;color:#888;}
-.pagination button{
+.pagination button,.pagination-top button{
   width:26px;height:26px;border-radius:6px;border:1px solid #ddd;background:#fff;cursor:pointer;font-size:12px;
 }
-.pagination button.active{background:#0F218B;color:#fff;border-color:#0F218B;}
+.pagination button.active,.pagination-top button.active{background:#0F218B;color:#fff;border-color:#0F218B;}
+/* ⚠️ 2026-09 — 페이지네이션을 우측 상단(page-actions) 고정으로 옮긴 화면들이
+   쓰는 버전입니다. 버튼 스타일 자체는 .pagination과 공유하되, 배치만 다릅니다. */
+.pagination-top{display:flex;align-items:center;gap:6px;font-size:12px;color:#888;}
+.pagination-count{white-space:nowrap;}
 
 /* ---------- Modal ---------- */
 .modal-backdrop{
@@ -197,16 +203,25 @@ table.tbl-assets td:nth-child(8){width:16%;}
   position:fixed;bottom:22px;right:22px;background:#1a1a1a;color:#fff;padding:11px 16px;border-radius:8px;
   font-size:12.5px;box-shadow:0 4px 16px rgba(0,0,0,.2);z-index:100;opacity:0;transform:translateY(8px);
   transition:opacity .2s,transform .2s;
+  /* ⚠️ 2026-09 버그 수정 — toast()가 2.2초 뒤 opacity만 0으로 만들 뿐 요소
+     자체는 DOM에 그대로 남아있어서, 우측 하단(페이지네이션과 같은 자리)의
+     클릭을 계속 가로채고 있었습니다("삭제 후 2페이지 버튼이 눌리지 않는다"는
+     문의의 실제 원인 — 마우스가 페이지 버튼 위에서 텍스트 커서로 바뀌던 것도
+     투명해진 toast의 텍스트 콘텐츠 위에 있었기 때문입니다). toast는 정보
+     전달용일 뿐 클릭 대상이 아니므로, 클릭을 항상 그 아래 요소로 통과시킵니다.
+  */
+  pointer-events:none;
 }
 .toast.show{opacity:1;transform:translateY(0);}
 
 /* ---------- Upload dropzone ---------- */
 .dropzone{
-  display:block;box-sizing:border-box;width:100%;
-  border:2px dashed #cfd6e6;border-radius:10px;background:#fafbfe;padding:26px;text-align:center;
-  color:#7a8199;font-size:12.5px;cursor:pointer;margin-bottom:16px;
+  display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:100%;min-height:64px;
+  border:2px dashed #cfd6e6;border-radius:10px;background:#fafbfe;padding:20px;text-align:center;
+  color:#7a8199;font-size:12.5px;cursor:pointer;margin-bottom:12px;
 }
 .dropzone:hover{border-color:#0F218B;background:#f3f6fd;}
+.dropzone--active{border-color:#0F218B;background:#f3f6fd;color:#0F218B;}
 .dropzone input{display:none;}
 
 /* ---------- 생성기 image 필드 (업로드+AI 보정) ---------- */

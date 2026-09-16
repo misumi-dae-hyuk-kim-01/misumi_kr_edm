@@ -51,12 +51,12 @@ export function renderCampaigns(root) {
     ])
   );
 
-  const filterBar = el("div", { class: "filter-bar", style: "justify-content:space-between;" }, [
-    el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;" }, [
-      select(["전체", "EDM", "LP"], filters.channel, v => { filters.channel = v; page = 1; renderTable(); }),
-      select(["전체", "온보딩", "육성", "이탈방지", "상품소개", "쿠폰", "내근영업"], filters.purpose, v => { filters.purpose = v; page = 1; renderTable(); }),
-      select(["전체", "초안", "완료"], filters.status, v => { filters.status = v; page = 1; renderTable(); })
-    ]),
+  // ⚠️ 에셋관리(assets.js)와 통일 — 검색을 맨 왼쪽에 두고, 그 뒤로 필터를
+  // 순서대로 나열합니다. 예전엔 justify-content:space-between으로 검색만
+  // 오른쪽 끝에 따로 떨어뜨려 뒀는데, 필터가 3개뿐이라 그렇게 멀리 분리해 둘
+  // 이유가 약했고, 화면마다 검색 위치가 다르면 매번 다시 찾아야 하는 불편이
+  // 있었습니다.
+  const filterBar = el("div", { class: "filter-bar" }, [
     el("div", { style: "display:flex;gap:0;" }, [
       // ⚠️ 작성자는 원래 드롭다운 필터도 따로 있었는데, 작성자가 많아지면 드롭다운이
       // 스크롤해야 하는 긴 목록이 되어버려서 오히려 안 좋습니다. 검색(부분일치, 타이핑으로
@@ -70,7 +70,10 @@ export function renderCampaigns(root) {
         value: filters.searchText,
         oninput: e => { filters.searchText = e.target.value; page = 1; renderTable(); }
       })
-    ])
+    ]),
+    select(["전체", "EDM", "LP"], filters.channel, v => { filters.channel = v; page = 1; renderTable(); }),
+    select(["전체", "온보딩", "육성", "이탈방지", "상품소개", "쿠폰", "내근영업"], filters.purpose, v => { filters.purpose = v; page = 1; renderTable(); }),
+    select(["전체", "초안", "완료"], filters.status, v => { filters.status = v; page = 1; renderTable(); })
   ]);
   root.appendChild(filterBar);
 
@@ -154,12 +157,24 @@ export function renderCampaigns(root) {
       el("thead", {}, el("tr", {}, [
         "캠페인명", "프로모션명", "작성자", "채널", "목적", "상태", "작성일", "최종수정일", "액션"
       ].map(h => el("th", {}, h)))),
-      el("tbody", {}, pageRows.map(c => el("tr", {}, [
+      el("tbody", {}, pageRows.map(c => {
+        const hasLinkedBadge = !!(c.promotionName && promoCounts[c.promotionName] >= 2);
+        return el("tr", {}, [
+        // ⚠️ 2026-09 재재재수정 — visibility:hidden으로 뱃지 자리를 "예약"하는
+        // 방식은 그 자체가 콘텐츠로 계산되어, justify-content:center를 줘도
+        // 정렬할 여유 공간이 없어지는 근본적 한계가 있었습니다(뱃지 있는 행과
+        // 콘텐츠 높이가 항상 같아지므로). 대신 wrapper 자체에 고정 높이(37px,
+        // 이름+뱃지가 실제로 차지하는 높이를 측정한 값)를 직접 지정합니다 —
+        // 이러면 모든 행이 뱃지 유무와 무관하게 항상 같은 높이를 갖고(행 높이
+        // 통일), 뱃지가 없는 행은 그 고정 높이 안에서 이름 한 줄만 차지하니
+        // justify-content:center가 실제로 여유 공간을 확보해 정중앙에 오게
+        // 됩니다. 뱃지가 있으면 기본 정렬(위에서부터 채움)로 기존과 동일하게
+        // 보입니다.
         el("td", { class: "cell-name cell-truncate", title: c.name }, [
-          el("div", { class: "cell-truncate-text" }, c.name),
-          c.promotionName && promoCounts[c.promotionName] >= 2
-            ? el("div", { class: "promo-link-badge" }, "🔗 연결된 캠페인")
-            : null
+          el("div", { style: `height:37px;display:flex;flex-direction:column;align-items:flex-start;${hasLinkedBadge ? "" : "justify-content:center;"}` }, [
+            el("div", { class: "cell-truncate-text" }, c.name),
+            hasLinkedBadge ? el("div", { class: "promo-link-badge" }, "🔗 연결된 캠페인") : null
+          ])
         ]),
         el("td", { class: "cell-truncate", style: "color:#666;", title: c.promotionName || "" }, c.promotionName || "-"),
         el("td", { class: "cell-truncate", style: "color:#666;", title: c.author || "" }, c.author || "-"),
@@ -205,7 +220,8 @@ export function renderCampaigns(root) {
             }
           }, "삭제")
         ]))
-      ])))
+      ]);
+      }))
     ]);
 
     tableHost.appendChild(el("div", { class: "tbl-wrap" }, table));
