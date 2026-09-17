@@ -1,6 +1,7 @@
 import { seedAssets, seedTemplates } from "./data/mockData.js";
 import {
   listCampaigns,
+  getCampaign as getCampaignFromApi,
   createCampaign,
   updateCampaign,
   cloneCampaign,
@@ -69,6 +70,25 @@ export const store = {
 
   getCampaign(id) {
     return data.campaigns.find(c => c.id === id || c.campaignId === id) || null;
+  },
+
+  // ⚠️ 2026-09 신설 — "임시저장/HTML복사 후 목록으로 돌아갔다가 다시 편집하면
+  // 아무것도 안 보인다"는 버그의 유력한 원인 방어책입니다. generator.js가
+  // 편집 진입 시 getCampaign(id)(로컬 캐시만 봄)로 캠페인을 찾는데, 어떤
+  // 이유로든 이 시점에 data.campaigns가 최신이 아니면(예: 목록 화면을 새로
+  // 열 때 로컬 캐시가 아직 API 응답을 못 받았거나, 다른 탭에서 저장한
+  // 캠페인이라 이 탭 캐시엔 없는 경우) null이 반환되어 완전히 빈 새 캠페인
+  // 취급을 받습니다. 캐시에 없으면 서버에서 그 캠페인 하나를 직접 다시
+  // 가져와서 캐시도 채워줍니다.
+  async fetchCampaign(id) {
+    const cached = this.getCampaign(id);
+    if (cached) return cached;
+    const apiCampaign = await getCampaignFromApi(id);
+    const normalized = normalizeCampaign(apiCampaign);
+    const idx = data.campaigns.findIndex(c => c.id === id || c.campaignId === id);
+    if (idx >= 0) data.campaigns[idx] = normalized;
+    else data.campaigns.unshift(normalized);
+    return normalized;
   },
 
   async upsertCampaign(campaign) {
