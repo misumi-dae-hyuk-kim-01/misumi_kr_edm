@@ -42,6 +42,14 @@ let selectedAssetIds = new Set();
 // 무시하도록 막습니다.
 let deleting = false;
 
+// ⚠️ 2026-09 신설 — 지금까지 이 목록은 브라우저 localStorage에 남은 업로드
+// 기록만 보여주고 있어서, AWS 콘솔로 직접 올렸거나 다른 브라우저/기기에서
+// 올린 파일은 아예 안 보이는 문제가 있었습니다("S3엔 있는데 목록엔 없다"는
+// 문의의 원인). fn-list-s3-assets Lambda + list-s3-assets-API(API Gateway)를
+// 배포 완료해서, 아래 URL이 실제 호출 주소입니다.
+const S3_LIST_API_URL = "https://l3t9d8p8q2.execute-api.ap-northeast-1.amazonaws.com/list-assets";
+let syncing = false;
+
 export function renderAssets(root) {
   root.appendChild(
     el("div", { class: "page-head" }, [
@@ -91,6 +99,74 @@ export function renderAssets(root) {
     handleUpload(e.dataTransfer.files);
   };
   root.appendChild(drop);
+
+  /** S3 버킷을 실제로 조회해서, store.assets(로컬 기록)에 없는 파일만 추가합니다.
+   *  이미 로컬에 있는 파일(생성기/에셋관리를 통해 올린 것)은 더 풍부한 메타데이터
+   *  (사이즈 variant, 사용처 등)를 이미 갖고 있으니 건드리지 않고, S3에만 있고
+   *  로컬 기록이 없는 것만 "S3에서 발견됨" 상태로 추가합니다.
+   *  ⚠️ 2026-09 버그 수정 — 이 함수를 renderAssets() 바깥(모듈 최상단)에 뒀더니
+   *  "renderTable is not defined" 에러로 버튼이 아예 동작하지 않았습니다.
+   *  renderTable()은 renderAssets() 안에서만 선언된 지역 함수라 바깥에서는
+   *  안 보입니다 — 이 함수도 안으로 옮겨서 같은 스코프에 두면 해결됩니다. */
+  async function syncFromS3() {
+    if (syncing) return;
+    syncing = true;
+    renderTable();
+
+    const knownUrls = new Set();
+    for (const a of store.assets) {
+      for (const v of Object.values(a.variants || {})) {
+        if (v.url) knownUrls.add(v.url);
+      }
+    }
+
+    let token = null;
+    let added = 0;
+    try {
+      do {
+        const url = new URL(S3_LIST_API_URL);
+        url.searchParams.set("prefix", "edm/uploads/");
+        if (token) url.searchParams.set("continuationToken", token);
+
+        const res = await fetch(url.toString());
+        if (!res.ok) throw new Error(`S3 목록 조회 실패 (${res.status})`);
+        const data = await res.json();
+
+        for (const item of data.items) {
+          if (knownUrls.has(item.url)) continue; // 이미 로컬에 기록된 파일은 건너뜀
+          const filename = item.key.split("/").pop();
+          store.assets.push({
+            filename,
+            source: "s3-scan",
+            uploadedAt: item.lastModified,
+            variants: {
+              // ⚠️ S3 스캔으로 발견한 파일은 어떤 사이즈(EDM 600 / LP 1200)로
+              // 만들어졌는지 알 방법이 없어서, "원본"이라는 단일 variant로만
+              // 등록합니다.
+              원본: { url: item.url, size: item.size }
+            }
+          });
+          added++;
+        }
+        token = data.nextToken;
+      } while (token);
+
+      store.save?.();
+      toast(added > 0 ? `S3에서 새 파일 ${added}개를 찾았습니다` : "새로 발견된 파일이 없습니다");
+    } catch (e) {
+      toast("S3 동기화 실패: " + e.message);
+    } finally {
+      syncing = false;
+      renderTable();
+    }
+  }
+
+  root.appendChild(el("button", {
+    class: "btn btn-sm ghost",
+    style: "margin-bottom:8px;",
+    disabled: syncing ? "disabled" : null,
+    onclick: syncFromS3
+  }, syncing ? "S3 조회 중..." : "🔄 S3에서 새로고침 (수동 업로드 파일 찾기)"));
 
   // 검색 · 정렬 · 필터 · 보기전환
   root.appendChild(el("div", { class: "filter-bar" }, [
@@ -578,6 +654,7 @@ export function renderAssets(root) {
 function sourceBadge(source) {
   if (source === "generator") return el("span", { class: "badge blue" }, "생성기 업로드");
   if (source === "cli") return el("span", { class: "badge purple" }, "CLI 업로드");
+  if (source === "s3-scan") return el("span", { class: "badge orange" }, "S3에서 발견");
   return el("span", { class: "badge gray" }, "에셋관리 업로드");
 }
 

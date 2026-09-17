@@ -28,9 +28,56 @@ const FREEFORM_TEMPLATE_ID = "freeform";
 // [B08] 텍스트 블록)일 가능성이 높습니다. groupFieldsBySection()에서 사용합니다.
 const HERO_FIELD_KEYS = new Set(["preheader", "copy_headline", "copy_sub", "copy_sub_strong", "customer_name", "rate"]);
 
+// ⚠️ 2026-09 버그 수정 — 원래 sectionFreeformHeaderPicker() 함수 안(지역
+// 변수)에 있었는데, "임시저장 후 목록→재편집" 흐름에서
+// "Cannot access 'HEADER_SWATCHES' before initialization" 에러로 그 아래
+// 화면 전체(히어로 선택 카드 등)가 통째로 안 그려지는 문제가 있었습니다.
+// 정확한 재현 조건은 못 찾았지만(재렌더링 타이밍에 따라 이 const 선언보다
+// 사용 지점이 먼저 실행되는 경로가 있었던 것으로 추정), 모듈 최상단으로
+// 옮기면 함수 호출 순서와 완전히 무관하게 항상 먼저 초기화되어 이 종류의
+// TDZ(Temporal Dead Zone) 에러 자체가 원천적으로 발생할 수 없습니다.
+const HEADER_SWATCHES = {
+  onboarding: ["#0F218B", "#FFCC00"],
+  nurture: ["#FFFFFF", "#0F218B"],
+  winback: ["#000000", "#FFCC00"],
+  product: ["#000000", "#FFCC00"],
+  coupon: ["#FFFFFF", "#E53935"],
+  insideSales: ["#0F218B", "#FFFFFF"],
+  winbackService: ["#EDF1F8", "#0F218B"],
+  productH: ["#0F218B", "#FFFFFF"],
+  productV: ["#FFFFFF", "#0F218B"]
+};
+
 export function renderGenerator(root, params) {
   const editId = params.get("id");
   let existing = editId ? store.getCampaign(editId) : null;
+
+  // ⚠️ 2026-09 버그 수정 — "임시저장/HTML복사 후 목록으로 돌아갔다가 다시
+  // 편집하면 아무것도 안 보인다"는 문의의 원인입니다. editId가 있는데도
+  // (=분명히 기존 캠페인을 편집하러 온 것인데도) 로컬 캐시(store.getCampaign)에
+  // 없으면, 예전엔 이걸 그냥 "새 캠페인"으로 취급해서 완전히 빈 화면(프리
+  // 템플릿이면 히어로조차 선택 안 된 1단계)이 조용히 떠버렸습니다 — 사용자
+  // 입장에선 "저장한 내용이 통째로 사라진 것"처럼 보였을 것입니다. editId가
+  // 있는데 캐시에 없으면, 진짜로 존재하지 않는 캠페인인지 서버에 직접
+  // 재확인한 뒤에야 화면을 그립니다.
+  if (editId && !existing) {
+    root.appendChild(el("p", { class: "hint", style: "padding:20px;" }, "캠페인을 불러오는 중..."));
+    store.fetchCampaign(editId)
+      .then(() => {
+        root.innerHTML = "";
+        renderGenerator(root, params);
+      })
+      .catch(err => {
+        root.innerHTML = "";
+        root.appendChild(el("div", { style: "padding:20px;" }, [
+          el("p", { style: "color:#c0392b;font-weight:700;" }, "이 캠페인을 불러올 수 없습니다."),
+          el("p", { class: "hint" }, err.message || "알 수 없는 오류"),
+          el("button", { class: "btn", onclick: () => navigate("campaigns") }, "캠페인 목록으로 돌아가기")
+        ]));
+      });
+    return;
+  }
+
   const purposeParam = params.get("purpose");
   const firstTemplateOfPurpose = purposeParam
     ? Object.entries(EDM_TEMPLATE_FIELDS).find(([, info]) => info.purpose === purposeParam)?.[0]
@@ -1077,18 +1124,8 @@ export function renderGenerator(root, params) {
   // ⚠️ 2026-09 — 필드 목록을 전부 나열하던 것("필드 5개: 배지 문구, 고객명...")이
   // 카드마다 너무 장황해서, 라벨 + 그 헤더의 실제 색상 스와치만 남기는 심플한
   // 형태로 바꿨습니다. 필드 구성은 어차피 헤더를 고른 뒤 3단계에서 직접 보이니
-  // 여기서 미리 나열할 필요가 크지 않습니다.
-  const HEADER_SWATCHES = {
-    onboarding: ["#0F218B", "#FFCC00"],
-    nurture: ["#FFFFFF", "#0F218B"],
-    winback: ["#000000", "#FFCC00"],
-    product: ["#000000", "#FFCC00"],
-    coupon: ["#FFFFFF", "#E53935"],
-    insideSales: ["#0F218B", "#FFFFFF"],
-    winbackService: ["#EDF1F8", "#0F218B"],
-    productH: ["#0F218B", "#FFFFFF"],
-    productV: ["#FFFFFF", "#0F218B"]
-  };
+  // 여기서 미리 나열할 필요가 크지 않습니다. (HEADER_SWATCHES는 파일 최상단으로
+  // 옮겼습니다 — 2026-09 버그 수정 참고)
   function sectionFreeformHeaderPicker() {
     // ⚠️ 2026-09 — 9개 카드가 항상 펼쳐져 있어서 화면을 너무 많이 차지한다는
     // 지적이 있었습니다. 이미지 슬롯과 동일한 패턴(sectionWrap의 collapsed
