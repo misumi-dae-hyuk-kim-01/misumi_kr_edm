@@ -29,6 +29,7 @@ admin/                 관리자 프론트엔드 (빌드 없는 순수 ES 모듈
     lib/               기능 모듈 (AI 호출, S3 업로드, HTML 조립, 검사기)
     data/              템플릿 정의 (개발자가 배포하는 마스터 데이터)
 lambda/                AWS Lambda 함수 소스 (함수명 = 디렉터리명)
+cloudfront/            CloudFront Function 소스 (관리자 화면 도메인용 IP 허용 목록)
 tests/                 회귀 테스트
 tools/serve.js         로컬 정적 서버
 ```
@@ -138,10 +139,22 @@ aws sso login --profile edm-deploy     # 토큰 만료 시 재인증 (브라우�
 브라우저에서 접속하는 주소:
 `https://kor-smartlp.s3.ap-northeast-1.amazonaws.com/admin/index.html`
 
+`admin/`, `edm/assets/`, `lp/assets/` 는 버킷 정책에서 **사무실 공인 IP 3개만** 읽을 수 있습니다.
+나머지(업로드 이미지, 공개된 LP)는 누구나 읽을 수 있습니다.
+
+### CloudFront — 관리자 화면 사용자 지정 도메인
+
+관리자 화면은 **`https://studio.misumikorea.co.kr/`** 로 접속합니다(2026-09-17 적용). S3에는 HTTPS
+사용자 지정 도메인 기능이 없어 앞에 CloudFront 배포(`ECRXHTK6LVLSS` → `d383ndv41zo83x.cloudfront.net`)를
+세웠고, 오리진은 `kor-smartlp` 의 `/admin` 경로입니다. IP 제한은 CloudFront Function으로
+동일하게 유지됩니다. 기존 S3 주소도 계속 동작합니다.
+
+구성·IP 변경 방법·DNS 레코드는 [README_DOMAIN.md](README_DOMAIN.md) 참고.
+
 ### 사용하지 않는 AWS 서비스
 
-CloudFront, Route 53, ACM, SES, Bedrock, Rekognition, Secrets Manager, SSM Parameter Store는
-쓰지 않습니다. CloudWatch는 Lambda 기본 로그만 있고 명시적 로깅 설정은 없습니다.
+Route 53, SES, Bedrock, Rekognition, Secrets Manager, SSM Parameter Store는
+쓰지 않습니다(DNS는 사내에서 관리합니다). CloudWatch는 Lambda 기본 로그만 있고 명시적 로깅 설정은 없습니다.
 API 키는 **Lambda 환경변수**로만 관리하며 저장소에 두지 않습니다(`OPENAI_API_KEY` 등).
 
 ## 외부 API (AWS 아님)
@@ -193,6 +206,10 @@ aws s3 cp admin s3://kor-smartlp/admin/ --recursive --profile edm-deploy --regio
   --exclude "*" --include "*.js" --content-type "application/javascript" --cache-control "no-cache"
 # .html → "text/html; charset=utf-8", .css → "text/css; charset=utf-8" 로 각각 반복
 ```
+
+업로드만 하면 `studio.misumikorea.co.kr` 쪽에도 즉시 반영됩니다. 앞단 CloudFront는 캐시를
+끈 상태라 무효화(invalidation)가 필요 없습니다 — 캐시를 켤 경우 절차가 달라집니다
+([README_DOMAIN.md](README_DOMAIN.md) 참고).
 
 **Lambda** — 해당 디렉터리를 zip으로 압축해 코드만 교체합니다.
 

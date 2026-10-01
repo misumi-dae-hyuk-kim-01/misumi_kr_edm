@@ -12,14 +12,23 @@ process-image
 
 환경변수
   OPENAI_API_KEY    : OpenAI API 키
-  OPENAI_IMAGE_MODEL: 이미지 편집 모델, 기본 gpt-image-1
+  OPENAI_IMAGE_MODEL: 이미지 편집 모델, 기본 gpt-image-1.5
   OPENAI_IMAGE_SIZE : 출력 크기 (1024x1024 | 1536x1024 | 1024x1536 | auto), 기본 auto
+    ⚠️ 반드시 auto로 두세요. 예전엔 1024x1024로 고정돼 있었는데, 가로로 긴 배너를
+    정사각으로 욱여넣느라 좌우가 잘려나갔습니다. auto는 원본 비율에 맞는 크기를
+    골라줍니다(실측: 3:2 원본 → 1536x1024). 단, OpenAI가 제공하는 비율은 1:1 / 3:2 /
+    2:3 뿐이라 3:1 같은 초광폭 원본은 3:2로 확장되며 여백이 생깁니다(잘리지는 않음).
+  OPENAI_INPUT_FIDELITY : low | high, 기본 high
+    ⚠️ 한글 글자 깨짐의 핵심 해결책입니다. images/edits는 이미지를 통째로 다시 그리기
+    때문에, 기본값(low)에서는 원본의 글자·로고가 모델이 새로 "그린" 결과로 대체되어
+    한글이 심하게 뭉개집니다("신상품"→"신상퓸"). high로 두면 원본 디테일을 보존합니다.
+    대가로 입력 토큰이 늘어납니다(정사각 +4096, 비정사각 +6144 / 이미지 1장당).
   OPENAI_IMAGE_QUALITY : low | medium | high, 기본 medium
     ⚠️ API Gateway(HTTP API)의 통합 타임아웃은 30초가 AWS 하드 리밋이라 늘릴 수 없음.
-    high는 실측 28~29초로 그 한계에 거의 붙어 있어 타임아웃 위험이 큼 — medium이
-    품질/속도의 안전한 균형점(실측 15~17초).
+    gpt-image-1.5 + input_fidelity=high 기준 실측: medium 19~23초(참고이미지 4장이어도
+    23초), high 40.9초. high는 30초를 넘겨 504가 되므로 쓰면 안 됩니다.
   AI_API_TIMEOUT    : 외부 API 호출 타임아웃(초), 기본 60 (API Gateway 한계보다 낮게 설정해야
-    504 대신 이 함수의 에러 메시지가 응답됨)
+    504 대신 이 함수의 에러 메시지가 응답됨 — 운영값 27초)
 
 IAM 실행 역할
   S3 권한 불필요 — 이 함수는 S3에 접근하지 않는다.
@@ -42,11 +51,17 @@ MAX_REFERENCE_IMAGES = int(os.environ.get("MAX_REFERENCE_IMAGES", "4"))
 REFERENCE_FETCH_TIMEOUT = int(os.environ.get("REFERENCE_FETCH_TIMEOUT", "5"))
 
 OPENAI_API_KEY      = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_IMAGE_MODEL  = os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-1")
+OPENAI_IMAGE_MODEL  = os.environ.get("OPENAI_IMAGE_MODEL", "gpt-image-1.5")
 OPENAI_IMAGE_SIZE   = os.environ.get("OPENAI_IMAGE_SIZE", "auto")
 OPENAI_IMAGE_QUALITY = os.environ.get("OPENAI_IMAGE_QUALITY", "medium")
+# 빈 문자열로 두면 파라미터 자체를 안 보냅니다(= OpenAI 기본값 low). 문제가 생겼을 때
+# 코드 재배포 없이 환경변수만으로 끌 수 있게 하기 위한 장치입니다.
+OPENAI_INPUT_FIDELITY = os.environ.get("OPENAI_INPUT_FIDELITY", "high")
 OPENAI_IMAGES_URL   = "https://api.openai.com/v1/images/edits"
-AI_API_TIMEOUT      = int(os.environ.get("AI_API_TIMEOUT", "60"))
+# ⚠️ 기본값은 반드시 API Gateway의 30초 하드 리밋보다 낮아야 합니다. 예전 기본값은 60이었는데,
+# 그러면 환경변수가 빠진 환경에서 이 함수가 자기 에러 메시지를 돌려줄 기회를 잃고 무조건 504가
+# 됩니다(위 docstring이 경고하는 바로 그 상황을 기본값이 스스로 위반하고 있었음).
+AI_API_TIMEOUT      = int(os.environ.get("AI_API_TIMEOUT", "27"))
 
 CORS_HEADERS = {
     "Access-Control-Allow-Origin":  "*",
@@ -146,6 +161,12 @@ def call_openai_image_edit(images: list, instruction: str, purpose: str) -> tupl
     add_field("prompt", prompt)
     add_field("size", OPENAI_IMAGE_SIZE)
     add_field("quality", OPENAI_IMAGE_QUALITY)
+    # ⚠️ 원본의 글자·로고를 보존하는 옵션. 안 보내면 OpenAI 기본값 low로 동작해서
+    # 한글이 뭉개집니다(상단 환경변수 설명 참고). 여러 장을 보낼 때는 첫 번째 이미지
+    # (= 편집 대상 원본)가 가장 충실하게 보존되므로, images[0]에 원본을 두는
+    # 호출부 순서가 중요합니다.
+    if OPENAI_INPUT_FIDELITY:
+        add_field("input_fidelity", OPENAI_INPUT_FIDELITY)
     add_field("n", "1")
 
     # 한 장이면 "image", 여러 장이면 "image[]" — gpt-image-1은 둘 다 받지만, 배열
@@ -173,8 +194,18 @@ def call_openai_image_edit(images: list, instruction: str, purpose: str) -> tupl
         },
     )
 
+    print(f"[process-image] OpenAI 호출 model={OPENAI_IMAGE_MODEL} size={OPENAI_IMAGE_SIZE} "
+          f"quality={OPENAI_IMAGE_QUALITY} input_fidelity={OPENAI_INPUT_FIDELITY or '(미전송)'} "
+          f"images={len(images)}")
+
     with urllib.request.urlopen(req, timeout=AI_API_TIMEOUT) as res:
         data = json.loads(res.read().decode("utf-8"))
+
+    # 토큰 사용량은 비용 추적에 쓰입니다 — input_fidelity=high는 이미지 1장당 입력 토큰을
+    # 크게 늘리므로(비정사각 +6144), 참고 이미지가 많아질 때 비용이 눈에 띄게 증가합니다.
+    usage = data.get("usage") or {}
+    if usage:
+        print(f"[process-image] 토큰 input={usage.get('input_tokens')} output={usage.get('output_tokens')}")
 
     b64 = data["data"][0]["b64_json"]
     return base64.b64decode(b64), "image/png"
@@ -222,6 +253,9 @@ def lambda_handler(event, context):
         # 편집 대상(file)이 없으면 참고 이미지 중 첫 장을 대상으로 삼습니다 — 프론트의
         # "참고 이미지만으로 새로 생성" 흐름(file 없이 referenceFiles만 오는 경우)이
         # 400으로 튕기지 않도록.
+        # ⚠️ 이 순서를 바꾸지 마세요. input_fidelity=high는 전송 순서상 "첫 번째 이미지"를
+        # 가장 충실하게 보존하므로, 편집 대상이 반드시 images[0]이어야 글자·로고가 살아남습니다.
+        # (정렬이나 필터를 끼워넣으면 에러 없이 조용히 품질만 떨어집니다.)
         images = []
         if file_field:
             images.append(file_field)
