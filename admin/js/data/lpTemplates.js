@@ -7,12 +7,18 @@
 // 사용자가 편집하는 데이터가 아니라 코드가 정의하는 고정 목록이라, store를 거치지 않고
 // 이렇게 별도 모듈로 export해도 아무 문제 없습니다. 나중에 개발팀 작업이 끝나고 나면
 // mockData.js의 seedTemplates()와 이 파일을 하나로 합치는 것도 고려해볼 수 있습니다.
+//
+// ⚠️ 2026-09 — "기본형"을 EDM 자유 조합 파일럿과 같은 개념(히어로 1개 + 섹션 여러 개를
+// 자유롭게 조합)으로 전환했습니다. freeform:true가 있으면 blocksLP.js의 assembleLpHtml()이
+// 이 blocks 배열(고정 목록)을 아예 쓰지 않고, draft.freeformHeroId/freeformSections를
+// 대신 씁니다 — blocks 배열은 옛 저장 데이터 호환/디버깅 참고용으로만 남겨둡니다.
 
 export const seedLpTemplates = () => [
   {
     id: "lp1",
-    name: "기본형 (히어로 + 추천상품 + 본문)",
+    name: "기본형 (자유 조합 — 히어로 + 섹션)",
     pageType: "전체",
-    blocks: ["브레드크럼", "히어로", "추천상품 그리드", "본문"]
+    freeform: true,
+    blocks: ["브레드크럼", "히어로", "추천상품 그리드", "본문"] // 참고용(더 이상 조립에 쓰이지 않음)
   }
 ];

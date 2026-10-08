@@ -2,7 +2,7 @@ import { store } from "../state.js";
 import { el, toast, esc } from "../lib/dom.js";
 import { generateCopyLP, generateEventLpContent } from "../lib/copyGeneratorLP.js";
 import { generateSeoMeta } from "../lib/seoMetaGenerator.js";
-import { assembleLpHtml, assembleLpCatalogGroupHtml, resolveCatalogGroups, resolveCatalogSeoMeta, CATALOG_STYLE, CATALOG_SCRIPT, assembleEventLpHtml, buildEventLpCss, detectBenefitType, benefitLayoutRule, enforceSingleEmphasis, NOTICE_COMMON_MASTER, EVENT_LP_TEMPLATE_ID, assembleEconomyLineupHtml, economyBid, economyLineupIssues, economySampleData, ECONOMY_LINEUP_TEMPLATE_ID, ECONOMY_LINEUP_PREVIEW_CSS, assembleEvolutionHtml, evolutionBlockDefaults, EVOLUTION_BLOCK_TYPES, EVOLUTION_PREVIEW_CSS, EVOLUTION_TEMPLATE_ID, LP_PREVIEW_EDIT_STYLE, LP_PREVIEW_EDIT_SCRIPT, LP_SHELL_SCRIPT, LP_SHELL_SCRIPT_VERSION, LP_TITLE_SUFFIX, withRequiredDescriptionSuffix } from "../lib/blocksLP.js";
+import { assembleLpHtml, assembleLpCatalogGroupHtml, resolveCatalogGroups, resolveCatalogSeoMeta, CATALOG_STYLE, CATALOG_SCRIPT, assembleEventLpHtml, buildEventLpCss, detectBenefitType, benefitLayoutRule, enforceSingleEmphasis, NOTICE_COMMON_MASTER, EVENT_LP_TEMPLATE_ID, assembleEconomyLineupHtml, economyBid, economyLineupIssues, economySampleData, ECONOMY_LINEUP_TEMPLATE_ID, ECONOMY_LINEUP_PREVIEW_CSS, assembleEvolutionHtml, evolutionBlockDefaults, EVOLUTION_BLOCK_TYPES, EVOLUTION_PREVIEW_CSS, EVOLUTION_TEMPLATE_ID, LP_PREVIEW_EDIT_STYLE, LP_PREVIEW_EDIT_SCRIPT, LP_SHELL_SCRIPT, LP_SHELL_SCRIPT_VERSION, LP_TITLE_SUFFIX, withRequiredDescriptionSuffix, LP_HERO_TYPES, LP_SECTION_TYPES, lpHeroDefaults, lpSectionDefaults } from "../lib/blocksLP.js";
 import { seedLpTemplates } from "../data/lpTemplates.js";
 import { checkGuidelinesLP, summarizeGuidelineIssuesLP, LP_WIDTH_PATTERNS, LP_ECONOMY_LAYOUT, DEPLOYMENT_COUNTRY } from "../lib/guidelineCheckLP.js";
 import { checkAllLinks, summarizeLinkResults } from "../lib/linkChecker.js";
@@ -11,7 +11,7 @@ import { deployLpToS3, deployLpFilesToS3, deploySharedAssetsToS3, resolveCampaig
 import { resizeImage } from "../lib/imageResize.js";
 import { uploadToS3 } from "../lib/s3Upload.js";
 import { nowDate, nowDateTime } from "../lib/datetime.js";
-import { generateImage, generateAltTextFromImage } from "../lib/imageProcessApi.js";
+import { generateImage, generateAltTextFromImage, ALLOW_TEXT_ONLY_GENERATION } from "../lib/imageProcessApi.js";
 
 const LP_TEMPLATES = seedLpTemplates();
 // ⚠️ 신상품카탈로그는 다른 LP 템플릿과 완전히 다른 화면(캐치카피 등 타이핑 폼이 아니라
@@ -91,6 +91,30 @@ export function renderGeneratorLP(root, params) {
     // 값이 [배지]"가 되어버려서, 다음부턴 진짜로 비어있는 게 아니게 되는
     // 문제가 생깁니다. [...] 패턴 그대로면 저장하지 않고 빈 문자열로 취급합니다.
     const value = /^\[.*\]$/.test((e.data.value || "").trim()) ? "" : e.data.value;
+    // ⚠️ 2026-09 신설 — 자유 조합(히어로+섹션)의 인라인 편집 마커는 "ns::key"
+    // 형태입니다(blocksLP.js의 ffName() 참고). 히어로는 ns가 "hero"(namespace 없이
+    // 저장되는 blocksLP.js와 달리, 여기 UI에선 draft.freeformHeroValues로 보낼
+    // 대상을 구분하려고 "hero"라는 고정 ns를 씁니다 — heroDef.html()이 실제로 만드는
+    // data-field 값은 namespace 없는 순수 key이므로, 히어로 필드는 아래에서 별도로
+    // 감지합니다), 섹션은 ns가 그 섹션 인스턴스 id입니다.
+    if (field.includes("::")) {
+      const [ns, key] = field.split("::");
+      const sectionValues = (draft.freeformSectionValues || {})[ns];
+      if (sectionValues) {
+        sectionValues[key] = value;
+        log(`미리보기에서 "${field}" 수정됨`);
+        renderForm();
+      }
+      return;
+    }
+    const heroTextKeys = (LP_HERO_TYPES[draft.freeformHeroId]?.fields || [])
+      .filter(f => f.type === "text").map(f => f.key);
+    if (draft.freeformHeroValues && heroTextKeys.includes(field)) {
+      draft.freeformHeroValues[field] = value;
+      log(`미리보기에서 "${field}" 수정됨`);
+      renderForm();
+      return;
+    }
     // ⚠️ "summaryRows.0.label"처럼 점으로 이어진 경로면 배열 요소를 직접
     // 찾아 갱신합니다 — 단순 draft[field] 방식으론 배열 안의 특정 항목을
     // 가리킬 수 없어서, 이 표기법을 별도로 해석해야 합니다.
@@ -247,15 +271,18 @@ export function renderGeneratorLP(root, params) {
       formBody.appendChild(sectionEvolutionBlocks());
       return;
     }
+    // ⚠️ 2026-09 — "기본형"이 고정 필드(캐치카피/히어로이미지/본문/상품그리드 각 1개)에서
+    // EDM 자유 조합 파일럿과 같은 개념(히어로 1개 + 섹션 여러 개 자유 조합)으로
+    // 바뀌었습니다. sectionAiCopy()는 그대로 두되(SEO 메타는 여전히 공용), AI가 채우는
+    // 대상만 draft.freeformHeroValues.catchcopy로 바뀝니다.
     formBody.appendChild(sectionAiCopy());
     formBody.appendChild(sectionPageType());
     formBody.appendChild(sectionWidthPattern());
     formBody.appendChild(sectionBreadcrumb());
-    formBody.appendChild(sectionSeriesCodesLP());
-    formBody.appendChild(sectionCatchcopy());
-    formBody.appendChild(sectionHeroImage());
-    formBody.appendChild(sectionBodyImage());
-    formBody.appendChild(sectionBodyText());
+    formBody.appendChild(groupHeader("자유 조합 (히어로 + 섹션)"));
+    formBody.appendChild(sectionFreeformHero());
+    formBody.appendChild(sectionFreeformPalette());
+    formBody.appendChild(sectionFreeformBlocks());
   }
 
   // ==========================================================================
@@ -1926,6 +1953,328 @@ export function renderGeneratorLP(root, params) {
     ]);
   }
 
+
+  // ==========================================================================
+  // "기본형" 자유 조합(히어로 + 섹션) — EDM 자유 조합 파일럿(generator.js)과 같은 개념을
+  // LP에 맞게 이식했습니다. blocksLP.js의 LP_HERO_TYPES/LP_SECTION_TYPES가 필드 스키마 +
+  // 렌더 함수를 정의하고, 여기서는 그 스키마를 읽어 폼을 그리는 범용 렌더러만 둡니다 —
+  // sectionEvolutionBlocks()와 같은 설계이지만, image/link/toggle 필드 타입과 실제 이미지
+  // 업로드(S3)까지 추가로 지원합니다.
+  // ==========================================================================
+
+  function sectionFreeformHero() {
+    const heroTypes = Object.keys(LP_HERO_TYPES);
+    const currentDef = LP_HERO_TYPES[draft.freeformHeroId];
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "히어로 선택")])]),
+      el("div", { class: "sec-body" }, [
+        el("div", { style: "display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;" }, heroTypes.map(type => {
+          const def = LP_HERO_TYPES[type];
+          const active = draft.freeformHeroId === type;
+          return el("div", {
+            class: "opt-btn" + (active ? " active" : ""),
+            style: "display:flex;align-items:center;gap:8px;",
+            // ⚠️ 히어로 4종이 전부 같은 필드 스키마(FF_HERO_FIELDS)를 공유하므로,
+            // 히어로를 바꿔도 이미 입력해둔 값(캐치카피 등)은 그대로 유지됩니다 —
+            // 값을 초기화하지 않고 freeformHeroId만 바꿉니다.
+            onclick: () => { draft.freeformHeroId = type; renderForm(); renderPreview(); }
+          }, [
+            el("span", { style: "display:flex;flex-shrink:0;width:20px;height:20px;border-radius:4px;overflow:hidden;border:1px solid #ddd;" }, [
+              el("span", { style: `display:block;flex:1;background:${def.swatch[0]};` }),
+              el("span", { style: `display:block;flex:1;background:${def.swatch[1]};` })
+            ]),
+            def.label
+          ]);
+        })),
+        ...(currentDef ? currentDef.fields.map(f =>
+          freeformFieldRow(f, draft.freeformHeroValues, renderPreview, `hero_${f.key}`)
+        ) : [])
+      ])
+    ]);
+  }
+
+  function sectionFreeformPalette() {
+    const types = Object.keys(LP_SECTION_TYPES);
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "섹션 추가")])]),
+      el("div", { class: "sec-body" }, [
+        el("div", { style: "display:flex;flex-wrap:wrap;gap:6px;" }, types.map(type =>
+          el("button", {
+            class: "btn btn-sm ghost",
+            onclick: () => {
+              const inst = lpSectionDefaults(type);
+              draft.freeformSections.push({ id: inst.id, type });
+              draft.freeformSectionValues[inst.id] = inst;
+              renderForm();
+              renderPreview();
+            }
+          }, "+ " + LP_SECTION_TYPES[type].label)
+        ))
+      ])
+    ]);
+  }
+
+  function sectionFreeformBlocks() {
+    const list = draft.freeformSections || [];
+    return el("div", { class: "sec" }, [
+      el("div", { class: "sec-hd" }, [
+        el("div", { class: "sec-hd-left" }, [el("span", { class: "sec-title" }, "섹션 편집")]),
+        el("span", { style: "font-size:11px;color:#999;font-family:ui-monospace,monospace;" }, `${list.length} sections`)
+      ]),
+      el("div", { class: "sec-body" }, list.length ? list.map((inst, i) => {
+        const def = LP_SECTION_TYPES[inst.type];
+        const values = draft.freeformSectionValues[inst.id] || (draft.freeformSectionValues[inst.id] = {});
+        return el("div", { style: "border:1px solid #e3e5ea;border-radius:6px;margin-bottom:10px;overflow:hidden;" }, [
+          el("div", { style: "display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fcfcfd;border-bottom:1px solid #eef0f3;" }, [
+            el("span", { style: "width:20px;height:20px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:#0f218b;color:#fff;border-radius:3px;font-size:11px;font-weight:700;" }, String(i + 1)),
+            el("span", { style: "flex:1;font-size:13px;font-weight:700;" }, def ? def.label : inst.type),
+            el("button", { class: "btn btn-sm ghost", disabled: i === 0 ? "disabled" : null, onclick: () => { [list[i - 1], list[i]] = [list[i], list[i - 1]]; renderForm(); renderPreview(); } }, "↑"),
+            el("button", { class: "btn btn-sm ghost", disabled: i === list.length - 1 ? "disabled" : null, onclick: () => { [list[i], list[i + 1]] = [list[i + 1], list[i]]; renderForm(); renderPreview(); } }, "↓"),
+            el("button", {
+              class: "btn btn-sm ghost",
+              onclick: () => { list.splice(i, 1); delete draft.freeformSectionValues[inst.id]; renderForm(); renderPreview(); }
+            }, "✕")
+          ]),
+          el("div", { style: "padding:10px;display:flex;flex-direction:column;gap:9px;" }, [
+            // ⚠️ 카드형 섹션(이미지 카드 1x1/1x2/1x3)은 image_N이 각 카드의 첫 필드라,
+            // 그 앞에 "카드 N" 구분 헤더를 끼워 넣어 어떤 입력이 몇 번째 카드 소속인지
+            // 한눈에 보이게 합니다.
+            ...(def ? def.fields.flatMap(f => {
+              const cardMatch = /^image_(\d+)$/.exec(f.key);
+              const rows = [];
+              if (cardMatch) {
+                rows.push(el("div", { style: "font-size:11px;font-weight:700;color:#0f218b;border-top:1px dashed #e3e5ea;padding-top:8px;margin-top:2px;" }, `카드 ${cardMatch[1]}`));
+              }
+              rows.push(freeformFieldRow(f, values, renderPreview, `${inst.id}_${f.key}`));
+              return rows;
+            }) : []),
+            inst.type === "productGrid" ? sectionFreeformProductGrid(values) : null
+          ])
+        ]);
+      }) : [el("p", { class: "hint" }, "위에서 섹션을 추가해주세요.")])
+    ]);
+  }
+
+  /** 필드 정의 하나 → 실제 입력 엘리먼트. sectionEvolutionBlocks의 evolutionFieldInput과
+   *  같은 역할이지만, image/link/toggle 타입까지 지원합니다. */
+  function freeformFieldRow(field, values, onChange, uploadKey) {
+    if (field.type === "toggle") {
+      return el("label", { style: "display:flex;align-items:center;gap:6px;font-size:12px;color:#555;cursor:pointer;" }, [
+        el("input", {
+          type: "checkbox", checked: values[field.key] !== false ? "checked" : null,
+          onchange: e => { values[field.key] = e.target.checked; renderForm(); onChange(); }
+        }),
+        field.label
+      ]);
+    }
+    if (field.type === "image") {
+      return freeformImageField(field, values, onChange, uploadKey);
+    }
+    return el("div", {}, [
+      el("div", { class: "hint", style: "margin-bottom:4px;" }, field.label),
+      field.type === "textarea"
+        ? el("textarea", { oninput: e => { values[field.key] = e.target.value; onChange(); } }, values[field.key] || "")
+        : el("input", {
+            type: "text", value: values[field.key] || "",
+            placeholder: field.type === "link" ? "https://..." : "",
+            style: field.type === "link" ? "font-family:ui-monospace,monospace;" : "",
+            oninput: e => { values[field.key] = e.target.value; onChange(); }
+          })
+    ]);
+  }
+
+  /** 이미지 필드 — "업로드"(실제 S3 업로드 + alt 자동 생성) / "AI로 생성"(참고 소재 +
+   *  지시문을 gpt-image-1 기반 process-image Lambda에 보내 만듦, 이벤트 LP KV의
+   *  handleEventKvGenerate()와 완전히 같은 파이프라인) / "URL 직접 입력" 세 모드를
+   *  지원합니다. ⚠️ 2026-09 신설 — "LP 히어로는 미리 만들어둔 소재가 없다"는 요청으로
+   *  추가했습니다. 히어로뿐 아니라 이미지 카드 섹션도 같은 함수를 쓰므로 동일하게
+   *  AI 생성이 가능합니다. */
+  function freeformImageField(field, values, onChange, uploadKey) {
+    const value = values[field.key];
+    const uploading = draft.freeformUploadingKey === uploadKey;
+    const mode = values[`${field.key}__mode`] || "upload"; // "upload" | "ai" | "url"
+    const materials = values[`${field.key}__materials`] || (values[`${field.key}__materials`] = []);
+
+    const modeTabs = el("div", { style: "display:flex;gap:6px;margin-bottom:6px;" }, [
+      { key: "upload", label: "업로드" },
+      { key: "ai", label: "✨ AI로 생성" },
+      { key: "url", label: "URL 입력" }
+    ].map(m => el("button", {
+      class: "btn btn-sm" + (mode === m.key ? "" : " ghost"),
+      onclick: () => { values[`${field.key}__mode`] = m.key; renderForm(); }
+    }, m.label)));
+
+    let body;
+    if (mode === "url") {
+      body = el("input", {
+        type: "text", value: value || "", placeholder: "https://...",
+        oninput: e => { values[field.key] = e.target.value; onChange(); }
+      });
+    } else if (mode === "ai") {
+      body = el("div", {}, [
+        materials.length ? el("div", { style: "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;" }, materials.map((mat, mi) =>
+          el("span", { style: "display:inline-flex;align-items:center;gap:4px;background:#eef0f8;border-radius:12px;padding:2px 8px 2px 2px;font-size:11px;" }, [
+            el("img", { src: mat.url, style: "width:18px;height:18px;object-fit:cover;border-radius:50%;" }),
+            mat.name || `소재${mi + 1}`,
+            el("span", {
+              style: "cursor:pointer;color:#999;font-weight:700;",
+              onclick: () => { materials.splice(mi, 1); renderForm(); }
+            }, "×")
+          ])
+        )) : null,
+        el("textarea", {
+          placeholder: "원하는 이미지를 설명해주세요 · 예: 파란 배경에 신뢰감 있는 느낌의 히어로 이미지",
+          value: values[`${field.key}__instruction`] || "",
+          oninput: e => { values[`${field.key}__instruction`] = e.target.value; }
+        }),
+        el("label", { class: "btn btn-sm upload-label", style: "text-align:center;justify-content:center;margin-top:6px;width:100%;box-sizing:border-box;" }, [
+          "참고 소재 추가 (선택, 여러 장 가능)",
+          el("input", {
+            type: "file", accept: "image/*", multiple: true, style: "display:none;",
+            onchange: e => {
+              const files = [...e.target.files];
+              if (!files.length) return;
+              files.forEach(file => materials.push({ file, url: URL.createObjectURL(file), name: file.name }));
+              renderForm();
+            }
+          })
+        ]),
+        el("button", {
+          class: "ai-btn", style: "width:100%;margin-top:6px;", disabled: uploading ? "disabled" : null,
+          onclick: () => handleFreeformImageGenerate(field, values, uploadKey, onChange)
+        }, uploading ? "생성 중..." : "✨ AI로 이미지 생성"),
+        el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:4px;" }, ALLOW_TEXT_ONLY_GENERATION ? "참고 소재 없이 설명만으로도 생성할 수 있습니다." : "참고 소재를 1장 이상 추가해야 생성할 수 있습니다."),
+        el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:2px;" }, "문구·글자가 들어간 이미지는 AI가 텍스트를 깨뜨려 그릴 수 있어요 — 문구는 여기서 입력하지 말고, 위 캐치카피/제목 입력칸에 따로 넣어주세요.")
+      ]);
+    } else {
+      body = el("label", { class: "btn btn-sm upload-label", style: "text-align:center;justify-content:center;width:100%;box-sizing:border-box;" }, [
+        uploading ? "업로드 중..." : "파일 선택",
+        el("input", {
+          type: "file", accept: "image/*", style: "display:none;", disabled: uploading ? "disabled" : null,
+          onchange: e => { if (e.target.files[0]) handleFreeformImageUpload(field, values, e.target.files[0], uploadKey, onChange); }
+        })
+      ]);
+    }
+
+    return el("div", {}, [
+      el("div", { class: "hint", style: "margin-bottom:4px;" }, field.label),
+      value ? el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px;" }, [
+        el("img", { src: value, style: "width:44px;height:44px;object-fit:cover;border-radius:4px;flex-shrink:0;" }),
+        el("button", {
+          class: "btn btn-sm ghost",
+          onclick: () => { values[field.key] = ""; values[`${field.key}_alt`] = ""; renderForm(); onChange(); }
+        }, "삭제")
+      ]) : null,
+      modeTabs,
+      body
+    ]);
+  }
+
+  async function handleFreeformImageUpload(field, values, file, uploadKey, onChange) {
+    draft.freeformUploadingKey = uploadKey;
+    renderForm();
+    try {
+      const resized = await resizeImage(file, 1200);
+      try {
+        values[`${field.key}_alt`] = await generateAltTextFromImage(resized, values.title || draft.freeformHeroValues?.catchcopy || field.label);
+      } catch (e) {
+        log("alt 생성 실패(업로드는 계속 진행): " + e.message);
+      }
+      const url = await uploadToS3(resized, file.name, "LP");
+      values[field.key] = url;
+      log(`이미지 업로드 완료: ${file.name}`);
+    } catch (e) {
+      toast("이미지 업로드에 실패했습니다");
+      log("이미지 업로드 실패: " + e.message);
+    } finally {
+      draft.freeformUploadingKey = null;
+      renderForm();
+      onChange();
+    }
+  }
+
+  /** 이벤트 LP handleEventKvGenerate()와 완전히 같은 파이프라인(참고 소재+지시문 →
+   *  generateImage(gpt-image-1) → 리사이즈 → alt 생성 → uploadToS3) — 히어로/이미지
+   *  카드처럼 "미리 만들어둔 소재가 없는" 이미지 슬롯을 AI로 채울 수 있게 합니다. */
+  async function handleFreeformImageGenerate(field, values, uploadKey, onChange) {
+    const materials = values[`${field.key}__materials`] || [];
+    const instruction = values[`${field.key}__instruction`] || "";
+    if (!materials.length && !instruction.trim()) {
+      toast("참고 소재를 추가하거나 원하는 이미지를 설명해주세요");
+      return;
+    }
+    draft.freeformUploadingKey = uploadKey;
+    renderForm();
+    const purposeLabel = draft.freeformHeroValues?.catchcopy || values.title || field.label;
+    try {
+      log(`"${field.label}" AI 이미지 생성 중... (소재 ${materials.length}개)`);
+      const resultBlob = await generateImage({ referenceFiles: materials.map(m => m.file).filter(Boolean), instruction, purpose: purposeLabel });
+      const resized = await resizeImage(resultBlob, 1200);
+      try {
+        values[`${field.key}_alt`] = await generateAltTextFromImage(resized, purposeLabel);
+      } catch (e) {
+        log("alt 생성 실패(생성은 계속 진행): " + e.message);
+      }
+      const filename = `${field.key}_${Date.now()}.png`;
+      const url = await uploadToS3(resized, filename, "LP");
+      values[field.key] = url;
+      log(`"${field.label}" AI 이미지 생성 완료: ${filename}`);
+    } catch (e) {
+      log(`"${field.label}" AI 이미지 생성 실패: ` + e.message);
+      toast("생성에 실패했습니다: " + e.message);
+    } finally {
+      draft.freeformUploadingKey = null;
+      renderForm();
+      onChange();
+    }
+  }
+
+  /** 추천상품 그리드 섹션 전용 — sectionSeriesCodesLP()/lookupSeriesCodesLP()와 완전히
+   *  같은 UI/동작이지만, draft 전체가 아니라 이 섹션 인스턴스(values)에만 저장됩니다.
+   *  같은 종류의 섹션을 여러 번 추가해도(예: 상품그리드 2개) 서로 다른 시리즈코드/조회
+   *  결과를 독립적으로 가질 수 있습니다. */
+  function sectionFreeformProductGrid(values) {
+    const slots = values.seriesCodes || (values.seriesCodes = Array.from({ length: 6 }, () => ""));
+    return el("div", {}, [
+      el("div", { class: "hint", style: "margin-bottom:4px;" }, "추천상품 시리즈 코드 (선택, 최대 6개)"),
+      el("div", { class: "series-grid" }, slots.map((code, i) =>
+        el("div", { class: "series-slot" }, [
+          el("input", {
+            type: "text", placeholder: `시리즈코드 ${i + 1}`, value: code,
+            style: "font-size:12.5px;border:1px solid #d0d0d0;border-radius:6px;font-family:inherit;outline:none;padding:7px 22px 7px 10px;",
+            oninput: e => { slots[i] = e.target.value; }
+          }),
+          code ? el("button", { class: "rm", onclick: () => { slots[i] = ""; renderForm(); } }, "✕") : null
+        ])
+      )),
+      el("button", { class: "btn series-lookup-btn", onclick: () => lookupFreeformSeriesCodes(values) }, "전체 조회 (상품 데이터 자동 불러오기)"),
+      el("p", { class: "hint" }, "미리보기에 바로 반영됩니다. 조회 결과에 없는 항목은 \"연동 예정\" 플레이스홀더로 표시됩니다.")
+    ]);
+  }
+
+  async function lookupFreeformSeriesCodes(values) {
+    const codes = (values.seriesCodes || []).filter(c => c && c.trim());
+    if (!codes.length) { toast("시리즈 코드를 1개 이상 입력하세요"); return; }
+    log(`시리즈 코드 ${codes.length}건 조회 중...`);
+    const results = await Promise.all(codes.map(async code => {
+      try {
+        const product = await fetchSeriesInfo(code);
+        if (!product.name) log(`⚠ 시리즈 코드 "${code}"의 상품을 찾지 못했습니다.`);
+        return product;
+      } catch (e) {
+        log(`⚠ 시리즈 코드 "${code}" 조회 실패: ${e.message}`);
+        return { code };
+      }
+    }));
+    values.products = results;
+    const successCount = results.filter(p => p.name).length;
+    log(`시리즈 조회 완료 — 성공 ${successCount}건${results.length - successCount ? ` · 실패 ${results.length - successCount}건` : ""}`);
+    toast(`상품 데이터 ${successCount}건을 불러왔습니다`);
+    renderForm();
+    renderPreview();
+  }
+
+
   function sectionSeriesCodesLP() {
     const slots = draft.seriesCodes;
     const grid = el("div", { class: "series-grid" }, slots.map((code, i) =>
@@ -2127,7 +2476,7 @@ export function renderGeneratorLP(root, params) {
             log("AI 카피 생성 요청 중...");
             try {
               const result = await generateCopyLP({ pageType: draft.pageType, instruction: draft.lpAiPrompt });
-              draft.catchcopy = result.catchcopy;
+              draft.freeformHeroValues.catchcopy = result.catchcopy;
               draft.cta = result.cta;
               const seoResult = await generateSeoMeta({
                 contentName: draft.lpAiPrompt || result.catchcopy,
@@ -2270,7 +2619,7 @@ export function renderGeneratorLP(root, params) {
           onclick: async () => {
             log("SEO 메타 생성 요청 중...");
             const result = await generateSeoMeta({
-              contentName: draft.seoAiPrompt || draft.catchcopy || (isCatalog ? "신상품카탈로그" : "컨텐츠"),
+              contentName: draft.seoAiPrompt || draft.freeformHeroValues?.catchcopy || (isCatalog ? "신상품카탈로그" : "컨텐츠"),
               parentCategory: draft.breadcrumb
             });
             draft.seoTitle = result.title;
@@ -2768,7 +3117,7 @@ export function renderGeneratorLP(root, params) {
     const blob = new Blob([html], { type: "text/html" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = (draft.catchcopy || "lp") + ".html";
+    a.download = (draft.freeformHeroValues?.catchcopy || draft.catchcopy || "lp") + ".html";
     a.click();
     log("HTML 다운로드 완료");
   }
@@ -3003,6 +3352,11 @@ function buildInitialDraftLP(existing) {
     heroImageUrl: "",
     bodyImageOption: "기본",
     bodyText: "",
+    // ---- 기본형 자유 조합(히어로 + 섹션) ----
+    freeformHeroId: Object.keys(LP_HERO_TYPES)[0],
+    freeformHeroValues: lpHeroDefaults(Object.keys(LP_HERO_TYPES)[0]),
+    freeformSections: [],
+    freeformSectionValues: {},
     seoTitle: "",
     seoDescription: "",
     seoKeywords: [],
@@ -3042,14 +3396,59 @@ function buildInitialDraftLP(existing) {
     evolutionBlocksHub: []
   };
   if (existing?.draftData) {
-    return {
+    const merged = {
       ...base, ...existing.draftData, id: base.id,
       campaignName: existing.draftData.campaignName || existing.name || "",
       author: existing.draftData.author || existing.author || ""
     };
+    return migrateLegacyLpToFreeform(merged);
   }
   if (existing?.name) {
     return { ...base, campaignName: existing.name, author: existing.author || "" };
   }
   return base;
+}
+
+/** ⚠️ 2026-09 신설 — "기본형"이 고정 블록(캐치카피/히어로이미지/본문/상품그리드)에서
+ *  자유 조합(히어로+섹션)으로 바뀌면서, 이 변경 전에 저장된 기본형 캠페인을 다시 열면
+ *  freeformSections가 비어있어 화면이 텅 비어 보이는 문제가 생깁니다. 옛 필드값이 남아
+ *  있고 아직 자유 조합 데이터로 옮겨진 적이 없으면(마이그레이션 완료 표시가 없으면),
+ *  옛 값을 그대로 히어로 1개 + 필요한 섹션들로 옮겨 담아 예전 내용이 그대로 보이게
+ *  합니다 — EDM 자유 조합 파일럿 도입 시와 달리 LP는 "기본형" 자체를 교체하는 것이라
+ *  마이그레이션이 반드시 필요합니다. 카탈로그/이벤트LP/경제형/Evolution 등 다른
+ *  템플릿은 templateId가 달라서 이 함수를 타지 않습니다(대상은 오직 "lp1"). */
+function migrateLegacyLpToFreeform(draft) {
+  if (draft.templateId !== (LP_TEMPLATES[0]?.id || "lp1")) return draft;
+  if (draft.freeformMigrated) return draft;
+  if (draft.freeformSections && draft.freeformSections.length) { draft.freeformMigrated = true; return draft; }
+
+  const hasLegacyContent = draft.catchcopy || draft.heroImageUrl || draft.bodyText || (draft.products || []).length;
+  if (!hasLegacyContent) { draft.freeformMigrated = true; return draft; }
+
+  draft.freeformHeroId = "navy";
+  draft.freeformHeroValues = {
+    ...lpHeroDefaults("navy"),
+    catchcopy: draft.catchcopy || "",
+    image: draft.heroImageOption === "선택2" ? (draft.heroImageUrl || "") : ""
+  };
+  draft.freeformSections = [];
+  draft.freeformSectionValues = {};
+  if ((draft.products || []).length) {
+    const inst = lpSectionDefaults("productGrid");
+    inst.seriesCodes = draft.seriesCodes && draft.seriesCodes.length ? draft.seriesCodes : Array.from({ length: 6 }, () => "");
+    inst.products = draft.products;
+    inst.showTitle = true;
+    inst.title = "추천상품";
+    draft.freeformSections.push({ id: inst.id, type: "productGrid" });
+    draft.freeformSectionValues[inst.id] = inst;
+  }
+  if (draft.bodyText) {
+    const inst = lpSectionDefaults("textBlock");
+    inst.body = draft.bodyText;
+    inst.showTitle = false;
+    draft.freeformSections.push({ id: inst.id, type: "textBlock" });
+    draft.freeformSectionValues[inst.id] = inst;
+  }
+  draft.freeformMigrated = true;
+  return draft;
 }

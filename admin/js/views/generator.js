@@ -2,8 +2,8 @@ import { store } from "../state.js";
 import { el, toast, esc } from "../lib/dom.js";
 import { navigate } from "../router.js";
 import { generateCopy, regenerateField } from "../lib/copyGenerator.js";
-import { generateImage, generateAltTextFromImage } from "../lib/imageProcessApi.js";
-import { resizeImage, resizeImageToRatio, EDM_IMAGE_MAX_DIM } from "../lib/imageResize.js";
+import { generateImage, generateAltTextFromImage, ALLOW_TEXT_ONLY_GENERATION } from "../lib/imageProcessApi.js";
+import { resizeImage, resizeImageToRatio, resizeImageContain, EDM_IMAGE_MAX_DIM } from "../lib/imageResize.js";
 import { uploadToS3 } from "../lib/s3Upload.js";
 import { assembleEdmHtml, assembleFreeformEdmHtml, EDM_HEADER_TYPES, EDM_SECTION_TYPES } from "../lib/blocks.js";
 import { checkGuidelines, summarizeGuidelineIssues } from "../lib/guidelineCheck.js";
@@ -23,10 +23,29 @@ const PURPOSES = ["온보딩", "육성", "이탈방지", "상품소개", "쿠폰
 // 없어서 resolveTemplate()이 자연스럽게 null을 반환하고, 이걸 이용해
 // renderForm()에서 일반 템플릿 폼과 분기합니다.
 const FREEFORM_TEMPLATE_ID = "freeform";
+
+// ⚠️ 2026-10 — 이미지 생성이 서버 읽기 시간 초과("The read operation timed out", 약 28초)로 실패했을 때
+// 같은 요청을 한 번 더 보낼지 여부. 기본은 끔(false)입니다. 처음엔 켜 두었는데, 한 요청이 원래 한도 근처에서
+// 끊기는 상황(요청문에 명령이 여러 개 / 참고 소재가 많음)에서는 재시도도 같은 이유로 또 실패해서 대기 시간이
+// 약 2배가 되고 서버(OpenAI) 호출·비용만 두 번 나갔습니다. 일시적 지연이 잦다고 확인되면 true로 바꾸세요.
+const AUTO_RETRY_ON_TIMEOUT = false;
+
+// ⚠️ 2026-10 — "여백 흰색" 지정. "그대로 첨부"하면 슬롯 비율을 맞추려고 양옆/위아래에 여백이 생기는데, 그 여백이
+// 원본 테두리 색(예: 회색)으로 채워져 "배경이 회색으로 뜬다"는 제보가 있었습니다. 이걸 AI에게 "배경 흰색"으로
+// 시키면 모델이 여백이 아니라 이미지 전체를 다시 그려 색이 바뀌고 글자가 깨졌습니다. 그래서 AI 없이 여백 색만
+// 흰색으로 정하는 문구를 지원합니다: "그대로 첨부, 여백 흰색" / "여백 흰색" / "여백은 흰색으로".
+// "배경 흰색"은 AI에게 배경 자체를 바꾸라는 정당한 요청이기도 해서 건드리지 않고, "여백"이 들어간 경우만 인식합니다.
+const PAD_WHITE_RE = /(?:(?:양옆|양쪽|좌우|상하|위아래)\s*)?(?:여백|빈\s*공간|공간)\s*(?:은|는|을|를|이|가)?\s*(?:흰색|하얀색|하얗게|화이트)\s*(?:으로|로)?\s*(?:채워\s*줘|채워\s*주세요|해\s*줘|해\s*주세요|하기)?|(?:흰색|하얀색|화이트)\s*(?:으로\s*)?(?:된\s*)?여백/;
+function splitPadClause(instruction) {
+  const raw = instruction || "";
+  if (!PAD_WHITE_RE.test(raw)) return { text: raw.trim(), padWhite: false };
+  const text = raw.replace(PAD_WHITE_RE, " ").replace(/\(\s*\)/g, "").replace(/^[\s,.;·+&]+|[\s,.;·+&]+$/g, "").replace(/\s{2,}/g, " ");
+  return { text, padWhite: true };
+}
 // "히어로 필드"로 보는 키 목록 — 이 목록에 없는 필드가 아직 제목(c_headline)도 나오기
 // 전에 등장하면, 그건 히어로가 아니라 "제목 없는 콘텐츠 블록"(NO.16의 main_1/sub_1 같은
 // [B08] 텍스트 블록)일 가능성이 높습니다. groupFieldsBySection()에서 사용합니다.
-const HERO_FIELD_KEYS = new Set(["preheader", "copy_headline", "copy_sub", "copy_sub_strong", "customer_name", "rate"]);
+const HERO_FIELD_KEYS = new Set(["preheader", "badge_text", "copy_headline", "copy_sub", "copy_sub_strong", "customer_name", "rate"]);
 
 // ⚠️ 2026-09 버그 수정 — 원래 sectionFreeformHeaderPicker() 함수 안(지역
 // 변수)에 있었는데, "임시저장 후 목록→재편집" 흐름에서
@@ -284,7 +303,9 @@ export function renderGenerator(root, params) {
       ]),
       el("div", { class: "gen-form-body", id: "gen-form-body" }),
       el("div", { class: "gen-form-footer" }, [
-        el("div", { class: "log-summary", id: "log-summary", onclick: toggleLogDetails }, [
+        // ⚠️ 2026-09 — 아직 로그가 하나도 없을 때 "▸ 대기 중..."이 템플릿 문구처럼 보인다는 제보(팀 테스트 10번)
+        // 때문에, 첫 작업 로그가 생기기 전까지는 이 줄을 숨깁니다(log()가 처음 불릴 때 표시).
+        el("div", { class: "log-summary", id: "log-summary", style: "display:none;", title: "작업 기록 — 클릭하면 전체 기록을 봅니다", onclick: toggleLogDetails }, [
           el("span", { class: "log-chevron", id: "log-chevron" }, "▸"),
           el("span", { class: "log-summary-text", id: "log-summary-text" }, "대기 중...")
         ]),
@@ -336,6 +357,8 @@ export function renderGenerator(root, params) {
     logHistory.push(`[${t}] ${msg}`);
     const summaryEl = root.querySelector("#log-summary-text");
     if (summaryEl) summaryEl.textContent = msg;
+    const summaryBar = root.querySelector("#log-summary");
+    if (summaryBar) summaryBar.style.display = ""; // 첫 로그부터 표시(CSS 기본 display로 복귀)
     const detailsEl = root.querySelector("#log-details");
     if (detailsEl && detailsEl.style.display !== "none") renderLogDetails();
   }
@@ -390,7 +413,8 @@ export function renderGenerator(root, params) {
   // 서브 카피/설명처럼 "있어도 없어도 되는" 필드인지 판단 — 이 기준으로만 개별
   // 사용/미사용 토글을 보여줍니다(모든 필드에 토글을 붙이면 화면이 복잡해짐).
   function isOptionalField(f) {
-    return f.key.startsWith("sub_") || f.key.startsWith("desc_") || f.key === "copy_sub" || f.key === "copy_sub_strong";
+    // badge_text(상단 영문 배지)는 없애거나 고칠 수 있어야 해서 선택(끄기 가능) 필드입니다(팀 테스트 8번).
+    return f.key.startsWith("sub_") || f.key.startsWith("desc_") || f.key === "copy_sub" || f.key === "copy_sub_strong" || f.key === "badge_text";
   }
   // ⚠️ 그룹화 기준 전환: 처음엔 "필드 키의 숫자 접미사(_N)가 같으면 같은 섹션"으로 묶었는데,
   // NO.1처럼 "섹션 제목 1" 아래 이미지/카피가 1,2,3으로 3개 있고, 그 다음 "섹션 제목 2" 아래도
@@ -461,6 +485,10 @@ export function renderGenerator(root, params) {
         values[`brandName_${n}`] = p.brandName || p.brand || "MISUMI";
         values[`link_${n}`] = p.code ? withUtm(`https://kr.misumi-ec.com/vona2/detail/${encodeURIComponent(p.code)}/`) : "";
       });
+    }
+    // 필드 default(예: badge_text) — 사용자가 아직 건드리지 않은(undefined) 필드에만 적용합니다.
+    for (const f of t.fields) {
+      if (f.default !== undefined && values[f.key] === undefined) values[f.key] = f.default;
     }
     for (const f of t.fields) {
       if (f.type === "image" && !values[`${f.key}_alt`]) {
@@ -592,7 +620,8 @@ export function renderGenerator(root, params) {
       if (draft.freeformHeaderId) {
         formBody.appendChild(sectionFreeformSectionPicker());
         formBody.appendChild(sectionFreeformAiPrompt());
-        formBody.appendChild(sectionFreeformImagePool());
+        const imagePoolSection = sectionFreeformImagePool();
+        if (imagePoolSection) formBody.appendChild(imagePoolSection);
         formBody.appendChild(sectionFreeformValueInputs());
       }
       return;
@@ -724,15 +753,183 @@ export function renderGenerator(root, params) {
   /** 이미지 슬롯마다 참고 URL을 매번 새로 입력하는 게 소모적이라, 캠페인당 한 번만
    *  등록해두고 각 슬롯에서는 여기서 체크박스로 골라 쓰게 합니다. 등록 방식은 URL
    *  붙여넣기 또는 파일 업로드(업로드하면 S3에 올라간 뒤 그 URL이 풀에 들어감) 둘 다 지원. */
+  // ⚠️ 2026-09 버그 수정 — 참고 이미지 풀이 전역 공용이라, 슬롯 A의 지시문에 "이
+  // 사진만 써줘"라고 적어도 실제로는 풀에 있는 다른 소재까지 전부 AI에게 같이
+  // 넘어가 섞여버리는 문제였습니다(팀 테스트 제보 — 슬롯 1·2·3에 각각 다른
+  // 파일명을 지정해도 매번 추가된 소재 전부를 참고해서 합성됨). 이제 소재마다
+  // "이 소재를 쓸 슬롯"을 지정할 수 있고(ref.targetKeys), 비워두면 기존처럼
+  // 모든 슬롯에 공용으로 쓰입니다 — 하위호환: 이 수정 이전에 저장된 캠페인의
+  // 소재는 전부 targetKeys가 없어서 그대로 "전체 공용"으로 동작합니다.
+  // ⚠️ 예전에 한 번 있었던 체크박스 선택(meta.selectedRefs, handleImageGenerate의
+  // 주석 참고)이 "선택해도 반영이 안 된다"는 문제로 제거된 적이 있습니다 — 그
+  // 전철을 밟지 않으려면 생성 호출 6곳(고정 템플릿 개별 handleImageGenerate·
+  // 일괄 runGenerateAllImages·재보정 handleRecorrect, 자유조합 개별·일괄
+  // generateAndStoreFreeformImage·재보정 handleFreeformRecorrect) 전부에
+  // 빠짐없이 적용해야 합니다 — 하나라도 빠지면 그 경로만 예전처럼 다시 섞입니다.
+  // ⚠️ 2026-09 규칙 변경 — "이 슬롯 전용으로 지정된 소재가 하나라도 있으면 그
+  // 소재들만" 씁니다(전용 지정 우선). 예전엔 전용 지정 소재 + 전체 공용 소재를
+  // 전부 합쳐서 넘겼는데, 이미지1에 소재 하나만 지정하고 나머지를 "전체 공용"으로
+  // 둔 경우 나머지 소재까지 전부 이미지1 생성에 섞여 들어가서, AI가 서로 무관한
+  // 스크린샷들을 합성하며 엉뚱한(깨진 한글) 텍스트를 만들어냈습니다. 전용 지정이
+  // 하나도 없는 슬롯만 "전체 공용" 소재를 참고합니다.
+  function poolForSlot(pool, slotKey) {
+    const explicit = pool.filter(r => r.targetKeys && r.targetKeys.includes(slotKey));
+    if (explicit.length) return explicit;
+    return pool.filter(r => !r.targetKeys || !r.targetKeys.length);
+  }
+
+  // 자유조합은 섹션 인스턴스가 여러 개일 수 있어(같은 종류를 두 번 추가 등)
+  // f.key만으로는 안 겹치는 슬롯 키를 못 만듭니다 — g.namespace(인스턴스 id)를
+  // 앞에 붙여 전역 유일 키로 씁니다. 이미 renderFreeformImageField의
+  // data-form-field 속성이 쓰던 것과 같은 규칙입니다.
+  function freeformSlotKey(g, key) {
+    return g.namespace ? `${g.namespace}::${key}` : key;
+  }
+
+  // ⚠️ 2026-10 — 개발팀 실측 "AI 이미지 보정 프롬프트 작성법"을 화면 안내로 옮긴 접이식 팁(평소엔 접혀 있음).
+  function promptTipsBox() {
+    const li = t => el("li", { style: "margin:2px 0;" }, t);
+    return el("details", { style: "margin:2px 0 8px;font-size:10.5px;color:#666;" }, [
+      el("summary", { style: "cursor:pointer;color:#0F218B;font-weight:600;" }, "프롬프트 작성 팁"),
+      el("ul", { style: "margin:6px 0 0 16px;padding:0;line-height:1.5;" }, [
+        li('"무엇을 + 어떻게"로 쓰세요 — 예: 배경을 밝은 회색으로 바꿔줘 / 제품 아래 그림자를 제거해줘'),
+        li('"더 고급스럽게" 같은 모호한 말만 쓰면 디자인 전체가 바뀝니다 — 수단을 같이: 배경을 짙은 남색 그라데이션으로 바꾸고 미세한 금속 질감을 넣어줘'),
+        li("한 번에 한 가지만 요청하세요 (배경 바꾸기 → 결과 확인 → 그림자 제거 순서로)"),
+        li('"글자는 그대로 유지해줘" 같은 보존 문구는 쓰지 마세요 — 시스템이 이미 처리하고, 열거하면 오히려 그 부분을 건드리는 역효과가 있었습니다'),
+        li("없던 글자를 그려 넣는 요청은 피하세요 — 문구는 텍스트 필드로 넣는 게 확실합니다 (AI는 배경·제품컷만)"),
+        li("참고 소재는 꼭 필요한 것만 — 1장 약 20초, 4장 약 23초이고 30초를 넘기면 오류가 납니다"),
+        li("보정은 누적됩니다 — 두세 번 만에 틀어졌다면 이미지를 삭제하고 처음부터 다시 만드세요"),
+        li('초광폭 배너(3:1 등)는 3:2로 여백이 붙어 비율이 달라질 수 있습니다 — 잘라서 넣거나 "그대로 첨부"를 쓰세요'),
+        li('"그대로 첨부"했더니 여백이 회색이면 "그대로 첨부, 여백 흰색"으로 적으세요 — AI 없이 여백 색만 흰색이 됩니다("배경 흰색"은 AI가 이미지 전체를 다시 그려 색·글자가 바뀔 수 있음)')
+      ])
+    ]);
+  }
+  // ⚠️ 2026-10 — 요청문에 명령이 2개 이상 들어 있으면(예: "배경을 회색으로 바꾸고 그림자를 제거해줘") 모델이
+  // "전체를 손봐도 된다"고 해석하기 쉽고 생성 시간이 길어져 서버 시간 제한(약 28초)에 걸리기 쉽습니다
+  // (개발팀 가이드: 한 번에 한 가지만). 막지는 않고 로그로 경고만 합니다. 오탐은 무해합니다.
+  function looksLikeMultipleCommands(instruction) {
+    const t = (instruction || "").trim();
+    if (!t) return false;
+    const enders = (t.match(/(해\s*줘|해\s*주세요|바꿔\s*줘|바꿔\s*주세요|넣어\s*줘|넣어\s*주세요|지워\s*줘|없애\s*줘|올려\s*줘|만들어\s*줘|제거해|추가해)/g) || []).length;
+    const connective = /(바꾸고|바꿔서|제거하고|지우고|없애고|넣고|올리고|만들고|추가하고|조정하고|키우고|줄이고|밝게\s*하고|어둡게\s*하고)\s*\S/.test(t);
+    return enders >= 2 || connective;
+  }
+  function warnMultiCommand(instruction) {
+    if (looksLikeMultipleCommands(instruction)) log("⚠ 요청이 2가지 이상으로 보입니다 — 한 번에 한 가지씩 나눠 요청하면 더 빠르고(서버 30초 제한) 결과도 안정적입니다");
+  }
+  // ⚠️ 2026-10 — "AI로 이미지 일괄 생성" 버튼 라벨. 일괄 생성 중에는 몇 번째 슬롯을 만드는지 "생성 중 (2/5)"로
+  // 보여줍니다(슬롯을 하나씩 순서대로 만들어 AI 슬롯이 많으면 2분 가까이 걸리는데 진행 상황이 로그에만 있었음).
+  // draft.imageProgress는 일괄 생성이 시작될 때만 채워지고, 개별 슬롯 생성은 기존처럼 "생성 중..."입니다.
+  function imageBatchButtonLabel() {
+    if (!draft.generatingImage) return "✨ AI로 이미지 일괄 생성";
+    const p = draft.imageProgress;
+    return p && p.total > 0 ? `생성 중 (${p.current}/${p.total})` : "생성 중...";
+  }
+  // 이 슬롯으로 넘어가는 참고 소재가 3장 이상이면 느려져 30초 제한에 걸릴 수 있다고 로그로 알립니다.
+  function warnManyRefs(scoped) {
+    if (scoped.length >= 3) log(`⚠ 참고 소재 ${scoped.length}개 — 소재가 많을수록 느려지고 30초를 넘기면 실패합니다. 꼭 필요한 소재만 이 슬롯 전용으로 지정하세요`);
+  }
+
+  // ⚠️ 2026-09 신설 — 슬롯 설명에 "그대로 첨부"처럼 "수정 없이 이 소재를 그대로
+  // 넣어달라"는 뜻만 적은 경우를 알아봅니다. 예전엔 지시문이 비어있지 않으면 무조건 AI
+  // 생성으로 넘어가서, 지정한 소재를 그대로 넣고 싶었는데도 AI가 다시 그리며 글자가
+  // 깨졌습니다. "배경은 그대로 두고 로고 제거"처럼 '그대로'가 들어간 일반 편집 요청을
+  // 잘못 잡지 않도록, 지시문 전체가 이 뜻 하나뿐인 짧은 문장일 때만 인정합니다
+  // (공백·구두점은 무시).
+  function isAsIsInstruction(instruction) {
+    const split = splitPadClause(instruction);
+    const t = split.text.replace(/[\s.,!~]+/g, "");
+    if (!t) return split.padWhite; // "여백 흰색"만 적은 경우 = 그대로 첨부 + 여백 흰색
+    return /^(원본)?(이미지|파일|소재)?(그대로|수정없이|변경없이|편집없이|가공없이)(첨부|사용|삽입|넣기|넣어|넣어줘|넣어주세요|올려|올려줘|업로드|적용)?(해줘|해주세요|해|부탁)?$/.test(t)
+      || /^(그냥|바로)(첨부|사용|삽입|넣어|넣어줘|업로드)(해줘|해주세요)?$/.test(t);
+  }
+
+  // 이 슬롯 "전용으로 지정된" 소재만(공용 제외). "그대로 첨부"는 어떤 소재를 말하는지가
+  // 분명해야 하므로 전용 지정이 있을 때만 적용합니다.
+  function explicitPoolForSlot(pool, slotKey) {
+    return pool.filter(r => r.targetKeys && r.targetKeys.includes(slotKey));
+  }
+
+  // "그대로 첨부"가 가리키는 소재: 이 슬롯 전용으로 지정된 소재가 있으면 그것, 없으면 이 슬롯이 쓸 수 있는
+  // 공용 소재가 "딱 1개"일 때 그 소재(어떤 소재인지 모호하지 않으므로). 여러 개면 모호하니 null → AI 경로.
+  // (⚠️ 이전엔 전용 지정이 있을 때만 인정했는데, 소재가 1개뿐인 흔한 경우에도 AI로 넘어가 AI 호출 오류·
+  // 비용이 불필요하게 발생했습니다.)
+  function asIsSourceFor(pool, slotKey) {
+    const explicit = explicitPoolForSlot(pool, slotKey);
+    if (explicit.length) return explicit[0];
+    const shared = poolForSlot(pool, slotKey);
+    return shared.length === 1 ? shared[0] : null;
+  }
+
+  /** "그대로 첨부" 지시문이고 그 소재(asIsSourceFor)가 정해지면, 그 소재를 업로드용 File로
+   *  돌려줍니다(없으면 null → 기존대로 AI 경로). 방금 올린 소재는 File이 그대로 있고,
+   *  저장 후 다시 연 캠페인처럼 URL만 남은 소재는 내려받습니다(S3 CORS가 막혀 있으면
+   *  실패하므로 그때는 안내 오류를 냅니다). */
+  async function resolveAsIsFile(pool, slotKey, instruction) {
+    if (!isAsIsInstruction(instruction)) return null;
+    const src = asIsSourceFor(pool, slotKey);
+    if (!src) return null;
+    if (src.file) return src.file;
+    try {
+      const res = await fetch(src.url);
+      if (!res.ok) throw new Error(String(res.status));
+      const blob = await res.blob();
+      const name = decodeURIComponent((src.url || "").split("?")[0].split("/").pop() || "") || "attached.png";
+      return new File([blob], name, { type: blob.type || "image/png" });
+    } catch (e) {
+      throw new Error("지정한 소재 원본을 불러오지 못했습니다. 소재를 파일로 다시 추가하거나 '원본 교체'를 이용해주세요");
+    }
+  }
+
+  // ⚠️ 2026-09 — 사용자가 직접 이미지를 넣거나 AI로 만드는 "수동 이미지 슬롯"만
+  // 모읍니다. 상품 그리드는 시리즈코드를 조회하면 image_N/alt까지 자동으로
+  // 채워지므로(lookupSeriesCodesForGroup) 수동 슬롯이 필요 없는데도, 필드 정의에
+  // image 15개가 있다는 이유로 "슬롯별 설명" 목록·소재 드롭다운·일괄 생성 대상에
+  // 15개가 잡히고 있었습니다. 같은 이유로 카피 자동 채우기에서도 이미 상품그리드를
+  // 뺐습니다(sectionFreeformAiPrompt). 이런 "시리즈 데이터가 채우는" 섹션은 여기서
+  // 제외합니다. (const 대신 함수 안 지역 배열 — renderForm이 이 선언보다 먼저
+  // 호출되는 경우의 TDZ 에러를 피하려는 것입니다.)
+  function manualImageTargets() {
+    const seriesManaged = ["productGrid"];
+    const out = [];
+    for (const g of buildFreeformGroups()) {
+      if (seriesManaged.includes(g.sectionType)) continue;
+      for (const f of g.fields) {
+        if (f.type === "image") out.push({ g, f });
+      }
+    }
+    return out;
+  }
+
+  /** 소재 하나가 "어느 슬롯 전용인지" 고르는 드롭다운 — 기존 템플릿 선택
+   *  드롭다운(sectionPurposeAndTemplate)과 같은 모양입니다. 한 소재는 슬롯
+   *  하나만 지정할 수 있고("전체 공용" 포함 단일 선택), 펼치고 체크하는 2단계
+   *  UI보다 단순합니다 — 실제 제보 사례도 전부 "이 소재는 이 슬롯 하나"였지
+   *  "이 소재를 슬롯 2개에 같이"는 없었어서, 다중 선택을 지원 안 해도 실사용엔
+   *  문제 없습니다. */
+  function renderPoolTargetPicker(ref, targets) {
+    if (!targets.length) return null;
+    const current = (ref.targetKeys && ref.targetKeys[0]) || "";
+    return el("select", {
+      style: "flex-shrink:0;max-width:130px;padding:7px 6px;border:1px solid #d0d0d0;border-radius:6px;font-size:11.5px;font-family:inherit;outline:none;",
+      onchange: e => { ref.targetKeys = e.target.value ? [e.target.value] : []; renderForm(); }
+    }, [
+      el("option", { value: "", ...(current === "" ? { selected: "selected" } : {}) }, "전체 공용"),
+      ...targets.map(target => el("option", { value: target.key, title: target.label, ...(current === target.key ? { selected: "selected" } : {}) }, target.label))
+    ]);
+  }
+
   function sectionImageReferencePool() {
     const pool = draft.imageReferencePool || [];
     const t = resolveTemplate();
     const imageFields = t?.fields.filter(f => f.type === "image") || [];
+    const targets = imageFields.map(f => ({ key: f.key, label: f.label }));
     return sectionWrap("AI", "참고 이미지 + 슬롯별 설명", "ai", [
-      el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;margin-bottom:10px;" }, "여기 등록한 소재는 아래 모든 이미지 슬롯이 자동으로 참고합니다."),
+      el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;margin-bottom:10px;" }, "소재는 기본적으로(전체 공용) 모든 슬롯이 참고합니다. 소재별 드롭다운으로 슬롯을 지정하면, 그 슬롯은 지정된 소재만 사용합니다."),
       ...pool.map((ref, i) => el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px;" }, [
         ref.url ? el("img", { src: ref.url, style: "width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0;" }) : null,
         el("input", { type: "text", value: ref.label || "", placeholder: "이 이미지가 뭔지 짧게 (예: 제품 정면샷)", style: "flex:1;min-width:0;padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;", oninput: e => { ref.label = e.target.value; } }),
+        renderPoolTargetPicker(ref, targets),
         el("button", { class: "btn btn-sm ghost", style: "flex-shrink:0;", onclick: () => { pool.splice(i, 1); renderForm(); } }, "삭제")
       ])),
       el("div", { class: "row2" }, [
@@ -768,22 +965,23 @@ export function renderGenerator(root, params) {
         })
       ]),
       pool.length ? el("div", { style: "margin-top:10px;padding-top:10px;border-top:1px solid #eee;" }, [
-        el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "슬롯마다 필요한 걸 적어주세요 (비우면 건너뜀):"),
+        el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "슬롯마다 필요한 걸 적어주세요 (비우면 건너뜀). \"그대로 첨부\"는 전용 지정한 소재(소재가 1개뿐이면 그 소재)를 AI 없이 그대로 넣고, \"삭제\"는 그 슬롯의 이미지를 지웁니다:"),
+        promptTipsBox(),
         ...imageFields.map(f => {
           const meta = draft.imageMeta[f.key] || {};
           return el("div", { class: "row2", style: "align-items:center;margin-bottom:6px;" }, [
             el("label", { style: "width:60px;flex-shrink:0;font-size:12px;font-weight:700;color:#555;" }, f.label),
             el("input", {
               type: "text", value: meta.instruction || "",
-              placeholder: "예: 제품 정면샷을 파란 배경에 합성",
+              placeholder: "예: 배경을 밝은 회색으로 바꿔줘",
               oninput: e => { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], instruction: e.target.value }; }
             })
           ]);
         }),
         el("button", {
-          class: "ai-btn", style: "width:100%;margin-top:4px;", disabled: draft.generating ? "disabled" : null,
+          class: "ai-btn", style: "width:100%;margin-top:4px;", disabled: draft.generatingImage ? "disabled" : null,
           onclick: runGenerateAllImages
-        }, draft.generating ? "생성 중..." : "✨ AI로 이미지 일괄 생성")
+        }, imageBatchButtonLabel())
       ]) : null
     ]);
   }
@@ -808,28 +1006,62 @@ export function renderGenerator(root, params) {
     const t = resolveTemplate();
     if (!t) return;
     const pool = draft.imageReferencePool || [];
-    if (!pool.length) {
+    const imageFields = t.fields.filter(f => f.type === "image");
+    const withInstruction = imageFields.filter(f => (draft.imageMeta[f.key]?.instruction || "").trim());
+    // ⚠️ 2026-09 — 슬롯 설명에 "삭제"(이미지 삭제해줘·지워줘 등)만 적으면 AI를 부르지 않고 그 슬롯의 이미지를
+    // 지웁니다(isRemoveImageInstruction 참고). 이미 비어 있는 슬롯은 건드리지 않고 설명만 비웁니다.
+    const removeFields = withInstruction.filter(f => isRemoveImageInstruction(draft.imageMeta[f.key].instruction));
+    const candidates = withInstruction.filter(f => !removeFields.includes(f));
+    // 이미 같은 설명·소재로 AI가 만든 슬롯은 건너뜁니다(slotSignature 설명 참고)
+    const unchangedFields = candidates.filter(f => {
+      const m = draft.imageMeta[f.key];
+      return draft.fieldValues[f.key] && m.appliedSig === slotSignature(pool, f.key, m.instruction);
+    });
+    const targets = candidates.filter(f => !unchangedFields.includes(f));
+    if (unchangedFields.length) log(`건너뜀(이미 같은 설명·소재로 생성됨): ${unchangedFields.map(f => f.label).join(", ")}`);
+    const toRemove = removeFields.filter(f => draft.fieldValues[f.key]);
+    const emptyRemoveCount = removeFields.length - toRemove.length;
+    removeFields.filter(f => !draft.fieldValues[f.key]).forEach(f => { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], instruction: "" }; });
+    if (toRemove.length) {
+      toRemove.forEach(f => removeFixedImage(f.key, { quiet: true }));
+      log(`이미지 삭제 ${toRemove.length}건: ${toRemove.map(f => f.label).join(", ")}`);
+    }
+    if (!targets.length) {
+      if (toRemove.length) { renderForm(); renderPreview(); toast(`${toRemove.length}개 슬롯의 이미지를 삭제했습니다`); }
+      else toast(emptyRemoveCount
+        ? "삭제할 이미지가 없습니다 — 해당 슬롯은 이미 비어 있습니다"
+        : unchangedFields.length
+          ? "이미 같은 설명·소재로 만든 슬롯입니다 — 설명이나 소재 지정을 바꾸거나, 슬롯을 삭제한 뒤 다시 실행해주세요"
+          : (!pool.length && !ALLOW_TEXT_ONLY_GENERATION ? "먼저 참고 이미지 풀에 소재를 등록해주세요" : "각 이미지 슬롯에 어떤 이미지가 필요한지 설명을 먼저 적어주세요"));
+      return;
+    }
+    if (!pool.length && !ALLOW_TEXT_ONLY_GENERATION) { // 순수 생성이 켜져 있으면 소재 없이도 설명만으로 진행
+      if (toRemove.length) { renderForm(); renderPreview(); }
       toast("먼저 참고 이미지 풀에 소재를 등록해주세요");
       return;
     }
-    const imageFields = t.fields.filter(f => f.type === "image");
-    const targets = imageFields.filter(f => (draft.imageMeta[f.key]?.instruction || "").trim());
-    if (!targets.length) {
-      toast("각 이미지 슬롯에 어떤 이미지가 필요한지 설명을 먼저 적어주세요");
-      return;
-    }
-    const allFiles = pool.filter(r => r.file).map(r => r.file);
-    const allUrls = pool.filter(r => !r.file && r.url).map(r => r.url);
-    draft.generating = true;
+    draft.generatingImage = true;
     renderForm();
     log(`AI 이미지 일괄 생성 시작... (${targets.length}개 슬롯, 소재 ${pool.length}개)`);
     let done = 0, failed = 0;
+    draft.imageProgress = { current: 0, total: targets.length };
     for (const f of targets) {
+      draft.imageProgress.current++; // 지금 만드는 슬롯이 몇 번째인지(버튼 라벨에 표시)
       draft.imageUploading = f.key;
       renderForm();
       try {
         const instruction = draft.imageMeta[f.key].instruction;
-        await generateAndStoreImage(f.key, { referenceFiles: allFiles, referenceUrls: allUrls, instruction, purpose: t.purpose });
+        // ⚠️ 이전엔 allFiles/allUrls를 루프 밖에서 한 번만 만들어 모든 슬롯에
+        // 똑같이 넘겼습니다 — 슬롯마다 매번 scoped를 새로 계산해서, 이 슬롯
+        // 전용으로 지정된 소재(또는 전용 지정이 없는 공용 소재)만 넘깁니다.
+        const scoped = poolForSlot(pool, f.key);
+        const refFiles = scoped.filter(r => r.file).map(r => r.file);
+        const refUrls = scoped.filter(r => !r.file && r.url).map(r => r.url);
+        log(`${f.label} ← 참고 소재: ${scoped.map(r => r.label || "이름없음").join(", ") || "없음"}`);
+        warnManyRefs(scoped);
+        warnMultiCommand(instruction);
+        const asIsFile = await resolveAsIsFile(pool, f.key, instruction);
+        await generateAndStoreImage(f.key, { referenceFiles: refFiles, referenceUrls: refUrls, instruction, purpose: t.purpose, asIsFile, appliedSig: slotSignature(pool, f.key, instruction) });
         done++;
       } catch (e) {
         failed++;
@@ -837,10 +1069,12 @@ export function renderGenerator(root, params) {
       }
     }
     log(`AI 이미지 일괄 생성 완료 — 성공 ${done}건${failed ? ` · 실패 ${failed}건` : ""}`);
-    draft.generating = false;
+    draft.generatingImage = false;
+    draft.imageProgress = null;
     draft.imageUploading = null;
     renderForm();
     renderPreview();
+    if (failed) toast(`${failed}개 슬롯 생성에 실패했습니다 — 하단 로그에서 오류를 확인해주세요`);
   }
 
   async function runGenerateCopy() {
@@ -850,7 +1084,8 @@ export function renderGenerator(root, params) {
     renderForm();
     log("AI 카피 생성 요청...");
     try {
-      const textFieldKeys = t.fields.filter(f => ["text", "textarea", "button-label"].includes(f.type)).map(f => f.key);
+      // badge_text(상단 영문 배지)는 AI 카피 자동 채우기 대상이 아닙니다 — 한글 카피로 덮어쓰이면 안 됨.
+      const textFieldKeys = t.fields.filter(f => ["text", "textarea", "button-label"].includes(f.type) && f.key !== "badge_text").map(f => f.key);
       const result = await generateCopy(t.purpose, textFieldKeys, draft.aiPrompt);
       Object.assign(draft.fieldValues, result);
       log("AI 카피 생성 완료");
@@ -948,6 +1183,42 @@ export function renderGenerator(root, params) {
     return (w > 0 && h > 0) ? { width: w, height: h } : { width: null, height: null };
   }
 
+  /** ⚠️ 2026-09 변경 — 기본값을 "항상 슬롯 비율로 크롭"에서 "원본 전체 보존"으로
+   *  뒤집었습니다. 슬롯 비율에 맞춰 중앙 크롭하면 내용 일부가 잘려나가는데, 이게
+   *  기본 동작이다 보니 사용자가 결과물을 보고 나서야 "왜 잘렸지"를 알아차리는
+   *  문제가 반복 제보됐습니다. 이제 지시문에 "잘라/크롭/자르" 같은 명시적 요청이
+   *  있을 때만 슬롯 비율로 크롭하고, 그 외엔 원본 비율을 그대로 유지한 채
+   *  리사이즈만 합니다 — 슬롯 세로 길이가 이미지마다 달라질 수 있지만, 전체
+   *  내용이 다 보이는 걸 우선합니다. */
+  function wantsCrop(instruction) {
+    return /잘라|크롭|자르|crop/i.test(instruction || "");
+  }
+
+  /** 크롭 여부를 하나로 판단해서 4곳(고정 템플릿 생성·재보정, 자유조합 생성·
+   *  재보정)이 전부 같은 기준으로 동작하게 합니다. target.width/height를 못 찾은
+   *  경우(템플릿 HTML에 크기 정보가 없는 경우)는 크롭 요청 여부와 무관하게 항상
+   *  원본 유지입니다(기존 resizeImageToRatio()의 폴백과 동일). */
+  async function pickResize(resultBlob, target, instruction) {
+    // 슬롯 표시 폭의 2배(레티나)까지 해상도를 허용합니다(최소 600, 최대 1200) — 좁은 슬롯은
+    // 기존과 같고, 전체 폭 슬롯처럼 넓은 슬롯만 더 선명해집니다.
+    const maxDim = Math.min(1200, Math.max(EDM_IMAGE_MAX_DIM, Math.round((target.width || 0) * 2)));
+    if (target.width && target.height && wantsCrop(instruction)) {
+      return await resizeImageToRatio(resultBlob, target.width, target.height, maxDim);
+    }
+    // ⚠️ 2026-09 — 크롭 요청이 없으면 원본을 자르지 않고, 결과 파일을 정확히 슬롯
+    // 비율로 만들어 그 안에 통째로 넣습니다(남는 부분은 여백). 그래서 이미지
+    // 전체가 보이고, 영역을 벗어나지 않고, 슬롯 높이도 변하지 않습니다.
+    const padWhite = splitPadClause(instruction).padWhite;
+    const res = await resizeImageContain(resultBlob, target.width, target.height, maxDim, padWhite ? "#FFFFFF" : null);
+    // 여백이 생겼고 흰색이 아니면(예: 원본 테두리의 회색) 흰색으로 바꾸는 방법을 알려줍니다.
+    const m = /rgb\((\d+),(\d+),(\d+)\)/.exec(res.padColor || "");
+    const nearWhite = !m || (+m[1] >= 235 && +m[2] >= 235 && +m[3] >= 235);
+    if (res.padded && !padWhite && !nearWhite) {
+      log('여백이 원본 테두리 색으로 채워졌습니다 — 흰색 여백을 원하면 설명을 "그대로 첨부, 여백 흰색"으로 적고 다시 실행하세요(AI 없이 여백 색만 바뀜)');
+    }
+    return res;
+  }
+
   /** ⚠️ 2026-09 신설 — "URL 직접 입력"으로 붙여넣은 이미지는 업로드/AI생성과 달리
    *  resizeImageToRatio()를 안 거칩니다(이미 만들어진 링크를 그대로 쓰는 용도라
    *  애초에 파일 자체가 없음). 원격 URL의 이미지를 클라이언트에서 자동으로
@@ -988,16 +1259,53 @@ export function renderGenerator(root, params) {
    *  (handleImageGenerate)과 아래 일괄 채우기(runGenerateAllImages) 둘 다 이걸
    *  공유합니다. purpose는 호출부에서 이미 구해서 넘겨줍니다(매번 resolveTemplate()
    *  하지 않도록). */
-  async function generateAndStoreImage(key, { file, referenceFiles, referenceUrls, instruction, purpose }) {
+  // ⚠️ 2026-09 — 이미지 한 장이 20~28초 걸려서, 서버(process-image Lambda)의 읽기 시간 초과
+  // ("The read operation timed out")에 걸리는 장이 생깁니다(여러 슬롯을 하나씩 만들면 일부가 실패).
+  // 시간 초과 성격의 오류에 한해 1회만 자동 재시도합니다. 크레딧·요청 한도·잘못된 요청 같은 오류는
+  // 재시도해도 같은 결과(또는 비용만 증가)라 재시도하지 않습니다. ※ 서버가 이미 OpenAI를 호출했다면
+  // 재시도 때 비용이 한 번 더 들 수 있어서 로그에 분명히 남깁니다.
+  async function generateImageRetry(args) {
+    args = { ...args, instruction: splitPadClause(args.instruction).text }; // "여백 흰색"은 AI가 아니라 리사이즈 단계가 처리
+    try {
+      return await generateImage(args);
+    } catch (e) {
+      const m = e.message || "";
+      if (!AUTO_RETRY_ON_TIMEOUT) throw e;
+      if (!/timed out|timeout|time-out|\b504\b/i.test(m) || /크레딧|credits|billing|quota|rate.?limit/i.test(m)) throw e;
+      log("서버 응답 시간 초과 — 1회 자동 재시도합니다(OpenAI 호출이 이미 나갔다면 비용이 한 번 더 들 수 있음)");
+      return await generateImage(args);
+    }
+  }
+
+  // ⚠️ 2026-09 — 슬롯의 "생성 입력 지문" = 요청문(설명) + 이 슬롯에 "직접 지정한" 소재 이름들.
+  // 일괄 생성을 다시 눌렀을 때 지문이 같은(= 요청문도, 이 슬롯 전용 소재 지정도 안 바뀐) AI 결과 슬롯은
+  // 다시 만들지 않습니다 — 일부만 실패한 뒤 실패분만 다시 하려고 눌렀는데 성공분까지 다시 만들어 비용이
+  // 드는 일을 막습니다. 요청문이 같으면 건너뛰는 게 기본이고, 이 슬롯 전용 소재를 바꿨을 때만 예외로 다시
+  // 만듭니다(소재를 잘못 지정해서 고친 경우를 위해).
+  // ⚠️ "전체 공용" 소재는 지문에서 뺍니다. 넣으면 새 슬롯용으로 공용 소재를 하나 추가하는 것만으로 요청문이
+  // 그대로인 다른 모든 슬롯이 다시 만들어집니다. 같은 입력으로 다시 뽑고 싶으면 슬롯 "삭제" 후 실행하거나
+  // 보정 요청을 쓰세요.
+  function slotSignature(pool, slotKey, instruction) {
+    const mats = explicitPoolForSlot(pool, slotKey).map(r => r.label || r.file?.name || r.url || "");
+    return JSON.stringify({ i: (instruction || "").trim(), m: mats });
+  }
+
+  async function generateAndStoreImage(key, { file, referenceFiles, referenceUrls, instruction, purpose, asIsFile, appliedSig }) {
     let resultBlob, aiUsed;
-    if (!instruction?.trim() && file) {
-      // 지시문 없이 파일만 있으면 AI 호출 없이 그냥 업로드 (예전 동작 그대로 유지)
+    if (asIsFile) {
+      // "그대로 첨부" + 전용 지정 소재(호출부가 resolveAsIsFile로 만들어 넘김) →
+      // AI를 거치지 않고 그 소재를 그대로 씁니다.
+      log(`지정한 소재를 그대로 첨부 중... (${asIsFile.name})`);
+      resultBlob = asIsFile;
+      aiUsed = false;
+    } else if (file && (!instruction?.trim() || isAsIsInstruction(instruction))) {
+      // 지시문 없이(또는 "그대로 첨부"만 적고) 파일만 있으면 AI 호출 없이 그냥 업로드
       log(`이미지 업로드 중... (${file.name})`);
       resultBlob = file;
       aiUsed = false;
     } else {
       log(`AI 이미지 생성 중... (${key})`);
-      resultBlob = await generateImage({ file, referenceFiles, referenceUrls, instruction, purpose });
+      resultBlob = await generateImageRetry({ file, referenceFiles, referenceUrls, instruction, purpose });
       aiUsed = true;
     }
     // ⚠️ 2026-09 — 예전엔 원본 비율을 그대로 유지한 채 긴 변만 줄여서, 슬롯이
@@ -1012,13 +1320,14 @@ export function renderGenerator(root, params) {
     // 고화질 유지)를 기준으로 삼습니다 — 비율은 crop 단계에서 이미 슬롯에
     //맞게 확정되므로, 해상도만 별개로 넉넉하게 가져갑니다.
     const targetSize = inferImageTargetSize(key);
-    const resized = await resizeImageToRatio(resultBlob, targetSize.width, targetSize.height, EDM_IMAGE_MAX_DIM);
-    const filename = file?.name || `generated_${key}.png`;
+    const { blob: resized, cropWarning } = await pickResize(resultBlob, targetSize, instruction);
+    if (cropWarning) log(cropWarning);
+    const filename = (asIsFile || file)?.name || `generated_${key}_${Date.now()}.png`;
     const finalUrl = await uploadToS3(resized, filename, "EDM");
     draft.fieldValues[key] = finalUrl;
     // ⚠️ alt는 배포/다운로드 시점에 이미지를 직접 분석해서 만듭니다(handleImageGenerate
     // 상단 설명 참고) — 여기서 지시문 기반으로 임시 대입하지 않습니다.
-    draft.imageMeta[key] = { ...(draft.imageMeta[key] || {}), filename, processed: true, instruction, aiProcessed: aiUsed, fileBlob: file || resized };
+    draft.imageMeta[key] = { ...(draft.imageMeta[key] || {}), filename, processed: true, instruction, aiProcessed: aiUsed, recorrectCount: 0, appliedSig, fileBlob: asIsFile || file || resized, cropWarning };
     draft.imageMeta[key].assetId = registerAsset(key, filename, finalUrl, resized, instruction, aiUsed);
     log(aiUsed ? `이미지 생성 완료: ${filename}` : `이미지 업로드 완료: ${filename}`);
   }
@@ -1028,15 +1337,20 @@ export function renderGenerator(root, params) {
   // 있으면 AI 생성"을 알아서 분기하므로(generateAndStoreImage 참고) 별도 함수가
   // 필요 없었습니다. 혼란 방지를 위해 제거합니다.
 
-  async function handleImageGenerate(key) {
+  // ⚠️ 2026-09 — instructionOverride는 "원본 교체" 전용입니다. 그 버튼은
+  // "이 파일을 그대로 써줘"가 목적이라, 슬롯에 이미 적혀있는 지시문(예: "그대로
+  // 첨부")과 무관하게 항상 AI를 거르지 않고 업로드만 해야 합니다(지시문 텍스트가
+  // 있으면 무조건 AI로 넘어가던 게 "그대로 첨부"인데도 글자가 깨지는 버그의
+  // 원인이었습니다). meta.instruction을 영구히 지우거나 별도 체크박스 상태를
+  // 추가하는 대신, 이 호출 한 번에 한해 instruction을 ""로 덮어써서 간단히
+  // 해결합니다 — 평소 "AI로 생성"/"업로드" 버튼은 override 없이 그대로 호출되어
+  // meta.instruction을 정상적으로 읽습니다.
+  async function handleImageGenerate(key, instructionOverride) {
     const meta = draft.imageMeta[key] || {};
     const file = meta.pendingFile;
-    // ⚠️ 체크박스 선택(meta.selectedRefs) 대신 풀 전체를 자동으로 씁니다 —
-    // ①번 일괄 생성(runGenerateAllImages)과 정확히 같은 방식으로 통일해서,
-    // "체크박스로 골랐는데 왜 반영이 안 되지"라는 혼란을 없앴습니다.
     const pool = draft.imageReferencePool || [];
-    const instruction = meta.instruction || "";
-    if (!file && !pool.length) {
+    const instruction = instructionOverride !== undefined ? instructionOverride : (meta.instruction || "");
+    if (!file && !pool.length && !ALLOW_TEXT_ONLY_GENERATION) {
       toast("파일을 선택하거나, 위 '참고 이미지'에 소재를 하나 이상 등록해주세요");
       return;
     }
@@ -1044,9 +1358,14 @@ export function renderGenerator(root, params) {
     renderForm();
     const t = resolveTemplate();
     try {
-      const refFiles = pool.filter(r => r.file).map(r => r.file);
-      const refUrls = pool.filter(r => !r.file && r.url).map(r => r.url);
-      await generateAndStoreImage(key, { file, referenceFiles: refFiles, referenceUrls: refUrls, instruction, purpose: t?.purpose });
+      const scoped = poolForSlot(pool, key);
+      const refFiles = scoped.filter(r => r.file).map(r => r.file);
+      const refUrls = scoped.filter(r => !r.file && r.url).map(r => r.url);
+      log(`${key} ← 참고 소재: ${scoped.map(r => r.label || "이름없음").join(", ") || "없음"}`);
+      warnManyRefs(scoped);
+      warnMultiCommand(instruction);
+      const asIsFile = file ? null : await resolveAsIsFile(pool, key, instruction);
+      await generateAndStoreImage(key, { file, referenceFiles: refFiles, referenceUrls: refUrls, instruction, purpose: t?.purpose, asIsFile, appliedSig: slotSignature(pool, key, instruction) });
     } catch (e) {
       log("오류: " + e.message);
     } finally {
@@ -1057,6 +1376,42 @@ export function renderGenerator(root, params) {
   }
 
 
+  // ⚠️ 2026-09 신설 — 이미지 "삭제" (팀 테스트 13번). 예전엔 완료 상태에 삭제가 없어서 "이미지 삭제해줘"를
+  // 보정 요청으로 보내면 AI가 빈 이미지를 그려 공백 이미지가 됐습니다. 보정 요청 문구가 "삭제/지워/없애"
+  // 뜻 하나뿐일 때는 AI를 부르지 않고 실제로 슬롯을 비웁니다. "배경 제거"처럼 일부 편집 요청을 잘못
+  // 잡지 않도록, 지시문 전체가 삭제 뜻일 때만 인정합니다("제거"는 이미지·사진·그림을 말했을 때만).
+  function isRemoveImageInstruction(instruction) {
+    const t = (instruction || "").replace(/[\s.,!~]+/g, "");
+    if (!t) return false;
+    return /^(이|해당)?(이미지|사진|그림)?(를|을)?(삭제|지워|지우|없애|없앰)(해줘|해주세요|해|해주라|줘|주세요|하기|할것)?$/.test(t)
+      || /^(이|해당)?(이미지|사진|그림)(를|을)?(제거)(해줘|해주세요|해|줘|주세요|하기)?$/.test(t);
+  }
+  // 고정 템플릿: 슬롯 값·메타를 비우고 에셋 목록에서도 뺍니다. ⚠️ S3에 이미 올라간 파일 자체는
+  // 브라우저에서 지울 수 없어 그대로 남습니다(에셋 목록에서만 제거) — 슬롯과 메일에는 더 이상 쓰이지 않음.
+  // opts.quiet: 일괄 생성 안에서 여러 슬롯을 지울 때 토스트·재렌더를 슬롯마다 하지 않고 호출한 쪽이 끝에서 한 번만 합니다.
+  function removeFixedImage(key, opts = {}) {
+    const meta = draft.imageMeta[key] || {};
+    if (meta.assetId) store.deleteAsset(meta.assetId);
+    draft.fieldValues[key] = "";
+    delete draft.fieldValues[`${key}_alt`];
+    delete draft.imageMeta[key];
+    log(`이미지 삭제: ${key}`);
+    if (opts.quiet) return;
+    toast("이미지를 삭제했습니다");
+    renderForm();
+    renderPreview();
+  }
+  function removeFreeformImage(g, key, opts = {}) {
+    g.values[key] = "";
+    delete g.values[`${key}_alt`];
+    delete g.values[`${key}__meta`];
+    log(`이미지 삭제: ${key}`);
+    if (opts.quiet) return;
+    toast("이미지를 삭제했습니다");
+    renderForm();
+    renderPreview();
+  }
+
   async function handleRecorrect(key) {
     const meta = draft.imageMeta[key] || {};
     const savedUrl = draft.fieldValues[key];
@@ -1066,17 +1421,23 @@ export function renderGenerator(root, params) {
     // 있어서, 다운로드는 서버(process-image)에 맡깁니다.
     const hasBlob = meta.fileBlob instanceof Blob;
     if ((!hasBlob && !savedUrl) || !meta.newInstruction?.trim()) return;
+    if (isRemoveImageInstruction(meta.newInstruction)) { removeFixedImage(key); return; }
     draft.imageUploading = key;
     renderForm();
     const t = resolveTemplate();
     log(`보정 재요청 중... (${meta.filename})`);
+    warnMultiCommand(meta.newInstruction);
     try {
       const pool = draft.imageReferencePool || [];
-      const refFiles = pool.filter(r => r.file).map(r => r.file);
-      const refUrls = pool.filter(r => !r.file && r.url).map(r => r.url);
+      // ⚠️ 2026-10 — 보정 요청은 "현재 결과 이미지"를 고치는 것이라, 풀의 공용 소재까지 전부 같이 보내면
+      // 참조가 늘어 느려지고(30초 제한) 모델이 소재를 섞을 수 있습니다(개발팀 가이드: 꼭 필요한 참조만).
+      // 이 슬롯에 직접 지정한 소재만 함께 보냅니다.
+      const scoped = explicitPoolForSlot(pool, key);
+      const refFiles = scoped.filter(r => r.file).map(r => r.file);
+      const refUrls = scoped.filter(r => !r.file && r.url).map(r => r.url);
       // 원본 Blob이 없으면 savedUrl을 "첫 번째 참고 이미지"로 넣습니다 — 서버는 file이
       // 없을 때 참고 이미지의 첫 장을 편집 대상으로 삼습니다.
-      const resultBlob = await generateImage({
+      const resultBlob = await generateImageRetry({
         file: hasBlob ? meta.fileBlob : undefined,
         referenceFiles: refFiles,
         referenceUrls: hasBlob ? refUrls : [savedUrl, ...refUrls],
@@ -1089,7 +1450,8 @@ export function renderGenerator(root, params) {
       // "AI 보정 후에는 미리보기 슬롯 세로값을 무시하고 길어진다"는 문의의
       // 정확한 원인입니다. 동일하게 크롭을 적용합니다.
       const targetSize = inferImageTargetSize(key);
-      const resized = await resizeImageToRatio(resultBlob, targetSize.width, targetSize.height, EDM_IMAGE_MAX_DIM);
+      const { blob: resized, cropWarning } = await pickResize(resultBlob, targetSize, meta.newInstruction);
+      if (cropWarning) log(cropWarning);
       const url = await uploadToS3(resized, meta.filename, "EDM");
       draft.fieldValues[key] = url;
       // ⚠️ 2026-09 변경: alt는 이제 배포/다운로드 시점에 이미지를 직접 분석해서
@@ -1099,7 +1461,7 @@ export function renderGenerator(root, params) {
       // 시도할 때마다 안 쓰는 예전 이미지가 에셋 목록에 계속 쌓입니다.
       if (meta.assetId) store.deleteAsset(meta.assetId);
       const newAssetId = registerAsset(key, meta.filename, url, resized, meta.newInstruction, true);
-      draft.imageMeta[key] = { ...meta, instruction: meta.newInstruction, newInstruction: "", aiProcessed: true, processed: true, assetId: newAssetId };
+      draft.imageMeta[key] = { ...meta, instruction: meta.newInstruction, newInstruction: "", aiProcessed: true, processed: true, assetId: newAssetId, cropWarning, recorrectCount: (meta.recorrectCount || 0) + 1, appliedSig: slotSignature(pool, key, meta.newInstruction) };
       log(`보정 완료: ${meta.filename}`);
     } catch (e) {
       log("오류: " + e.message);
@@ -1268,32 +1630,51 @@ export function renderGenerator(root, params) {
   // 참고"가 됩니다. 지시문 없이 파일만 있으면 AI 호출 없이 그냥 업로드하고
   // (기존 handleFreeformImageUpload와 동일), 지시문이 있으면(파일 유무 무관)
   // AI 생성 API를 호출합니다.
-  async function generateAndStoreFreeformImage(sectionType, key, values, { file, instruction, metaKey } = {}) {
+  async function generateAndStoreFreeformImage(sectionType, key, values, { file, instruction, metaKey, slotKey } = {}) {
     const pool = draft.imageReferencePool || [];
     if (!file && !instruction?.trim() && !pool.length) {
       toast("파일을 선택하거나 지시문을 입력하거나, 소재를 하나 이상 등록해주세요");
-      return;
+      return false;
     }
-    draft.generating = true;
+    // ⚠️ 2026-09 버그 수정 — 일괄 생성(runGenerateAllFreeformImages)이 이미 켜둔
+    // 상태에서 불린 경우(nested)엔 이 함수가 끝났다고 플래그를 풀면 안 됩니다. 예전엔
+    // 첫 슬롯이 끝나는 순간 "생성 중"이 풀렸습니다 — 일괄 쪽이 끝에서 직접 풉니다.
+    const nested = !!draft.generatingImage;
+    draft.generatingImage = true;
     renderForm();
     try {
       let resultBlob, aiUsed;
-      if (!instruction?.trim() && file) {
+      const slot = slotKey || key;
+      const asIsFile = file ? null : await resolveAsIsFile(pool, slot, instruction);
+      if (asIsFile) {
+        // "그대로 첨부" + 전용 지정 소재 → AI를 거치지 않고 그 소재를 그대로 씁니다.
+        log(`지정한 소재를 그대로 첨부 중... (${asIsFile.name})`);
+        resultBlob = asIsFile;
+        aiUsed = false;
+      } else if (file && (!instruction?.trim() || isAsIsInstruction(instruction))) {
         log(`이미지 업로드 중... (${file.name})`);
         resultBlob = file;
         aiUsed = false;
       } else {
-        log("AI 이미지 생성 중...");
-        const refFiles = pool.filter(r => r.file).map(r => r.file);
-        const refUrls = pool.filter(r => !r.file && r.url).map(r => r.url);
-        resultBlob = await generateImage({ file, referenceFiles: refFiles, referenceUrls: refUrls, instruction, purpose: draft.purpose });
+        if (isAsIsInstruction(instruction)) log("'그대로 첨부'는 소재를 이 슬롯 전용으로 지정했거나 소재가 1개뿐일 때만 AI 없이 그대로 넣습니다 — 해당하지 않아 AI로 생성합니다");
+        // ⚠️ slotKey 미전달 시 key로 대체 — 하위 호환 안전망일 뿐, 실제 두
+        // 호출부(generateAndStoreFreeformImageWithMeta/runGenerateAllFreeformImages)는
+        // 항상 freeformSlotKey(g, key)로 인스턴스까지 구분되는 키를 넘깁니다.
+        const scoped = poolForSlot(pool, slot);
+        const refFiles = scoped.filter(r => r.file).map(r => r.file);
+        const refUrls = scoped.filter(r => !r.file && r.url).map(r => r.url);
+        // 어떤 소재가 이 슬롯으로 넘어가는지 로그에 남깁니다 — 결과가 요청과 다를 때 소재 지정이
+        // 의도대로였는지 바로 확인할 수 있습니다.
+        log(`AI 이미지 생성 중... (참고 소재: ${scoped.map(r => r.label || "이름없음").join(", ") || "없음"})`);
+        warnManyRefs(scoped);
+        warnMultiCommand(instruction);
+        resultBlob = await generateImageRetry({ file, referenceFiles: refFiles, referenceUrls: refUrls, instruction, purpose: draft.purpose });
         aiUsed = true;
       }
       const target = inferFreeformImageTargetSize(sectionType, key);
-      const resized = target.width
-        ? await resizeImageToRatio(resultBlob, target.width, target.height, EDM_IMAGE_MAX_DIM)
-        : await resizeImage(resultBlob, EDM_IMAGE_MAX_DIM);
-      const filename = file?.name || `generated_${key}.png`;
+      const { blob: resized, cropWarning } = await pickResize(resultBlob, target, instruction);
+      if (cropWarning) log(cropWarning);
+      const filename = (asIsFile || file)?.name || `generated_${key}_${Date.now()}.png`;
       const url = await uploadToS3(resized, filename, "EDM");
       values[key] = url;
       // ⚠️ 2026-09 신설 — metaKey가 있으면(개별 슬롯 UI에서 호출) 고정 템플릿과
@@ -1301,13 +1682,20 @@ export function renderGenerator(root, params) {
       // 일괄 생성(runGenerateAllFreeformImages)처럼 metaKey 없이 부르면 이 단계는
       // 조용히 건너뜁니다(하위 호환).
       if (metaKey) {
-        values[metaKey] = { ...(values[metaKey] || {}), filename, processed: true, instruction, aiProcessed: aiUsed, expanded: true };
+        values[metaKey] = { ...(values[metaKey] || {}), filename, processed: true, instruction, aiProcessed: aiUsed, recorrectCount: 0, appliedSig: slotSignature(pool, slot, instruction), expanded: true, cropWarning };
       }
       log("완료");
+      return true;
     } catch (e) {
-      log("오류: " + e.message);
+      // ⚠️ 2026-09 버그 수정 — 예전엔 오류를 로그만 남기고 삼켜서, 일괄 생성이
+      // 실패한 슬롯까지 "성공"으로 셌습니다(성공 2건인데 한 슬롯은 비어 있는 증상).
+      // 이제 실패를 호출한 쪽이 알 수 있게 false를 돌려주고, 단독 호출이면 토스트로도
+      // 알립니다(일괄 중에는 슬롯마다 토스트가 쏟아지지 않게 끝에서 요약).
+      log(`오류(${key}): ` + e.message);
+      if (!nested) toast("이미지 생성 실패: " + e.message);
+      return false;
     } finally {
-      draft.generating = false;
+      if (!nested) draft.generatingImage = false;
       values[`${key}__uploading`] = false;
       renderForm();
       renderPreview();
@@ -1318,7 +1706,7 @@ export function renderGenerator(root, params) {
   // key만 넘기면 metaKey(`${key}__meta`)까지 알아서 채워서
   // generateAndStoreFreeformImage를 호출합니다.
   async function generateAndStoreFreeformImageWithMeta(g, key, { file, instruction } = {}) {
-    await generateAndStoreFreeformImage(g.sectionType, key, g.values, { file, instruction, metaKey: `${key}__meta` });
+    await generateAndStoreFreeformImage(g.sectionType, key, g.values, { file, instruction, metaKey: `${key}__meta`, slotKey: freeformSlotKey(g, key) });
   }
 
   // ⚠️ 2026-09 신설 — 고정 템플릿의 handleRecorrect()와 동일한 "추가 보정 요청"
@@ -1330,26 +1718,29 @@ export function renderGenerator(root, params) {
     const meta = g.values[metaKey] || {};
     const savedUrl = g.values[key];
     if (!savedUrl || !meta.newInstruction?.trim()) return;
+    if (isRemoveImageInstruction(meta.newInstruction)) { removeFreeformImage(g, key); return; }
     g.values[`${key}__uploading`] = true;
     renderForm();
     log(`보정 재요청 중... (${meta.filename})`);
+    warnMultiCommand(meta.newInstruction);
     try {
       const pool = draft.imageReferencePool || [];
-      const refFiles = pool.filter(r => r.file).map(r => r.file);
-      const refUrls = pool.filter(r => !r.file && r.url).map(r => r.url);
-      const resultBlob = await generateImage({
+      // 현재 결과 이미지 + 이 슬롯 전용 소재만 보냅니다(공용 소재는 제외 — handleRecorrect 설명 참고).
+      const scoped = explicitPoolForSlot(pool, freeformSlotKey(g, key));
+      const refFiles = scoped.filter(r => r.file).map(r => r.file);
+      const refUrls = scoped.filter(r => !r.file && r.url).map(r => r.url);
+      const resultBlob = await generateImageRetry({
         referenceFiles: refFiles,
         referenceUrls: [savedUrl, ...refUrls],
         instruction: meta.newInstruction,
         purpose: draft.purpose
       });
       const target = inferFreeformImageTargetSize(g.sectionType, key);
-      const resized = target.width
-        ? await resizeImageToRatio(resultBlob, target.width, target.height, EDM_IMAGE_MAX_DIM)
-        : await resizeImage(resultBlob, EDM_IMAGE_MAX_DIM);
+      const { blob: resized, cropWarning } = await pickResize(resultBlob, target, meta.newInstruction);
+      if (cropWarning) log(cropWarning);
       const url = await uploadToS3(resized, meta.filename, "EDM");
       g.values[key] = url;
-      g.values[metaKey] = { ...meta, instruction: meta.newInstruction, newInstruction: "", aiProcessed: true };
+      g.values[metaKey] = { ...meta, instruction: meta.newInstruction, newInstruction: "", aiProcessed: true, cropWarning, recorrectCount: (meta.recorrectCount || 0) + 1, appliedSig: slotSignature(pool, freeformSlotKey(g, key), meta.newInstruction) };
       log("보정 완료");
     } catch (e) {
       log("오류: " + e.message);
@@ -1493,33 +1884,91 @@ export function renderGenerator(root, params) {
   // 덮어쓰지 않게).
   async function runGenerateAllFreeformImages() {
     const pool = draft.imageReferencePool || [];
-    if (!pool.length) { toast("먼저 소재를 하나 이상 등록해주세요"); return; }
     const targets = [];
-    for (const g of buildFreeformGroups()) {
-      for (const f of g.fields) {
-        if (f.type === "image" && !g.values[f.key] && (g.values[`${f.key}__meta`]?.instruction || "").trim()) {
-          targets.push({ g, f });
-        }
+    const skippedSame = []; // 이미 같은 설명·소재로 AI가 만든 슬롯(다시 만들 필요 없음)
+    const toRemove = []; // 설명에 "삭제"만 적고 이미지가 있는 슬롯 — AI 없이 지움
+    let emptyRemoveCount = 0; // "삭제"를 적었지만 이미 비어 있는 슬롯
+    // ⚠️ 2026-09 버그 수정 — 예전엔 `!g.values[f.key]`(이미 채워진 슬롯 제외)
+    // 조건 때문에, 한 번 생성한 슬롯은 지시문/소재를 바꿔서 일괄 생성을 다시
+    // 눌러도 대상에서 빠져 "재반영이 안 되는" 것처럼 보였습니다. 고정 템플릿
+    // 일괄 생성은 원래 채워진 슬롯도 다시 만들었는데 자유조합만 달랐습니다.
+    // 이제 (빈 슬롯) 또는 (이전에 AI로 만든 슬롯)이면 지시문이 있는 한 다시
+    // 생성합니다 — 사용자가 직접 올린 원본(aiProcessed 아님)은 덮어쓰지 않습니다.
+    // 상품 그리드처럼 시리즈 조회가 이미지를 채우는 섹션은 대상이 아닙니다.
+    const replaced = []; // 이미 이미지가 있는데 새/바뀐 설명으로 다시 만드는(덮어쓰는) 슬롯
+    for (const { g, f } of manualImageTargets()) {
+      const meta = g.values[`${f.key}__meta`] || {};
+      // "그대로 첨부"+전용 지정 소재로 넣은 슬롯도 다시 실행 대상입니다 — AI가 아니라
+      // 결과가 항상 같아서 다시 해도 안전하고, 소재 지정을 바꾼 뒤 재반영하려면 필요합니다.
+      // "그대로 첨부"(AI 없음)는 설명이 같으면 건너뛰는 일반 규칙을 따릅니다(지문에 이 슬롯 전용 소재가 들어 있어서
+      // 소재 지정을 바꾸면 지문이 달라져 다시 처리됨). 예외는 "전용 지정 없이 공용 소재가 1개뿐"인 슬롯: 그 소재를
+      // 다른 소재로 바꿔도 지문이 안 변하니, 이 경우만 AI가 아니라 비용이 없고 결과가 항상 같은 점을 이용해 다시 실행합니다.
+      const slotKey = freeformSlotKey(g, f.key);
+      const reAttach = isAsIsInstruction(meta.instruction) && explicitPoolForSlot(pool, slotKey).length === 0 && !!asIsSourceFor(pool, slotKey);
+      if (isRemoveImageInstruction(meta.instruction)) {
+        if (g.values[f.key]) toRemove.push({ g, f });
+        else { emptyRemoveCount++; g.values[`${f.key}__meta`] = { ...meta, instruction: "" }; }
+        continue;
+      }
+      if (!(meta.instruction || "").trim()) continue;
+      // ⚠️ 2026-10 버그 수정 — 예전엔 "AI로 만든 슬롯(aiProcessed)이 아니면 직접 올린 이미지"로 보고 건너뛰었는데,
+      // "그대로 첨부"로 일괄 생성이 넣은 이미지도 aiProcessed가 아니라서 "직접 올린 이미지가 있음"으로 오인돼,
+      // 설명을 바꿔 적고 눌러도 건너뛰었습니다(캡처: 3번 슬롯). 이제는 지문(appliedSig = 설명 + 전용 소재)으로만
+      // 판단합니다: 설명을 거쳐 만든 슬롯은 설명이 같으면 건너뛰고, 바뀌었거나 새로 적었으면 다시 만듭니다.
+      // (직접 올리면 설명 칸이 비워지고 그때의 지문이 저장돼서, 낡은 설명 글이 남아 있다가 직접 올린 이미지를
+      // 덮어쓰는 일은 없습니다.)
+      const unchanged = g.values[f.key] && !reAttach
+        && meta.appliedSig === slotSignature(pool, freeformSlotKey(g, f.key), meta.instruction);
+      if (unchanged) skippedSame.push(`${g.title} · ${f.label}`);
+      else {
+        targets.push({ g, f });
+        if (g.values[f.key] && !reAttach) replaced.push(`${g.title} · ${f.label}`);
       }
     }
-    if (!targets.length) { toast("각 이미지 슬롯에 어떤 이미지가 필요한지 설명을 먼저 적어주세요"); return; }
-    draft.generating = true;
+    // ⚠️ 2026-09 — 설명을 적었는데도 "설명을 먼저 적어주세요"가 뜬다는 제보(팀 테스트 11번)가 있어서,
+    // 실제로 대상이 없는 이유를 구분해 알려줍니다.
+    if (replaced.length) log(`다시 만들기(기존 이미지를 새 설명으로 덮어씀): ${replaced.join(", ")}`);
+    if (skippedSame.length) log(`건너뜀(이미 같은 설명·소재로 생성됨): ${skippedSame.join(", ")}`);
+    if (toRemove.length) {
+      toRemove.forEach(({ g, f }) => removeFreeformImage(g, f.key, { quiet: true }));
+      log(`이미지 삭제 ${toRemove.length}건: ${toRemove.map(({ g, f }) => `${g.title} · ${f.label}`).join(", ")}`);
+    }
+    if (!targets.length) {
+      if (toRemove.length) { renderForm(); renderPreview(); toast(`${toRemove.length}개 슬롯의 이미지를 삭제했습니다`); }
+      else toast(emptyRemoveCount
+        ? "삭제할 이미지가 없습니다 — 해당 슬롯은 이미 비어 있습니다"
+        : skippedSame.length
+          ? "이미 같은 설명·소재로 만든 슬롯입니다 — 설명이나 소재 지정을 바꾸거나, 슬롯을 삭제한 뒤 다시 실행해주세요"
+          : (!pool.length && !ALLOW_TEXT_ONLY_GENERATION ? "먼저 소재를 하나 이상 등록해주세요" : "각 이미지 슬롯에 어떤 이미지가 필요한지 설명을 먼저 적어주세요"));
+      return;
+    }
+    if (!pool.length && !ALLOW_TEXT_ONLY_GENERATION) {
+      if (toRemove.length) { renderForm(); renderPreview(); }
+      toast("먼저 소재를 하나 이상 등록해주세요");
+      return;
+    }
+    draft.generatingImage = true;
     renderForm();
     log(`AI 이미지 일괄 생성 시작... (${targets.length}개 슬롯, 소재 ${pool.length}개)`);
     let done = 0, failed = 0;
+    draft.imageProgress = { current: 0, total: targets.length };
     for (const { g, f } of targets) {
+      draft.imageProgress.current++; // 지금 만드는 슬롯이 몇 번째인지(버튼 라벨에 표시)
+      renderForm();
       try {
-        await generateAndStoreFreeformImage(g.sectionType, f.key, g.values, { instruction: g.values[`${f.key}__meta`]?.instruction, metaKey: `${f.key}__meta` });
-        done++;
+        const ok = await generateAndStoreFreeformImage(g.sectionType, f.key, g.values, { instruction: g.values[`${f.key}__meta`]?.instruction, metaKey: `${f.key}__meta`, slotKey: freeformSlotKey(g, f.key) });
+        if (ok) done++; else failed++;
       } catch (e) {
         failed++;
         log(`실패(${f.key}): ` + e.message);
       }
     }
     log(`AI 이미지 일괄 생성 완료 — 성공 ${done}건${failed ? ` · 실패 ${failed}건` : ""}`);
-    draft.generating = false;
+    draft.generatingImage = false;
+    draft.imageProgress = null;
     renderForm();
     renderPreview();
+    if (failed) toast(`${failed}개 슬롯 생성에 실패했습니다 — 하단 로그에서 오류를 확인해주세요`);
   }
 
   // ⚠️ 2026-09 신설 — 3단계 상단에 두는 전역 도구: 등록된 소재 썸네일(요청
@@ -1552,17 +2001,20 @@ export function renderGenerator(root, params) {
 
   function sectionFreeformImagePool() {
     const pool = draft.imageReferencePool || [];
-    const imageTargets = [];
-    for (const g of buildFreeformGroups()) {
-      for (const f of g.fields) {
-        if (f.type === "image") imageTargets.push({ g, f });
-      }
-    }
+    const imageTargets = manualImageTargets();
+    // 수동 이미지 슬롯이 하나도 없으면(예: 상품 그리드·텍스트 섹션만 있는 경우)
+    // 소재를 등록하거나 일괄 생성할 대상이 없으니 이 섹션 자체를 숨깁니다.
+    if (!imageTargets.length) return null;
+    // renderPoolTargetPicker가 바라는 { key, label } 모양으로 변환 — key는
+    // freeformSlotKey로 인스턴스까지 구분되게, label은 어느 섹션 소속인지
+    // 바로 보이게 "그룹제목 · 필드명"으로 둡니다(아래 슬롯별 설명 목록과 동일).
+    const slotTargets = imageTargets.map(({ g, f }) => ({ key: freeformSlotKey(g, f.key), label: `${g.title} · ${f.label}` }));
     return sectionWrap("AI", "참고 이미지 + 슬롯별 설명", "ai", [
-      el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;margin-bottom:10px;" }, "여기 등록한 소재는 아래 모든 이미지 슬롯이 자동으로 참고합니다."),
+      el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;margin-bottom:10px;" }, "소재는 기본적으로(전체 공용) 모든 슬롯이 참고합니다. 소재별 드롭다운으로 슬롯을 지정하면, 그 슬롯은 지정된 소재만 사용합니다."),
       ...pool.map((ref, i) => el("div", { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px;" }, [
         ref.url ? el("img", { src: ref.url, style: "width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0;" }) : null,
         el("input", { type: "text", value: ref.label || "", placeholder: "이 이미지가 뭔지 짧게 (예: 제품 정면샷)", style: "flex:1;min-width:0;padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;", oninput: e => { ref.label = e.target.value; } }),
+        renderPoolTargetPicker(ref, slotTargets),
         el("button", { class: "btn btn-sm ghost", style: "flex-shrink:0;", onclick: () => { pool.splice(i, 1); renderForm(); } }, "삭제")
       ])),
       el("div", { class: "row2" }, [
@@ -1592,19 +2044,20 @@ export function renderGenerator(root, params) {
         })
       ]),
       pool.length && imageTargets.length ? el("div", { style: "margin-top:10px;padding-top:10px;border-top:1px solid #eee;" }, [
-        el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "슬롯마다 필요한 걸 적어주세요 (비우면 건너뜀):"),
+        el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, "슬롯마다 필요한 걸 적어주세요 (비우면 건너뜀). \"그대로 첨부\"는 전용 지정한 소재(소재가 1개뿐이면 그 소재)를 AI 없이 그대로 넣고, \"삭제\"는 그 슬롯의 이미지를 지웁니다:"),
+        promptTipsBox(),
         ...imageTargets.map(({ g, f }) => el("div", { class: "row2", style: "align-items:center;margin-bottom:6px;" }, [
-          el("label", { style: "width:110px;flex-shrink:0;font-size:11px;font-weight:700;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" }, `${g.title.replace(/^\d+\.\s*/, "")} · ${f.label}`),
+          el("label", { title: `${g.title} · ${f.label}`, style: "width:110px;flex-shrink:0;font-size:11px;font-weight:700;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" }, `${g.title} · ${f.label}`),
           el("input", {
             type: "text", value: g.values[`${f.key}__meta`]?.instruction || "",
-            placeholder: "예: 제품 정면샷을 파란 배경에 합성",
+            placeholder: "예: 배경을 밝은 회색으로 바꿔줘",
             oninput: e => { g.values[`${f.key}__meta`] = { ...(g.values[`${f.key}__meta`] || {}), instruction: e.target.value }; }
           })
         ])),
         el("button", {
-          class: "ai-btn", style: "width:100%;margin-top:4px;", disabled: draft.generating ? "disabled" : null,
+          class: "ai-btn", style: "width:100%;margin-top:4px;", disabled: draft.generatingImage ? "disabled" : null,
           onclick: runGenerateAllFreeformImages
-        }, draft.generating ? "생성 중..." : "✨ AI로 이미지 일괄 생성")
+        }, imageBatchButtonLabel())
       ]) : null
     ]);
   }
@@ -1648,10 +2101,12 @@ export function renderGenerator(root, params) {
           ])
         ]),
         meta.instruction ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, `요청한 보정: "${meta.instruction}"`) : null,
+        meta.cropWarning ? el("p", { class: "hint", style: "color:#c0392b;margin-top:4px;" }, meta.cropWarning) : null,
+        (meta.recorrectCount || 0) >= 2 ? el("p", { class: "hint", style: "color:#c0392b;margin-top:4px;" }, "보정을 여러 번 하면 원본에서 점점 멀어집니다 — 결과가 틀어졌다면 이미지를 삭제하고 처음부터 다시 만들어 보세요") : null,
         el("div", { class: "field-with-regen", style: "margin:6px 0;" }, [
           el("input", {
             type: "text", value: meta.newInstruction || "", style: "flex:1;min-width:0;padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;",
-            placeholder: "보정 요청 추가 · 예: 배경을 더 어둡게",
+            placeholder: "보정 요청 추가 · 예: 배경을 짙은 남색으로 바꿔줘 (\"삭제해줘\"는 이미지 삭제)",
             oninput: e => { g.values[metaKey] = { ...g.values[metaKey], newInstruction: e.target.value }; }
           }),
           el("button", {
@@ -1659,9 +2114,10 @@ export function renderGenerator(root, params) {
             onclick: () => handleFreeformRecorrect(g, f.key)
           }, uploading ? "처리 중..." : "보정 요청")
         ]),
-        el("div", { class: "row2" }, [
-          el("button", { class: "btn btn-sm", style: "justify-content:center;", onclick: () => { g.values[metaKey] = { expanded: true }; g.values[f.key] = ""; renderForm(); } }, "다시 업로드"),
-          el("button", { class: "btn btn-sm ghost", style: "justify-content:center;", onclick: () => { g.values[metaKey] = { expanded: true, urlMode: true }; renderForm(); } }, "URL 직접 입력")
+        el("div", { style: "display:flex;gap:6px;" }, [
+          el("button", { class: "btn btn-sm", style: "flex:1;justify-content:center;", onclick: () => { g.values[metaKey] = { expanded: true }; g.values[f.key] = ""; renderForm(); } }, "다시 업로드"),
+          el("button", { class: "btn btn-sm ghost", style: "flex:1;justify-content:center;", onclick: () => { g.values[metaKey] = { expanded: true, urlMode: true }; renderForm(); } }, "URL 직접 입력"),
+          el("button", { class: "btn btn-sm ghost", style: "flex:0 0 auto;justify-content:center;color:#c0392b;", title: "이미지를 슬롯에서 완전히 지웁니다", onclick: () => removeFreeformImage(g, f.key) }, "삭제")
         ])
       ], "", collapseBtn);
     }
@@ -1703,7 +2159,7 @@ export function renderGenerator(root, params) {
         oninput: e => { g.values[metaKey] = { ...g.values[metaKey], instruction: e.target.value }; }
       }),
       el("p", { class: "hint", style: "font-size:10px;color:#999;margin:3px 0 6px;" },
-        "설명 적으면 버튼이 \"AI로 생성\"으로, 없으면 \"업로드\"만 됩니다."),
+        "설명 적으면 버튼이 \"AI로 생성\"으로, 없으면 \"업로드\"만 됩니다. 지시문과 무관하게 이 파일을 그대로 쓰려면 \"원본 교체\"를 누르세요."),
       el("div", { class: "row2", style: "margin-bottom:6px;" }, [
         el("label", { class: "btn btn-sm upload-label", style: "text-align:center;justify-content:center;" }, [
           "소재 추가 (여러 장)",
@@ -1727,7 +2183,9 @@ export function renderGenerator(root, params) {
               if (!file || !file.type.startsWith("image/")) { toast("이미지 파일만 선택할 수 있습니다"); return; }
               g.values[`${f.key}__uploading`] = true;
               renderForm();
-              await generateAndStoreFreeformImageWithMeta(g, f.key, { file, instruction: meta.instruction });
+              // instruction을 일부러 안 넘깁니다 — "원본 교체"는 슬롯에 지시문이
+              // 적혀 있어도("그대로 첨부" 등) 항상 그 파일을 AI 없이 그대로 씁니다.
+              await generateAndStoreFreeformImageWithMeta(g, f.key, { file });
             }
           })
         ])
@@ -1747,6 +2205,60 @@ export function renderGenerator(root, params) {
         }, "URL 직접 입력")
       ])
     ], "", collapseBtn);
+  }
+
+  // ⚠️ 2026-09 신설 — 자유조합 텍스트 서식(굵기·색·정렬), 팀 테스트 4·9번.
+  // 색은 회사 가이드라인 승인 팔레트(guidelineRules/shared.js의 APPROVED_BRAND_COLORS)와
+  // 흰색만 제공합니다 — 임의 색을 허용하면 형광색 가이드라인 경고가 나기 쉽습니다.
+  // 글꼴(font-family)은 의도적으로 바꾸지 않습니다: 이메일 클라이언트(Outlook 등)는 시스템에
+  // 설치된 글꼴만 쓰고 없으면 임의 글꼴로 대체되어, 글꼴을 고르게 하면 받는 쪽에서 줄바꿈·
+  // 레이아웃이 달라질 위험이 큽니다(기본 Arial / 맑은 고딕 유지).
+  // 값은 g.values[`${key}__style`] = { bold?, color?, align? } — blocks.js가 읽어 반영합니다.
+  // (const를 이 자리에 두면 renderForm이 이 줄보다 먼저 실행될 때 TDZ 에러로 빈 화면이 되므로 —
+  // 예전에 HEADER_SWATCHES로 겪은 문제 — 함수 안 지역 변수로 둡니다.)
+  function freeformStyleControls(g, f) {
+    const FREEFORM_STYLE_COLORS = [
+      ["네이비", "#0F218B"], ["블랙", "#000000"], ["화이트(어두운 배경용)", "#FFFFFF"], ["옐로", "#FFCC00"],
+      ["레드", "#EA0000"], ["블루", "#0098D8"], ["그레이", "#868686"]
+    ];
+    const styleKey = `${f.key}__style`;
+    const st = g.values[styleKey] || {};
+    const apply = patch => {
+      const next = { ...(g.values[styleKey] || {}), ...patch };
+      for (const k of Object.keys(next)) if (next[k] === undefined) delete next[k];
+      if (Object.keys(next).length) g.values[styleKey] = next; else delete g.values[styleKey];
+      renderForm(); renderPreview();
+    };
+    const seg = (label, active, onclick) => el("button", {
+      class: "btn btn-sm" + (active ? "" : " ghost"), style: "padding:2px 8px;font-size:11px;", onclick
+    }, label);
+    const row = (title, children) => el("div", { style: "display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px;" }, [
+      el("span", { style: "width:34px;font-size:10.5px;color:#777;" }, title), ...children
+    ]);
+    return el("div", { style: "margin-top:6px;padding:8px;background:#f8f8fa;border-radius:6px;" }, [
+      row("굵기", [
+        seg("기본", st.bold === undefined, () => apply({ bold: undefined })),
+        seg("굵게", st.bold === true, () => apply({ bold: true })),
+        seg("보통", st.bold === false, () => apply({ bold: false }))
+      ]),
+      row("색상", [
+        seg("기본", !st.color, () => apply({ color: undefined })),
+        ...FREEFORM_STYLE_COLORS.map(([name, hex]) => el("button", {
+          title: name,
+          style: `width:20px;height:20px;border-radius:50%;padding:0;cursor:pointer;background:${hex};border:2px solid ${st.color === hex ? "#0F218B" : "#d0d0d0"};`,
+          onclick: () => apply({ color: hex })
+        }))
+      ]),
+      row("정렬", [
+        seg("기본", !st.align, () => apply({ align: undefined })),
+        seg("왼쪽", st.align === "left", () => apply({ align: "left" })),
+        seg("가운데", st.align === "center", () => apply({ align: "center" })),
+        seg("오른쪽", st.align === "right", () => apply({ align: "right" }))
+      ]),
+      Object.keys(st).length
+        ? el("button", { class: "btn btn-sm ghost", style: "margin-top:6px;font-size:10.5px;", onclick: () => { delete g.values[styleKey]; renderForm(); renderPreview(); } }, "서식 초기화")
+        : null
+    ]);
   }
 
   function sectionFreeformValueInputs() {
@@ -1840,21 +2352,32 @@ export function renderGenerator(root, params) {
           // 링크는 문구 필드와 항상 세트로만 존재해서 따로 끌 이유가 없음).
           const isHidden = f.type === "text" && !!g.values[`${f.key}__hidden`];
           if (f.type === "image") return renderFreeformImageField(g, f);
+          const hasStyle = !!g.values[`${f.key}__style`];
+          const styleOpen = !!g.values[`${f.key}__styleOpen`];
           return el("div", { class: "field", style: "margin-bottom:8px;" }, [
             el("div", { class: "field-label-row", style: "display:flex;align-items:center;justify-content:space-between;" }, [
               el("label", { style: "font-size:11px;" }, f.label),
               f.type === "text"
-                ? toggleSwitch(!isHidden, on => {
-                    g.values[`${f.key}__hidden`] = !on;
-                    renderForm(); renderPreview();
-                  })
+                ? el("div", { style: "display:flex;align-items:center;gap:8px;" }, [
+                    // "Aa" — 굵기·색·정렬 서식 패널 열기/닫기(서식이 지정돼 있으면 진하게 표시)
+                    el("button", {
+                      class: "btn btn-sm" + (hasStyle ? "" : " ghost"), title: "굵기 · 색상 · 정렬",
+                      style: "padding:1px 7px;font-size:11px;line-height:16px;", disabled: isHidden ? "disabled" : null,
+                      onclick: () => { g.values[`${f.key}__styleOpen`] = !styleOpen; renderForm(); }
+                    }, "Aa"),
+                    toggleSwitch(!isHidden, on => {
+                      g.values[`${f.key}__hidden`] = !on;
+                      renderForm(); renderPreview();
+                    })
+                  ])
                 : null
             ]),
             el("input", {
               "data-form-field": formFieldId(g) + f.key,
               type: "text", value: g.values[f.key] || "", disabled: isHidden ? "disabled" : null,
               oninput: e => { g.values[f.key] = e.target.value; renderPreview(); }
-            })
+            }),
+            f.type === "text" && styleOpen && !isHidden ? freeformStyleControls(g, f) : null
           ]);
         }))
         ])
@@ -1902,7 +2425,7 @@ export function renderGenerator(root, params) {
   }
 
   function renderFieldInput(f) {
-    const value = draft.fieldValues[f.key] || "";
+    const value = draft.fieldValues[f.key] ?? f.default ?? "";
     const onChange = v => { draft.fieldValues[f.key] = v; schedulePreview(); };
     const optional = isOptionalField(f);
     const fieldDisabled = draft.hiddenFields.includes(f.key);
@@ -1961,13 +2484,15 @@ export function renderGenerator(root, params) {
             ])
           ]),
           meta.instruction ? el("p", { class: "hint", style: "font-size:10px;color:#999;margin-top:3px;" }, `요청한 보정: "${meta.instruction}"`) : null,
+          meta.cropWarning ? el("p", { class: "hint", style: "color:#c0392b;margin-top:4px;" }, meta.cropWarning) : null,
+          (meta.recorrectCount || 0) >= 2 ? el("p", { class: "hint", style: "color:#c0392b;margin-top:4px;" }, "보정을 여러 번 하면 원본에서 점점 멀어집니다 — 결과가 틀어졌다면 이미지를 삭제하고 처음부터 다시 만들어 보세요") : null,
           // ⚠️ 예전엔 meta.fileBlob이 있을 때만 보여줬는데, 저장→복원 후엔 Blob이
           // 사라져서(draftToCampaign 참고) 재보정이 아예 불가능했습니다. 결과물이 이미
           // S3에 있으면(value) 서버가 그걸 내려받아 편집할 수 있으므로 그때도 보여줍니다.
           (meta.fileBlob instanceof Blob || value) ? el("div", { class: "field-with-regen", style: "margin:6px 0;" }, [
             el("input", {
               type: "text", value: meta.newInstruction || "", style: "flex:1;min-width:0;padding:7px 10px;border:1px solid #d0d0d0;border-radius:6px;font-size:12.5px;font-family:inherit;outline:none;",
-              placeholder: "보정 요청 추가 · 예: 배경을 더 어둡게",
+              placeholder: "보정 요청 추가 · 예: 배경을 짙은 남색으로 바꿔줘 (\"삭제해줘\"는 이미지 삭제)",
               oninput: e => { draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], newInstruction: e.target.value }; }
             }),
             el("button", {
@@ -1975,9 +2500,10 @@ export function renderGenerator(root, params) {
               onclick: () => handleRecorrect(f.key)
             }, uploading ? "처리 중..." : "보정 요청")
           ]) : null,
-          el("div", { class: "row2" }, [
-            el("button", { class: "btn btn-sm", style: "justify-content:center;", onclick: () => { draft.imageMeta[f.key] = { expanded: true }; onChange(""); renderForm(); } }, "다시 업로드"),
-            el("button", { class: "btn btn-sm ghost", style: "justify-content:center;", onclick: () => { draft.imageMeta[f.key] = { expanded: true, urlMode: true }; renderForm(); } }, "URL 직접 입력")
+          el("div", { style: "display:flex;gap:6px;" }, [
+            el("button", { class: "btn btn-sm", style: "flex:1;justify-content:center;", onclick: () => { draft.imageMeta[f.key] = { expanded: true }; onChange(""); renderForm(); } }, "다시 업로드"),
+            el("button", { class: "btn btn-sm ghost", style: "flex:1;justify-content:center;", onclick: () => { draft.imageMeta[f.key] = { expanded: true, urlMode: true }; renderForm(); } }, "URL 직접 입력"),
+            el("button", { class: "btn btn-sm ghost", style: "flex:0 0 auto;justify-content:center;color:#c0392b;", title: "이미지를 슬롯에서 완전히 지웁니다", onclick: () => removeFixedImage(f.key) }, "삭제")
           ])
         ], "", collapseBtn);
       }
@@ -2049,7 +2575,7 @@ export function renderGenerator(root, params) {
           }
         }),
         el("p", { class: "hint", style: "font-size:10px;color:#999;margin:3px 0 6px;" },
-          "설명 적으면 버튼이 \"AI로 생성\"으로, 없으면 \"업로드\"만 됩니다."),
+          "설명 적으면 버튼이 \"AI로 생성\"으로, 없으면 \"업로드\"만 됩니다. 지시문과 무관하게 이 파일을 그대로 쓰려면 \"원본 교체\"를 누르세요."),
         el("div", { class: "row2", style: "margin-bottom:6px;" }, [
           el("label", { class: "btn btn-sm upload-label", style: "text-align:center;justify-content:center;" }, [
             "소재 추가 (여러 장)",
@@ -2085,7 +2611,10 @@ export function renderGenerator(root, params) {
                 const [file] = filterImageFiles([...e.target.files].slice(0, 1));
                 if (!file) return;
                 draft.imageMeta[f.key] = { ...draft.imageMeta[f.key], pendingFile: file };
-                handleImageGenerate(f.key);
+                // instructionOverride로 ""를 명시 전달 — 슬롯에 지시문이 적혀
+                // 있어도("그대로 첨부" 등) "원본 교체"는 항상 그 파일을 그대로
+                // 씁니다(AI 생성 경로로 새지 않음).
+                handleImageGenerate(f.key, "");
               }
             })
           ])
@@ -2606,6 +3135,7 @@ function buildInitialDraft(templateId, existing) {
     products: [],
     offerNo: "",
     generating: false,
+    generatingImage: false, // ⚠️ AI 이미지 생성 전용 — AI 카피(generating)와 분리 (한쪽 생성 중에 다른 쪽 버튼이 같이 잠기던 문제)
     // ⚠️ 2026-09 신설(파일럿) — "완전 프리 템플릿" 전용 상태. 일반 템플릿과
     // 무관해서 다른 필드들과 섞이지 않게 이름을 분리했습니다. freeformSectionIds는
     // 추가한 순서대로 담긴 배열(같은 종류를 여러 번 추가할 수도 있어서 배열).
@@ -2617,7 +3147,13 @@ function buildInitialDraft(templateId, existing) {
     return {
       ...base, ...existing.draftData, id: base.id,
       campaignName: existing.draftData.campaignName || existing.name || "",
-      author: existing.draftData.author || existing.author || ""
+      author: existing.draftData.author || existing.author || "",
+      // 저장 시 draft 전체가 들어가므로, AI 생성 중에 임시저장했다면 "생성 중"
+      // 플래그가 true인 채로 저장돼 다시 열었을 때 버튼이 영구히 잠깁니다 —
+      // 방금 불러온 draft에 진행 중인 생성 작업은 있을 수 없으니 항상 초기화합니다.
+      generating: false,
+      generatingImage: false,
+      imageProgress: null
     };
   }
   if (existing?.name) {

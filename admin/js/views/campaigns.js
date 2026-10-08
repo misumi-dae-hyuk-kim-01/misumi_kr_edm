@@ -155,11 +155,17 @@ export function renderCampaigns(root) {
 
     const table = el("table", { class: "tbl" }, [
       el("thead", {}, el("tr", {}, [
-        "캠페인명", "프로모션명", "작성자", "채널", "목적", "상태", "작성일", "최종수정일", "액션"
-      ].map(h => el("th", {}, h)))),
-      el("tbody", {}, pageRows.map(c => {
+        "No.", "캠페인명", "프로모션명", "작성자", "채널", "목적", "상태", "작성일", "최종수정일", "액션"
+      ].map(h => el("th", h === "No." ? { style: "width:48px;text-align:center;", title: "목록 순번 — 최근 수정한 캠페인이 위에 오고 가장 큰 번호" } : {}, h)))),
+      el("tbody", {}, pageRows.map((c, rowIdx) => {
         const hasLinkedBadge = !!(c.promotionName && promoCounts[c.promotionName] >= 2);
         return el("tr", {}, [
+        // ⚠️ 2026-09 — 행 번호(No.)(팀 테스트 16번). 목록은 최종수정일 최신순이라, 맨 위(가장 최근)가 가장 큰
+        // 번호이고 아래로 1씩 줄어듭니다(맨 아래 = 1). 필터를 걸면 그 결과 기준으로 다시 매기고, 페이지를
+        // 넘겨도 이어집니다. 예전에 "생성 순서 고정 번호"로 매겼더니 이 정렬과 번호 순서가 달라 목록에서
+        // 18, 19, 21, 17…처럼 뒤죽박죽으로 보여서 위치 기반 순번으로 바꿨습니다. 수정으로 순서가 바뀌면
+        // 번호도 같이 바뀝니다(캠페인을 식별하는 고정 번호가 아니라 "몇 번째 줄"인지 보여주는 번호).
+        el("td", { style: "width:48px;text-align:center;color:#999;font-size:12px;" }, String(rows.length - ((page - 1) * PAGE_SIZE + rowIdx))),
         // ⚠️ 2026-09 재재재수정 — visibility:hidden으로 뱃지 자리를 "예약"하는
         // 방식은 그 자체가 콘텐츠로 계산되어, justify-content:center를 줘도
         // 정렬할 여유 공간이 없어지는 근본적 한계가 있었습니다(뱃지 있는 행과

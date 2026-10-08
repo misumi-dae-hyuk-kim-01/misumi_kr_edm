@@ -11,6 +11,228 @@ import { esc } from "./dom.js";
 import { EDM_TEMPLATE_HTML } from "../data/edmTemplateHtml.js";
 import { EDM_TEMPLATE_FIELDS } from "../data/edmTemplateFields.js";
 
+// ==========================================================================
+// 발송용 EDM HTML 최종 보정 — assembleEdmHtml()/assembleFreeformEdmHtml()이 만든 완성 HTML을
+// 마지막에 한 번 거치게 해서 다음 두 가지를 처리합니다(별도 파일 없이 이 파일 안에 둠).
+//  (1) Outlook(Word 렌더링 엔진) 호환 — 팀 테스트 17번 "아웃룩에서 생성기와 다르게 보임"
+//  (2) 메일 발송 시스템(WEBCAS)의 "한 줄이 너무 깁니다" 오류 — 팀 테스트 6번
+// 문자열만 다루는 순수 함수라 DOM 없이 동작합니다. 렌더링이 달라지면 안 되는 보정이라,
+// 줄바꿈은 "공백이 의미 없는 자리"에서만 넣습니다(wrapLongLines 설명 참고).
+// ==========================================================================
+// 한 줄 최대 바이트(UTF-8). RFC 5322의 998바이트와 WEBCAS 안내("줄이 너무 깁니다")를 모두
+// 여유 있게 만족하도록 보수적으로 잡았습니다. 한글은 글자당 3바이트로 셉니다.
+const MAIL_MAX_LINE_BYTES = 400;
+
+// 내용이 비어 버린 래퍼 행 제거. 배지처럼 "<tr><td padding:0 0 26px><table> <tr>알약</tr> </table></td></tr>"
+// 구조에서 안쪽 행을 끄면 빈 <table>만 든 행이 남아 위쪽에 불필요한 여백(26px 등)이 생깁니다
+// (팀 테스트 8번 — 배지를 없앴는데 자리가 남음). 빈 표(행·내용 없음)만 든 행은 지워도
+// 화면이 달라질 수 없으므로 안전합니다.
+function removeEmptyTableRows(html) {
+  return html.replace(/<tr[^>]*>\s*<td\b[^>]*>\s*<table\b[^>]*>\s*<\/table>\s*<\/td>\s*<\/tr>/g, "");
+}
+
+function finalizeEmailHtml(html) {
+  if (typeof html !== "string" || !html) return html;
+  return wrapLongLines(applyOutlookFixes(removeEmptyTableRows(html)));
+}
+
+// ==========================================================================
+// (1) Outlook 보정
+// ==========================================================================
+function applyOutlookFixes(html) {
+  let out = html;
+
+  // ① 이미지가 들어간 셀의 mso-line-height-rule:exactly 제거.
+  // 원본 템플릿은 빈 슬롯의 "이미지 4" 안내 글자용으로 이미지 셀에 line-height:14px +
+  // mso-line-height-rule:exactly를 걸어둡니다. 실제 이미지가 들어가도 이 스타일이 남아서,
+  // Outlook(Word 엔진)이 셀 안 이미지를 "줄 높이(14px)"만큼만 보여주는 현상이 있었습니다
+  // (팀 테스트 17번 — 이미지가 얇은 가로 띠만 남고 잘림). exactly만 빼면 Word의 기본
+  // 규칙(at-least)이 적용되어 이미지 높이만큼 줄이 늘어납니다. 안내 글자가 필요한 빈 슬롯은
+  // <img>가 없으므로 이 정규식에 걸리지 않습니다.
+  out = out.replace(
+    /(<td\b[^>]*\bstyle=")([^"]*)("[^>]*>\s*(?:<a\b[^>]*>\s*)?<img\b)/g,
+    (m, head, style, tail) => head + style.replace(/mso-line-height-rule:\s*exactly;?/g, "") + tail
+  );
+
+  // ② 빈 칸(&nbsp;) 셀의 line-height:0 보정.
+  // 제목 밑줄(3px 노란 막대)과 카드 사이 간격 칸이 font-size:0;line-height:0 + &nbsp;로 만들어져
+  // 있는데, Outlook은 줄 높이 0을 그대로 못 지켜서 셀 칠하기를 1px 정도만 하고 나머지는
+  // 페이지 배경(#F4F4F4)이 비쳐 보였습니다(실제 화면: 3px 밑줄 중 1px만 노랑·2px 회색, 카드
+  // 사이 회색 조각). 줄 높이를 셀 높이와 같게 + mso-line-height-rule:exactly를 주면 Word가
+  // 글꼴과 무관하게 정확히 그 높이로 줄을 잡아 셀 전체가 칠해집니다. 브라우저에선 셀 높이와
+  // 같은 줄 높이라 결과가 동일합니다. 높이 속성이 없는 간격 칸은 1px로 둡니다.
+  // ⚠️ font-size:0은 그대로 둡니다 — 가이드라인 검사(checkMinFontSize)는 "font-size:Npx(N<11)"만
+  // 잡고 0은 통과시키는데, 여기서 font-size를 1px/3px로 바꾸면 모든 캠페인에 "최소 폰트 크기
+  // 미만" 거짓 경고가 새로 뜹니다.
+  out = out.replace(/<td\b[^>]*>&nbsp;<\/td>/g, tag => {
+    if (!/line-height:\s*0(?![\d.])(?:px)?;?/.test(tag)) return tag;
+    const h = parseInt((tag.match(/\bheight="(\d+)"/) || [])[1], 10);
+    const n = h > 0 ? h : 1;
+    const hasExact = /mso-line-height-rule/.test(tag);
+    return tag.replace(/line-height:\s*0(?![\d.])(?:px)?;?/, `line-height:${n}px;` + (hasExact ? "" : "mso-line-height-rule:exactly;"));
+  });
+
+  // ③ 버튼의 세로 패딩. 버튼이 <td bgcolor><a style="display:block;padding:11px 4px"> 구조라,
+  // <a>의 padding을 무시하는 Outlook에서는 버튼이 글자 한 줄 높이(15px)의 얇은 띠로 쪼그라듭니다
+  // (팀 테스트 17번). 일반 브라우저는 <a>의 padding(전체가 눌리는 큰 버튼)을 그대로 두고,
+  // Outlook에만 같은 세로 패딩을 <td>에 주도록 MSO 조건부 스타일 + 클래스를 붙입니다.
+  const padKeys = new Set();
+  out = out.replace(/(<td\b[^>]*>)(\s*)(<a\b[^>]*>)/g, (m, td, ws, a) => {
+    if (!/\bbgcolor="/i.test(td)) return m;                      // 배경색이 있는 "버튼형" 셀만
+    if (/\bclass="[^"]*\bmsopad\d+_\d+/.test(td)) return m;       // 이미 보정된 셀(두 번 적용돼도 결과 동일)
+    if (/padding/i.test((td.match(/\bstyle="([^"]*)"/) || [])[1] || "")) return m; // 이미 td 패딩이 있으면 건드리지 않음
+    const aStyle = (a.match(/\bstyle="([^"]*)"/) || [])[1] || "";
+    if (!/display:\s*(?:block|inline-block)/i.test(aStyle)) return m;
+    const pm = aStyle.match(/(?:^|;)\s*padding:\s*([^;]+)/i);
+    if (!pm) return m;
+    const parts = pm[1].trim().split(/\s+/);
+    if (!parts.every(p => /^\d+(?:px)?$/.test(p))) return m;     // px(또는 숫자)만 처리
+    const v = parts.map(p => parseInt(p, 10));
+    const top = v[0];
+    const bottom = v.length === 1 || v.length === 2 ? v[0] : v[2]; // 1·2값은 상하 동일, 3·4값은 세 번째가 아래
+    if (!top && !bottom) return m;
+    const cls = `msopad${top}_${bottom}`;
+    padKeys.add(`${top},${bottom}`);
+    const newTd = /\bclass="/.test(td)
+      ? td.replace(/\bclass="([^"]*)"/, (mm, c) => `class="${c} ${cls}"`)
+      : td.replace(/^<td\b/, `<td class="${cls}"`);
+    return newTd + ws + a;
+  });
+  if (padKeys.size && out.includes("</head>")) {
+    const rules = [...padKeys].map(k => {
+      const [t, b] = k.split(",");
+      return `.msopad${t}_${b}{padding-top:${t}px;padding-bottom:${b}px;}`;
+    }).join("");
+    if (!out.includes(rules)) out = out.replace("</head>", `<!--[if mso]><style type="text/css">${rules}</style><![endif]-->\n</head>`);
+  }
+  return out;
+}
+
+// ==========================================================================
+// (2) 긴 줄 나누기 (WEBCAS "line is too long as a mail source")
+// ==========================================================================
+
+// UTF-8 바이트 수(TextEncoder 없이 — 문자열이 길어도 빠르게).
+function byteLen(s) {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x80) n += 1;
+    else if (c < 0x800) n += 2;
+    else if (c >= 0xD800 && c <= 0xDBFF) { n += 4; i++; }
+    else n += 3;
+  }
+  return n;
+}
+
+// 앞뒤 공백이 렌더링에 영향을 주지 않는 "표 구조" 태그. 이 태그와 맞닿은 경계에서만 태그 사이
+// 줄바꿈을 넣습니다(<img><img>나 </a><a>처럼 인라인 요소끼리 맞닿은 곳에 공백이 생기면
+// 이미지 사이 틈이 생기는 등 모양이 달라지므로 절대 넣지 않습니다).
+const STRUCT_TAG = /^<\/?(?:table|tbody|thead|tfoot|tr|td|th)\b/i;
+
+/** 줄을 나눠도 되는 위치 목록. idx는 삽입 위치, drop=true면 그 자리의 공백 한 글자를 줄바꿈으로
+ *  "대체"(공백 = 줄바꿈이므로 의미 동일), false면 그 자리에 줄바꿈만 "삽입". 안전한 곳만:
+ *   · 표 구조 태그와 맞닿은 태그 경계
+ *   · 태그 안의 속성 사이 공백 / style 속성 안의 ';' 뒤
+ *   · 텍스트 안의 단어 사이 공백
+ *   · 주석 끝 직후(조건부 주석 포함). 주석 안쪽은 한도를 넘는 긴 주석일 때만 공백에서 나눔
+ */
+function breakPoints(line, maxBytes) {
+  const pts = [];
+  const n = line.length;
+  let i = 0;
+  let prevTag = null; // 직전 태그 문자열(경계 판단용)
+  while (i < n) {
+    if (line[i] !== "<") {
+      if (line[i] === " ") pts.push({ idx: i, drop: true }); // 텍스트 단어 사이
+      i++;
+      continue;
+    }
+    if (line.startsWith("<!--", i)) {
+      const e = line.indexOf("-->", i + 4);
+      const end = e === -1 ? n : e + 3;
+      if (end - i > maxBytes) {
+        for (let k = i + 14; k < end - 4; k++) if (line[k] === " ") pts.push({ idx: k, drop: true });
+      }
+      i = end;
+      if (line[i] === "<") pts.push({ idx: i, drop: false });
+      prevTag = null;
+      continue;
+    }
+    // 태그 끝(따옴표 안의 '>'는 무시)
+    let j = i + 1, quote = null;
+    while (j < n) {
+      const c = line[j];
+      if (quote) { if (c === quote) quote = null; }
+      else if (c === '"' || c === "'") quote = c;
+      else if (c === ">") break;
+      j++;
+    }
+    const tag = line.slice(i, j + 1);
+    // 태그 안쪽 기회
+    let q = null, attr = "";
+    for (let k = 1; k < tag.length - 1; k++) {
+      const c = tag[k];
+      if (q) {
+        if (c === q) q = null;
+        else if (c === ";" && attr === "style" && tag[k + 1] !== q) pts.push({ idx: i + k + 1, drop: false });
+      } else if (c === '"' || c === "'") {
+        q = c;
+        attr = ((tag.slice(0, k).match(/([\w:-]+)\s*=\s*$/) || [])[1] || "").toLowerCase();
+      } else if (c === " ") {
+        pts.push({ idx: i + k, drop: true });
+      }
+    }
+    // 태그 경계 기회
+    const next = j + 1;
+    if (line[next] === "<" && !line.startsWith("<!--", next)) {
+      const k2 = line.indexOf(">", next);
+      const nextTag = k2 === -1 ? "" : line.slice(next, k2 + 1);
+      if (STRUCT_TAG.test(tag) || STRUCT_TAG.test(nextTag)) pts.push({ idx: next, drop: false });
+    }
+    prevTag = tag;
+    i = j + 1;
+  }
+  pts.sort((a, b) => a.idx - b.idx);
+  return pts;
+}
+
+function wrapOne(line, maxBytes) {
+  if (byteLen(line) <= maxBytes) return line;
+  const pts = breakPoints(line, maxBytes);
+  const out = [];
+  let start = 0, p = 0;
+  while (byteLen(line.slice(start)) > maxBytes) {
+    let best = -1;
+    for (let q = p; q < pts.length; q++) {
+      if (pts[q].idx <= start) continue;
+      if (byteLen(line.slice(start, pts[q].idx)) <= maxBytes) best = q;
+      else break;
+    }
+    if (best === -1) { // 한도 안에 나눌 곳이 없으면, 한도를 넘더라도 가장 가까운 다음 위치에서 나눔
+      best = pts.findIndex((pt, k) => k >= p && pt.idx > start);
+      if (best === -1) break; // 더 나눌 안전한 곳이 없음(예: 공백 없는 긴 URL)
+    }
+    const pt = pts[best];
+    out.push(line.slice(start, pt.idx));
+    start = pt.drop ? pt.idx + 1 : pt.idx;
+    p = best + 1;
+  }
+  out.push(line.slice(start));
+  return out.join("\n");
+}
+
+function wrapLongLines(html, maxBytes = MAIL_MAX_LINE_BYTES) {
+  let raw = null; // <style>/<script> 안은 건드리지 않음
+  return html.split("\n").map(line => {
+    if (raw) { if (line.includes(`</${raw}`)) raw = null; return line; }
+    const open = line.match(/<(style|script)\b/i);
+    if (open && !new RegExp(`</${open[1]}`, "i").test(line.slice(open.index))) { raw = open[1].toLowerCase(); return line; }
+    return wrapOne(line, maxBytes);
+  }).join("\n");
+}
+
+
 const ESP_MERGE_TAGS = new Set(["customer_name"]);
 
 /** CSS padding 단축 속성(1~4개 값)을 top/right/bottom/left로 풀어줍니다. */
@@ -395,7 +617,10 @@ function substituteImages(html, values, labelMap) {
     // 이 <td> 구조가 없는 템플릿(예: 상품그리드형)도 있는데, 개별 서브그룹만
     // 선택적으로 두면 그 부분이 없을 때 패턴 전체가 매칭 실패해서 이미지 자체가
     // 통째로 치환 안 되는 심각한 회귀가 났었습니다.
-    /(?:(<td\b[^>]*\bstyle="[^"]*)(border:1px solid #DFDFDF;)([^"]*"[^>]*>))?\{\{(image_[a-zA-Z0-9_]+)\}\}(<\/a>)?<!--\s*발송 시 교체:\s*(<img[^>]*>)\s*-->/g,
+    // ⚠️ 2026-09 추가 — 이미지가 링크(<a>)로 감싸인 템플릿(NO.11 링크그리드, NO.15 상품그리드)은
+    // <td 테두리><a href=...>{{image}}</a> 구조라 <td> 바로 뒤가 아니어서 위 패턴에 안 걸려
+    // 테두리가 그대로 남았습니다 — <td> 뒤에 선택적으로 <a ...>가 끼어도 매칭하게 넓혔습니다.
+    /(?:(<td\b[^>]*\bstyle="[^"]*)(border:1px solid #DFDFDF;)([^"]*"[^>]*>(?:\s*<a\b[^>]*>)?))?\{\{(image_[a-zA-Z0-9_]+)\}\}(<\/a>)?<!--\s*발송 시 교체:\s*(<img[^>]*>)\s*-->/g,
     (match, tdBefore, borderStyle, tdAfter, key, closingTag, imgTag) => {
       const url = values[key];
       const closing = closingTag || "";
@@ -481,6 +706,13 @@ export function assembleEdmHtml(templateId, values = {}, options = {}) {
   // 있던 경우)는, values에 남아있을 수 있는 원래 텍스트나 [라벨] 안내문구를 덮어써서
   // 확실히 빈 값으로 만듭니다.
   const finalValues = { ...values };
+  // ⚠️ 2026-09 — 필드 정의에 default가 있으면(예: 상단 영문 배지 문구 badge_text) 값이 아직
+  // 없을 때(undefined) 그 기본값을 씁니다. 예전엔 이 영문 문구가 HTML에 박혀 있어 수정·삭제가 안
+  // 됐는데(팀 테스트 8번), {{badge_text}}로 바꾸면서 기존 모양이 그대로 유지되게 합니다.
+  // 사용자가 비우면(빈 문자열) 기본값이 아니라 [라벨]이 보이고, 선택 필드 끄기로 줄째 없앱니다.
+  for (const f of (EDM_TEMPLATE_FIELDS[templateId]?.fields || [])) {
+    if (f.default !== undefined && finalValues[f.key] === undefined) finalValues[f.key] = f.default;
+  }
   for (const key of stripped.blankOnly) finalValues[key] = "";
   // ⚠️ text/textarea 타입만 골라서 substituteRest에 넘깁니다 — link/image 타입은
   // 절대 <span>으로 감싸면 안 됩니다(속성값 안에서 쓰이므로).
@@ -503,7 +735,8 @@ export function assembleEdmHtml(templateId, values = {}, options = {}) {
   html = substituteImages(html, finalValues, imageLabelMap);
   html = substituteRest(html, finalValues, textFieldKeys, linkFieldPairs);
   html = collapseAdjacentSpacers(html);
-  return html;
+  // 발송용 최종 보정(Outlook 호환 + 메일 시스템용 긴 줄 나누기) — 이 파일 위쪽 finalizeEmailHtml 참고
+  return finalizeEmailHtml(html);
 }
 
 /** 섹션/카드를 지우고 나면, 원래 그 섹션의 앞뒤를 감싸던 순수 여백용 spacer 행
@@ -539,7 +772,7 @@ function collapseAdjacentSpacers(html) {
 // 찾다가 못 찾아서 "UTF-8 charset 메타 태그가 없습니다" 경고를 냈던 것입니다.
 // 기존 18개 고정 템플릿(edmTemplateHtml.js)과 동일한 <head> 구조를 그대로 맞춰서
 // 해결합니다.
-export const EDM_SHELL_OPEN = "<!DOCTYPE html>\n<html lang=\"ko\" xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\">\n<head>\n<meta charset=\"utf-8\" />\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />\n<meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\" />\n<meta name=\"color-scheme\" content=\"light dark\" />\n<meta name=\"supported-color-schemes\" content=\"light dark\" />\n<title>자유 조합 템플릿</title>\n<style type=\"text/css\">\n  body{margin:0;padding:0;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}\n  table{border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;}\n  img{border:0;outline:none;-ms-interpolation-mode:bicubic;}\n  a{color:#025FAE;}\n  @media only screen and (max-width:599px){\n    .w600{width:100%!important;max-width:100%!important;}\n    .fw{width:100%!important;max-width:100%!important;}\n    .fwc{width:auto!important;}\n    .stripeA{width:72%!important;}\n    .stripeB{width:28%!important;}\n    .col{display:block!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important;}\n    .gapcol{display:block!important;width:100%!important;height:14px!important;line-height:14px!important;font-size:0!important;}\n    .pad{padding-left:16px!important;padding-right:16px!important;}\n    .hpad{padding:30px 18px 32px 18px!important;}\n    .rowt,.rowt>tbody,.rowt>tbody>tr{display:block!important;width:100%!important;}\n    .rowt>tbody>tr{font-size:0!important;text-align:center!important;}\n    .rowt .gapcol{display:none!important;}\n    .up2{display:inline-block!important;width:50%!important;max-width:50%!important;vertical-align:top!important;box-sizing:border-box!important;padding:0 4px 12px 4px!important;}\n    .up3{display:inline-block!important;width:33.3%!important;max-width:33.3%!important;vertical-align:top!important;box-sizing:border-box!important;padding:0 3px 10px 3px!important;}\n    .hgrid{text-align:left!important;}\n    .hcell{width:50%!important;padding:0 4px 12px 4px!important;}\n    .fluidimg{width:100%!important;height:auto!important;}\n    img{max-width:100%;}\n  }\n</style>\n</head>\n<body style=\"margin:0;padding:0;background-color:#F4F4F4;\">\n<span style=\"display:none;font-size:0;line-height:0;max-height:0;opacity:0;overflow:hidden;mso-hide:all;\">{{preheader}}</span>\n<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"width:100%;background-color:#F4F4F4;\"><tr><td align=\"center\" style=\"padding:0;\">\n  <table role=\"presentation\" class=\"w600\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"600\" bgcolor=\"#FFFFFF\" style=\"width:600px;background-color:#FFFFFF;\">\n";
+export const EDM_SHELL_OPEN = "<!DOCTYPE html>\n<html lang=\"ko\" xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\">\n<head>\n<meta charset=\"utf-8\" />\n<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\" />\n<meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\" />\n<meta name=\"color-scheme\" content=\"light dark\" />\n<meta name=\"supported-color-schemes\" content=\"light dark\" />\n<title>자유 조합 템플릿</title>\n<!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->\n<style type=\"text/css\">\n  body{margin:0;padding:0;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}\n  table{border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;}\n  img{border:0;outline:none;-ms-interpolation-mode:bicubic;}\n  a{color:#025FAE;}\n  @media only screen and (max-width:599px){\n    .w600{width:100%!important;max-width:100%!important;}\n    .fw{width:100%!important;max-width:100%!important;}\n    .fwc{width:auto!important;}\n    .stripeA{width:72%!important;}\n    .stripeB{width:28%!important;}\n    .col{display:block!important;width:100%!important;max-width:100%!important;box-sizing:border-box!important;}\n    .gapcol{display:block!important;width:100%!important;height:14px!important;line-height:14px!important;font-size:0!important;}\n    .pad{padding-left:16px!important;padding-right:16px!important;}\n    .hpad{padding:30px 18px 32px 18px!important;}\n    .rowt,.rowt>tbody,.rowt>tbody>tr{display:block!important;width:100%!important;}\n    .rowt>tbody>tr{font-size:0!important;text-align:center!important;}\n    .rowt .gapcol{display:none!important;}\n    .up2{display:inline-block!important;width:50%!important;max-width:50%!important;vertical-align:top!important;box-sizing:border-box!important;padding:0 4px 12px 4px!important;}\n    .up3{display:inline-block!important;width:33.3%!important;max-width:33.3%!important;vertical-align:top!important;box-sizing:border-box!important;padding:0 3px 10px 3px!important;}\n    .hgrid{text-align:left!important;}\n    .hcell{width:50%!important;padding:0 4px 12px 4px!important;}\n    .fluidimg{width:100%!important;height:auto!important;}\n    img{max-width:100%;}\n  }\n</style>\n</head>\n<body style=\"margin:0;padding:0;background-color:#F4F4F4;\">\n<span style=\"display:none;font-size:0;line-height:0;max-height:0;opacity:0;overflow:hidden;mso-hide:all;\">{{preheader}}</span>\n<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"width:100%;background-color:#F4F4F4;\"><tr><td align=\"center\" style=\"padding:0;\">\n  <table role=\"presentation\" class=\"w600\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"600\" bgcolor=\"#FFFFFF\" style=\"width:600px;background-color:#FFFFFF;\">\n";
 export const EDM_SHELL_CLOSE = "  </table>\n</td></tr></table>\n</body>\n</html>";
 
 export const EDM_HEADER_TYPES = {
@@ -720,7 +953,14 @@ export function assembleFreeformEdmHtml(headerId, sectionInstances, values = {})
         otherKey !== key && row.includes(`{{${otherKey}}}`) && !fieldValues[`${otherKey}__hidden`]
       );
       if (otherLiveFieldInRow) {
-        out = out.replace(`{{${key}}}`, "");
+        // ⚠️ 2026-09 — "고객명"을 끄면 {{customer_name}}만 비워져서 뒤의 " 고객님,"만 덩그러니 남던
+        // 문제(팀 테스트 7번)를 고칩니다. 같은 줄의 헤드라인 등 다른 필드는 살리면서, 인사말
+        // "{{customer_name}} 고객님," 전체와 그 뒤 줄바꿈(<br />)까지 함께 없앱니다.
+        // (예: "{{customer_name}} 고객님,<br />{{copy_headline}}" → "{{copy_headline}}")
+        const greeting = /\{\{customer_name\}\}\s*고객님\s*,?\s*(?:<br\s*\/?>)?\s*/;
+        out = key === "customer_name" && greeting.test(out)
+          ? out.replace(greeting, "")
+          : out.replace(`{{${key}}}`, "");
       } else {
         out = removeFieldRowPreservingGap(out, key);
         // ⚠️ 2026-09 버그 수정 — "섹션 제목"류(c_headline로 시작) 필드는
@@ -758,18 +998,30 @@ export function assembleFreeformEdmHtml(headerId, sectionInstances, values = {})
     // — 그래서 상품그리드 등 이미지를 채워도 항상 alt가 비어서 경고가 났습니다.
     // fieldValues[`${key}_alt`](예: 시리즈 조회 시 채워지는 상품명)가 있으면
     // 그걸, 없으면 기본 문구를 씁니다.
+    // ⚠️ 2026-09 버그 수정 — 이미지가 있으면 그걸 감싼 <td>의 회색 테두리
+    // (border:1px solid #DFDFDF)를 제거합니다. 원본 템플릿은 빈 슬롯일 때 "여기
+    // 이미지 넣으세요" 안내용 테두리를 <td>에 두는데, 실제 이미지를 넣어도 그
+    // 테두리가 액자처럼 남는 문제를 고정 템플릿 substituteImages()는 이미 고쳤지만
+    // (그쪽 주석 참고) 이 자유조합 치환에는 그 로직이 빠져 있어 자유조합에만 테두리가
+    // 남아 있었습니다. 같은 방식으로 맞춥니다 — 앞쪽 <td ... style="...">를 통째로
+    // 하나의 선택적 그룹 (?:...)?으로 매칭해서(이 <td> 구조가 없는 블록도 있어서,
+    // 서브그룹만 선택적으로 두면 패턴 전체가 매칭 실패해 이미지가 통째로 치환 안 되는
+    // 회귀가 납니다), 이미지가 있을 때만 테두리를 빼고 값이 없으면 원래대로 둡니다.
+    // 이미지가 링크(<a>)로 감싸인 블록(상품그리드·링크카드)은 <td ...><a href=...>{{image}}</a>
+    // 구조라, <td> 뒤에 선택적으로 <a ...>가 끼어 있어도 같은 <td>의 테두리를 제거합니다.
     out = out.replace(
-      /\{\{(image_[a-zA-Z0-9_]+)\}\}(<\/a>)?<!--\s*발송 시 교체:\s*(<img[^>]*>)\s*-->/g,
-      (match, key, closingA, imgTag) => {
+      /(?:(<td\b[^>]*\bstyle="[^"]*)(border:1px solid #DFDFDF;)([^"]*"[^>]*>(?:\s*<a\b[^>]*>)?))?\{\{(image_[a-zA-Z0-9_]+)\}\}(<\/a>)?<!--\s*발송 시 교체:\s*(<img[^>]*>)\s*-->/g,
+      (match, tdBefore, borderStyle, tdAfter, key, closingA, imgTag) => {
         const url = fieldValues[key];
         const closing = closingA || "";
+        const tdPrefix = tdBefore != null ? tdBefore + (url ? "" : borderStyle) + tdAfter : "";
         if (url) {
           const altText = fieldValues[`${key}_alt`] || "상품/콘텐츠 이미지";
           const withSrc = imgTag.replace(`{{${key}}}`, esc(url));
           const withAlt = withSrc.replace(/alt="[^"]*"/, `alt="${esc(altText)}"`);
-          return withAlt + closing;
+          return tdPrefix + withAlt + closing;
         }
-        return `<span style="color:#c9a227;font-style:italic;font-size:11px;">${esc(labelByKey.get(key) || key)}</span>` + closing;
+        return tdPrefix + `<span style="color:#c9a227;font-style:italic;font-size:11px;">${esc(labelByKey.get(key) || key)}</span>` + closing;
       }
     );
 
@@ -786,13 +1038,42 @@ export function assembleFreeformEdmHtml(headerId, sectionInstances, values = {})
     // 문자열 자체를 값으로 채워 넣는" 방식이었습니다 — 이러면 일반 텍스트로
     // 치환되니 그 요소 고유의 스타일을 그대로 물려받습니다. 완전히 동일하게
     // 맞춥니다.
+    // ⚠️ 2026-09 신설 — 텍스트별 서식(굵기·색·정렬, 팀 테스트 4·9번). 값은 fieldValues[`${key}__style`]
+    // = { bold?: true|false, color?: "#RRGGBB", align?: "left"|"center"|"right" }.
+    // 정렬은 그 텍스트({{key}})가 든 <td> 한 칸의 align 속성과 text-align을 바꿉니다.
+    for (const key of textFieldKeys) {
+      const align = fieldValues[`${key}__style`]?.align;
+      if (!["left", "center", "right"].includes(align)) continue;
+      const idx = out.indexOf(`{{${key}}}`);
+      if (idx === -1) continue;
+      const open = out.lastIndexOf("<td", idx);
+      if (open === -1 || out.lastIndexOf("</td>", idx) > open) continue; // 이 칸 안이 아니면 건드리지 않음
+      const end = out.indexOf(">", open);
+      let tag = out.slice(open, end + 1).replace(/\s+align="[^"]*"/i, "").replace(/^<td/, `<td align="${align}"`);
+      tag = /\bstyle="/.test(tag)
+        ? tag.replace(/\bstyle="([^"]*)"/, (m, st) => /text-align\s*:/.test(st)
+            ? `style="${st.replace(/text-align\s*:\s*\w+;?/, `text-align:${align};`)}"`
+            : `style="${st.replace(/;?$/, ";")}text-align:${align};"`)
+        : tag.replace(/>$/, ` style="text-align:${align};">`);
+      out = out.slice(0, open) + tag + out.slice(end + 1);
+    }
+    // 굵기·색은 텍스트를 감싸는 <span data-field>에 인라인으로 붙입니다(이메일 클라이언트 전부 지원).
+    const inlineStyle = key => {
+      const st = fieldValues[`${key}__style`];
+      if (!st) return "";
+      const parts = [];
+      if (st.bold === true) parts.push("font-weight:bold");
+      else if (st.bold === false) parts.push("font-weight:normal");
+      if (typeof st.color === "string" && /^#[0-9A-Fa-f]{6}$/.test(st.color)) parts.push(`color:${st.color}`);
+      return parts.length ? ` style="${parts.join(";")};"` : "";
+    };
     out = out.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (match, key) => {
       if (key === "preheader") return match; // shell에서 별도 처리
       const val = fieldValues[key];
       const text = val !== undefined && val !== "" ? esc(val) : `[${labelByKey.get(key) || key}]`;
       // ⚠️ link 타입(href 속성값 등)에 <span>을 끼워 넣으면 HTML 자체가
       // 깨지니, 반드시 textFieldKeys(type이 "text"인 것)만 감쌉니다.
-      return textFieldKeys.has(key) ? `<span data-field="${ns(key)}">${text}</span>` : text;
+      return textFieldKeys.has(key) ? `<span data-field="${ns(key)}"${inlineStyle(key)}>${text}</span>` : text;
     });
     return out;
   };
@@ -834,5 +1115,6 @@ export function assembleFreeformEdmHtml(headerId, sectionInstances, values = {})
 
   let html = EDM_SHELL_OPEN + body + EDM_SHELL_CLOSE;
   html = html.replace("{{preheader}}", esc(values.preheader || ""));
-  return html;
+  // 발송용 최종 보정(Outlook 호환 + 메일 시스템용 긴 줄 나누기) — 이 파일 위쪽 finalizeEmailHtml 참고
+  return finalizeEmailHtml(html);
 }

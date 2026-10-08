@@ -10,6 +10,9 @@
 //   coupon-field  - 쿠폰 정보 6종 (한 세트로 묶어서 렌더링)
 //   product-field - 상품그리드용 (시리즈 코드 조회로 자동 채워짐, 별도 입력란 없음)
 //
+// 필드에 default가 있으면(예: badge_text) 사용자가 값을 건드리기 전까지 그 값이 기본으로 쓰입니다.
+// 비워두면 [라벨]이 보이고, 선택(토글) 필드면 끄기로 해당 줄을 통째로 없앨 수 있습니다.
+//
 // ⚠️ 2026-08 재설계(A안, 여백을 섹션 자체에 포함하는 구조)에 맞춰 재생성됨.
 // c_headline이 섹션마다 번호 없이 재사용되던 회귀 버그를 클러스터링 기준(1000자 임계값,
 // 상품그리드 제외)으로 다시 해소하고, 그 결과에 맞춰 전체 필드 스키마를 재생성했습니다.
@@ -20,6 +23,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "온보딩",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "WELCOME TO MISUMI" },
       { key: "customer_name", type: "text", label: "수신자명" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
@@ -76,6 +80,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "온보딩",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "NEW MEMBER BENEFIT" },
       { key: "customer_name", type: "text", label: "수신자명" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
@@ -106,6 +111,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "온보딩",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "QUICK & EASY ORDER" },
       { key: "customer_name", type: "text", label: "수신자명" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
@@ -151,6 +157,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "온보딩",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "BRAND LINE UP" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
       { key: "copy_sub_strong", type: "textarea", label: "서브 카피(강조)" },
@@ -181,6 +188,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "온보딩",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "CUSTOMER SUPPORT" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
       { key: "copy_sub_strong", type: "textarea", label: "서브 카피(강조)" },
@@ -203,6 +211,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "육성",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "RESOURCES YOU MAY NEED — TECHNICAL INFORMATION" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
       { key: "c_headline_1", type: "text", label: "섹션 제목 1" },
@@ -237,6 +246,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "육성",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "RESOURCES YOU MAY NEED — FREE CAD DOWNLOAD" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
       { key: "c_headline_1", type: "text", label: "섹션 제목 1" },
@@ -259,6 +269,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "육성",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "RESOURCES YOU MAY NEED — PRODUCT Q&A WITH MISUMI AI" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
       { key: "c_headline_1", type: "text", label: "섹션 제목 1" },
@@ -293,6 +304,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "육성",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "DO YOU NEED TO QUOTE OR ORDER?" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
       { key: "c_headline", type: "text", label: "섹션 제목" },
@@ -311,6 +323,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "육성",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "NEW / DISCOUNTED ITEMS" },
       { key: "customer_name", type: "text", label: "수신자명" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
@@ -357,6 +370,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "이탈방지",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "MISUMI ECONOMY LINE-UP" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
       { key: "c_headline_1", type: "text", label: "섹션 제목 1" },
@@ -398,6 +412,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "이탈방지",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "WE ARE HERE TO HELP" },
       { key: "customer_name", type: "text", label: "수신자명" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
@@ -432,6 +447,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "이탈방지",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "WELCOME BACK COUPON" },
       { key: "customer_name", type: "text", label: "수신자명" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
@@ -453,6 +469,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "상품소개",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "RECOMMENDED FOR YOU" },
       { key: "customer_name", type: "text", label: "수신자명" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
@@ -541,6 +558,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "상품소개",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "RECOMMENDED FOR YOU" },
       { key: "customer_name", type: "text", label: "수신자명" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
@@ -614,6 +632,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "상품소개",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "RECOMMENDED FOR YOU" },
       { key: "customer_name", type: "text", label: "수신자명" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },
@@ -702,6 +721,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "쿠폰",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "COUPON FOR YOU" },
       { key: "rate", type: "text", label: "할인율" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "customer_name", type: "text", label: "수신자명" },
@@ -724,6 +744,7 @@ export const EDM_TEMPLATE_FIELDS = {
     purpose: "내근영업",
     fields: [
       { key: "preheader", type: "text", label: "프리헤더(미리보기 텍스트)" },
+      { key: "badge_text", type: "text", label: "배지 문구(상단 영문)", default: "TALK TO OUR SPECIALIST" },
       { key: "customer_name", type: "text", label: "수신자명" },
       { key: "copy_headline", type: "text", label: "헤드라인" },
       { key: "copy_sub", type: "textarea", label: "서브 카피" },

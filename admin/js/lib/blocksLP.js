@@ -114,6 +114,362 @@ function bodyImageSlot(draft) {
   return `<div class="lp-body__image-slot">${esc(label)}</div>`;
 }
 
+
+// ==========================================================================
+// "기본형" 자유 조합 템플릿 — 히어로 1개 + 섹션 여러 개를 자유롭게 조합합니다.
+// EDM 자유 조합 파일럿(blocks.js의 EDM_HEADER_TYPES/EDM_SECTION_TYPES)과 같은
+// 개념이지만, LP는 처음부터 테이블이 아니라 클래스 기반 CSS라 {{마커}} 치환/정규식
+// 수술이 전혀 필요 없습니다 — 히어로/섹션 각각이 그냥 (값, 인스턴스id) => HTML문자열인
+// 순수 함수입니다. 인스턴스id는 같은 섹션 종류를 여러 번 추가해도 필드 키가 서로
+// 겹치지 않게 하는 namespace로 씁니다(예: "ffs123::main_1") — EDM 자유 조합의
+// sectionInstances/values.sections[id] 패턴과 동일한 목적입니다.
+// ==========================================================================
+
+/** 인라인 편집 마커 이름. 히어로는 인스턴스가 항상 1개라 namespace 없이 key 그대로,
+ *  섹션은 인스턴스id를 앞에 붙입니다. */
+function ffName(ns, key) {
+  return ns ? `${ns}::${key}` : key;
+}
+
+/** 값이 비어 있으면 "[라벨]" placeholder — EDM 자유 조합 파일럿의 currentValues()와
+ *  동일한 규칙입니다(고정 템플릿 필드가 비었을 때와 같은 사용자 경험). */
+function ffText(value, label) {
+  return value ? esc(value) : `[${label}]`;
+}
+
+/** 이미지 슬롯 — 값이 있으면 alt이 항상 채워진 실제 <img>, 없으면 안내 placeholder.
+ *  이미지는 (기존 productGridBlockLP 등과 동일하게) 인라인 편집 대상이 아니라 폼에서만
+ *  바꿉니다. */
+function ffImageSlot(value, altValue, label, extraClass = "") {
+  const cls = "lp-ff-img" + (extraClass ? " " + extraClass : "");
+  if (value) return `<img class="${cls}" src="${esc(value)}" alt="${esc(altValue || label)}">`;
+  return `<div class="${cls} lp-ff-img--empty">${esc(label)}</div>`;
+}
+
+/** 문구+링크가 한 세트인 CTA 버튼 — LP_PREVIEW_EDIT_SCRIPT의 openButtonEditPopup()이
+ *  이미 이 마크업 계약(＜a href＞ 안의 ＜span data-field data-link-field＞)을 그대로
+ *  처리하도록 만들어져 있습니다(이벤트 LP의 ctaPrimaryLabel/Href와 동일한 패턴). */
+function ffCtaButton(ns, urlKey, labelKey, value, label, extraClass = "") {
+  const url = value[urlKey] || "#";
+  const cls = "lp-ff-cta" + (extraClass ? " " + extraClass : "");
+  return `<a class="${cls}" href="${esc(url)}"><span data-field="${esc(ffName(ns, labelKey))}" data-link-field="${esc(ffName(ns, urlKey))}">${ffText(value[labelKey], label)}</span></a>`;
+}
+
+/** 섹션 공통 제목 — showTitle이 false면 아예 렌더링하지 않습니다(EDM의 "각 섹션에
+ *  독립적인 섹션 제목 토글"과 동일한 개념). 밑줄 포인트는 자식 요소가 아니라 CSS
+ *  ::after로 그려서, 제목 텍스트를 contenteditable로 편집할 때 장식 요소가 같이
+ *  섞이지 않게 합니다. */
+function ffSectionTitle(ns, value) {
+  if (value.showTitle === false) return "";
+  return `<h2 class="lp-ff-title" data-field="${esc(ffName(ns, "title"))}">${ffText(value.title, "섹션 제목")}</h2>`;
+}
+
+// ---------- 히어로 4종 ----------
+// 필드 스키마는 4종 모두 동일합니다(배지/캐치카피/서브카피/이미지) — 폼 UI(generatorLP.js)가
+// 공통 렌더러 하나로 전부 처리할 수 있어서, 히어로를 바꿔도 입력창이 갑자기 다르게
+// 재배치되는 혼란이 없습니다. 서로 다른 건 오직 시각적 테마(배경색/레이아웃)뿐입니다.
+const FF_HERO_FIELDS = [
+  { key: "badge", label: "배지 문구 (선택)", type: "text" },
+  { key: "catchcopy", label: "캐치카피", type: "text" },
+  { key: "sub", label: "서브 카피 (선택)", type: "text" },
+  { key: "image", label: "히어로 이미지 (선택)", type: "image" }
+];
+const ffHeroMake = () => ({ badge: "", catchcopy: "", sub: "", image: "" });
+
+export const LP_HERO_TYPES = {
+  navy: {
+    label: "기본 (네이비 배경)",
+    swatch: ["#0F218B", "#FFCC00"],
+    fields: FF_HERO_FIELDS,
+    make: ffHeroMake,
+    html: v => `
+    <section class="lp-ff-hero lp-ff-hero--navy">
+      <div class="lp-ff-hero__badge" data-field="${esc(ffName(null, "badge"))}">${ffText(v.badge, "배지 문구")}</div>
+      <h1 class="lp-ff-hero__catchcopy" data-field="${esc(ffName(null, "catchcopy"))}">${ffText(v.catchcopy, "캐치카피")}</h1>
+      <p class="lp-ff-hero__sub" data-field="${esc(ffName(null, "sub"))}">${ffText(v.sub, "서브 카피")}</p>
+      ${ffImageSlot(v.image, v.image_alt, "히어로 이미지", "lp-ff-hero__image")}
+    </section>`
+  },
+  white: {
+    label: "화이트 + 밑줄 포인트",
+    swatch: ["#FFFFFF", "#0F218B"],
+    fields: FF_HERO_FIELDS,
+    make: ffHeroMake,
+    html: v => `
+    <section class="lp-ff-hero lp-ff-hero--white">
+      <div class="lp-ff-hero__badge lp-ff-hero__badge--outline" data-field="${esc(ffName(null, "badge"))}">${ffText(v.badge, "배지 문구")}</div>
+      <h1 class="lp-ff-hero__catchcopy lp-ff-hero__catchcopy--underline" data-field="${esc(ffName(null, "catchcopy"))}">${ffText(v.catchcopy, "캐치카피")}</h1>
+      <p class="lp-ff-hero__sub" data-field="${esc(ffName(null, "sub"))}">${ffText(v.sub, "서브 카피")}</p>
+      ${ffImageSlot(v.image, v.image_alt, "히어로 이미지", "lp-ff-hero__image")}
+    </section>`
+  },
+  imageTop: {
+    label: "이미지 풀와이드",
+    swatch: ["#000000", "#FFFFFF"],
+    fields: FF_HERO_FIELDS,
+    make: ffHeroMake,
+    html: v => `
+    <section class="lp-ff-hero lp-ff-hero--imagetop">
+      ${ffImageSlot(v.image, v.image_alt, "히어로 이미지", "lp-ff-hero__image lp-ff-hero__image--full")}
+      <div class="lp-ff-hero__overlay">
+        <div class="lp-ff-hero__badge" data-field="${esc(ffName(null, "badge"))}">${ffText(v.badge, "배지 문구")}</div>
+        <h1 class="lp-ff-hero__catchcopy" data-field="${esc(ffName(null, "catchcopy"))}">${ffText(v.catchcopy, "캐치카피")}</h1>
+        <p class="lp-ff-hero__sub" data-field="${esc(ffName(null, "sub"))}">${ffText(v.sub, "서브 카피")}</p>
+      </div>
+    </section>`
+  },
+  red: {
+    label: "레드 프로모션",
+    swatch: ["#EA0000", "#FFFFFF"],
+    fields: FF_HERO_FIELDS,
+    make: ffHeroMake,
+    html: v => `
+    <section class="lp-ff-hero lp-ff-hero--red">
+      <div class="lp-ff-hero__badge lp-ff-hero__badge--light" data-field="${esc(ffName(null, "badge"))}">${ffText(v.badge, "배지 문구")}</div>
+      <h1 class="lp-ff-hero__catchcopy" data-field="${esc(ffName(null, "catchcopy"))}">${ffText(v.catchcopy, "캐치카피")}</h1>
+      <p class="lp-ff-hero__sub" data-field="${esc(ffName(null, "sub"))}">${ffText(v.sub, "서브 카피")}</p>
+      ${ffImageSlot(v.image, v.image_alt, "히어로 이미지", "lp-ff-hero__image")}
+    </section>`
+  }
+};
+
+export function lpHeroDefaults(type) {
+  const def = LP_HERO_TYPES[type];
+  return def ? def.make() : {};
+}
+
+// ---------- 섹션 8종 ----------
+
+/** 이미지 카드 1x1/1x2/1x3이 필드 스키마·렌더링 로직을 공유하도록 카드 개수(n)만
+ *  다르게 받는 빌더입니다 — EDM_SECTION_TYPES의 oneCard/twoCards/threeCards와 같은
+ *  관계지만, 여기선 한 함수로 합쳤습니다(테이블 HTML이 아니라 카드 개수만큼 반복되는
+ *  단순 구조라 굳이 3벌 따로 안 둬도 됩니다). */
+function ffCardFields(n) {
+  const fields = [
+    { key: "showTitle", label: "섹션 제목 표시", type: "toggle" },
+    { key: "title", label: "섹션 제목", type: "text" }
+  ];
+  for (let i = 1; i <= n; i++) {
+    fields.push(
+      { key: `image_${i}`, label: `카드${i} 이미지`, type: "image" },
+      { key: `main_${i}`, label: `카드${i} 메인 카피`, type: "text" },
+      { key: `sub_${i}`, label: `카드${i} 서브 카피`, type: "text" },
+      { key: `link_${i}`, label: `카드${i} 링크`, type: "link" }
+    );
+  }
+  return fields;
+}
+function ffCardDefaults(n) {
+  const v = { showTitle: true, title: "" };
+  for (let i = 1; i <= n; i++) { v[`image_${i}`] = ""; v[`main_${i}`] = ""; v[`sub_${i}`] = ""; v[`link_${i}`] = ""; }
+  return v;
+}
+function ffCardGridHtml(v, id, n) {
+  const cards = [];
+  for (let i = 1; i <= n; i++) {
+    cards.push(`
+      <a class="lp-ff-card" href="${esc(v[`link_${i}`] || "#")}">
+        ${ffImageSlot(v[`image_${i}`], v[`image_${i}_alt`], `카드${i} 이미지`)}
+        <div class="lp-ff-card__main" data-field="${esc(ffName(id, `main_${i}`))}">${ffText(v[`main_${i}`], `카드${i} 메인 카피`)}</div>
+        <div class="lp-ff-card__sub" data-field="${esc(ffName(id, `sub_${i}`))}">${ffText(v[`sub_${i}`], `카드${i} 서브 카피`)}</div>
+      </a>`);
+  }
+  return `
+    <section class="lp-ff-section">
+      ${ffSectionTitle(id, v)}
+      <div class="lp-ff-card-grid lp-ff-card-grid--${n}">${cards.join("")}</div>
+    </section>`;
+}
+
+/** 추천상품 그리드 — 시리즈코드 입력/조회 UI는 generatorLP.js가 인스턴스별로 직접
+ *  그립니다(네트워크 호출이 필요해서 blocksLP.js엔 안 둡니다). 여기선 이미 조회된
+ *  v.products(code/name/image/price)만 카드로 그립니다 — productGridBlockLP와 동일한
+ *  필드 계약입니다. */
+function ffProductGridHtml(v, id) {
+  const products = v.products || [];
+  const cards = products.map(p => {
+    const detailUrl = `https://kr.misumi-ec.com/vona2/detail/${encodeURIComponent(p.code || "")}/`;
+    return `
+    <a class="lp-ff-product-card" href="${esc(detailUrl)}">
+      <div class="lp-ff-product-card__image">
+        ${p.image ? `<img src="${esc(p.image)}" alt="${esc(p.name || "상품 이미지")}">` : `<span class="lp-pending">상품 이미지 연동 예정</span>`}
+      </div>
+      <div class="lp-ff-product-card__name">${p.name ? esc(p.name) : `<span class="lp-pending">상품명 연동 예정</span>`}</div>
+      <div class="lp-ff-product-card__price">${p.price ? `₩${esc(p.price)}` : `<span class="lp-pending">가격 연동 예정</span>`}</div>
+    </a>`;
+  }).join("");
+  return `
+    <section class="lp-ff-section">
+      ${ffSectionTitle(id, v)}
+      ${products.length ? `<div class="lp-ff-product-grid">${cards}</div>` : `<p class="lp-ff-empty-hint">시리즈 코드를 입력하고 "조회"를 누르면 상품이 표시됩니다.</p>`}
+    </section>`;
+}
+
+export const LP_SECTION_TYPES = {
+  imageCard1: {
+    label: "이미지 카드 1x1",
+    fields: ffCardFields(1),
+    make: () => ffCardDefaults(1),
+    html: (v, id) => ffCardGridHtml(v, id, 1)
+  },
+  imageCards2: {
+    label: "이미지 카드 1x2",
+    fields: ffCardFields(2),
+    make: () => ffCardDefaults(2),
+    html: (v, id) => ffCardGridHtml(v, id, 2)
+  },
+  imageCards3: {
+    label: "이미지 카드 1x3",
+    fields: ffCardFields(3),
+    make: () => ffCardDefaults(3),
+    html: (v, id) => ffCardGridHtml(v, id, 3)
+  },
+  productGrid: {
+    label: "추천상품 그리드",
+    fields: [
+      { key: "showTitle", label: "섹션 제목 표시", type: "toggle" },
+      { key: "title", label: "섹션 제목", type: "text" }
+    ],
+    make: () => ({ showTitle: true, title: "추천상품", seriesCodes: Array.from({ length: 6 }, () => ""), products: [] }),
+    html: (v, id) => ffProductGridHtml(v, id)
+  },
+  ctaButton1: {
+    label: "CTA 버튼 1개",
+    fields: [
+      { key: "url", label: "링크", type: "link" },
+      { key: "label", label: "버튼 문구", type: "button-label" }
+    ],
+    make: () => ({ url: "", label: "" }),
+    html: (v, id) => `
+    <section class="lp-ff-section lp-ff-section--center">
+      ${ffCtaButton(id, "url", "label", v, "버튼 문구")}
+    </section>`
+  },
+  ctaButtons2: {
+    label: "CTA 버튼 1x2",
+    fields: [
+      { key: "url_1", label: "버튼1 링크", type: "link" },
+      { key: "label_1", label: "버튼1 문구", type: "button-label" },
+      { key: "url_2", label: "버튼2 링크", type: "link" },
+      { key: "label_2", label: "버튼2 문구", type: "button-label" }
+    ],
+    make: () => ({ url_1: "", label_1: "", url_2: "", label_2: "" }),
+    html: (v, id) => `
+    <section class="lp-ff-section lp-ff-section--center">
+      <div class="lp-ff-cta-row">
+        ${ffCtaButton(id, "url_1", "label_1", v, "버튼1 문구")}
+        ${ffCtaButton(id, "url_2", "label_2", v, "버튼2 문구")}
+      </div>
+    </section>`
+  },
+  couponBox: {
+    label: "쿠폰 박스",
+    fields: [
+      { key: "showTitle", label: "섹션 제목 표시", type: "toggle" },
+      { key: "title", label: "섹션 제목", type: "text" },
+      { key: "couponCode", label: "쿠폰 코드", type: "text" },
+      { key: "couponDesc", label: "쿠폰 설명", type: "text" },
+      { key: "ctaUrl", label: "버튼 링크", type: "link" },
+      { key: "ctaLabel", label: "버튼 문구", type: "button-label" }
+    ],
+    make: () => ({ showTitle: true, title: "쿠폰 혜택", couponCode: "", couponDesc: "", ctaUrl: "", ctaLabel: "" }),
+    html: (v, id) => `
+    <section class="lp-ff-section">
+      ${ffSectionTitle(id, v)}
+      <div class="lp-ff-coupon">
+        <div class="lp-ff-coupon__code" data-field="${esc(ffName(id, "couponCode"))}">${ffText(v.couponCode, "쿠폰 코드")}</div>
+        <div class="lp-ff-coupon__desc" data-field="${esc(ffName(id, "couponDesc"))}">${ffText(v.couponDesc, "쿠폰 설명")}</div>
+        ${ffCtaButton(id, "ctaUrl", "ctaLabel", v, "버튼 문구", "lp-ff-coupon__cta")}
+      </div>
+    </section>`
+  },
+  textBlock: {
+    label: "텍스트 블록",
+    fields: [
+      { key: "showTitle", label: "섹션 제목 표시", type: "toggle" },
+      { key: "title", label: "섹션 제목", type: "text" },
+      { key: "body", label: "본문", type: "textarea" }
+    ],
+    make: () => ({ showTitle: true, title: "", body: "" }),
+    html: (v, id) => `
+    <section class="lp-ff-section">
+      ${ffSectionTitle(id, v)}
+      <p class="lp-ff-text" data-field="${esc(ffName(id, "body"))}" data-multiline="true">${ffText(v.body, "본문")}</p>
+    </section>`
+  }
+};
+
+export function lpSectionDefaults(type) {
+  const def = LP_SECTION_TYPES[type];
+  if (!def) return null;
+  return Object.assign({ id: "ffs" + Date.now() + Math.random().toString(16).slice(2), type }, def.make());
+}
+
+/** 히어로 1개 + 섹션 인스턴스 배열 → 본문 HTML. assembleLpHtml()이 페이지 셸(메타/CSS/
+ *  헤더·푸터 로더)을 씌우기 전, "콘텐츠 영역"만 만듭니다 — 기존 고정 블록 조립과 같은
+ *  자리에 끼워 넣을 수 있도록 breadcrumbBlock()도 그대로 재사용합니다. */
+function buildFreeformLpBodyHtml(draft) {
+  const heroDef = LP_HERO_TYPES[draft.freeformHeroId] || LP_HERO_TYPES[Object.keys(LP_HERO_TYPES)[0]];
+  const heroHtml = heroDef ? heroDef.html(draft.freeformHeroValues || {}) : "";
+  const sectionsHtml = (draft.freeformSections || []).map(inst => {
+    const def = LP_SECTION_TYPES[inst.type];
+    if (!def) return ""; // 알 수 없는 섹션 종류는 조용히 건너뜀(EDM 자유 조합과 동일한 방어)
+    const values = (draft.freeformSectionValues || {})[inst.id] || {};
+    return def.html(values, inst.id) || "";
+  }).filter(Boolean).join("\n");
+  return [breadcrumbBlock(draft), heroHtml, sectionsHtml].filter(Boolean).join("\n");
+}
+
+/** 자유 조합 전용 CSS. 항상 STYLE과 함께 붙지만(기본형은 이제 전부 자유 조합이라
+ *  분기할 대상이 없음) 이름은 구분해서 어디서 온 규칙인지 알아보기 쉽게 둡니다.
+ *  색상은 전부 승인된 브랜드 컬러(네이비/옐로우/블랙/레드)만 사용합니다. */
+const LP_FREEFORM_STYLE = `
+  .lp-ff-hero { text-align: center; padding: 56px 24px; }
+  .lp-ff-hero--navy { background: #0F218B; color: #fff; }
+  .lp-ff-hero--white { background: #fff; color: #111; }
+  .lp-ff-hero--red { background: #EA0000; color: #fff; }
+  .lp-ff-hero--imagetop { position: relative; padding: 0; overflow: hidden; }
+  .lp-ff-hero__badge { display: inline-block; background: #FFCC00; color: #111; font-size: 12px; font-weight: 700; letter-spacing: .04em; padding: 5px 14px; border-radius: 20px; margin-bottom: 14px; }
+  .lp-ff-hero__badge--outline { background: transparent; border: 1px solid #0F218B; color: #0F218B; }
+  .lp-ff-hero__badge--light { background: #fff; color: #EA0000; }
+  .lp-ff-hero__catchcopy { font-size: 28px; font-weight: 700; line-height: 1.4; margin: 0 0 10px; }
+  .lp-ff-hero__catchcopy--underline { display: inline-block; position: relative; padding-bottom: 12px; }
+  .lp-ff-hero__catchcopy--underline::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 44px; height: 4px; background: #FFCC00; transform: translateX(-50%); }
+  .lp-ff-hero__sub { font-size: 15px; line-height: 1.6; opacity: .9; margin: 0 auto; max-width: 520px; }
+  .lp-ff-hero__image { max-width: 100%; border-radius: 8px; margin-top: 22px; display: inline-block; }
+  .lp-ff-hero__image--full { width: 100%; max-width: none; border-radius: 0; margin-top: 0; display: block; height: 320px; object-fit: cover; }
+  .lp-ff-hero--imagetop .lp-ff-img--empty.lp-ff-hero__image--full { display: flex; align-items: center; justify-content: center; height: 320px; }
+  .lp-ff-hero__overlay { position: absolute; left: 0; right: 0; bottom: 0; padding: 28px 24px; background: linear-gradient(to top, rgba(0,0,0,.72), rgba(0,0,0,0)); color: #fff; text-align: left; }
+  .lp-ff-hero__overlay .lp-ff-hero__catchcopy, .lp-ff-hero__overlay .lp-ff-hero__sub { margin: 0 0 6px; max-width: none; }
+  .lp-ff-section { padding: 40px 24px; }
+  .lp-ff-section--center { text-align: center; }
+  .lp-ff-title { font-size: 19px; font-weight: 700; color: #0F218B; text-align: center; margin: 0 0 22px; position: relative; display: inline-block; left: 50%; transform: translateX(-50%); padding-bottom: 10px; }
+  .lp-ff-title::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 40px; height: 3px; background: #FFCC00; transform: translateX(-50%); }
+  .lp-ff-section > .lp-ff-title { display: block; width: 100%; }
+  .lp-ff-img { display: block; width: 100%; max-width: 100%; height: auto; border-radius: 6px; }
+  .lp-ff-img--empty { background: #f5f5f5; color: #aaa; font-size: 12px; height: 140px; display: flex; align-items: center; justify-content: center; }
+  .lp-ff-card-grid { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
+  .lp-ff-card-grid--1 .lp-ff-card { width: 100%; max-width: 480px; }
+  .lp-ff-card-grid--2 .lp-ff-card { width: calc(50% - 8px); min-width: 200px; }
+  .lp-ff-card-grid--3 .lp-ff-card { width: calc(33.333% - 11px); min-width: 160px; }
+  .lp-ff-card { display: block; text-decoration: none; color: #333; }
+  .lp-ff-card__main { font-size: 14px; font-weight: 700; margin-top: 10px; }
+  .lp-ff-card__sub { font-size: 12px; color: #868686; margin-top: 4px; }
+  .lp-ff-cta { display: inline-block; background: #0F218B; color: #fff; font-size: 14px; font-weight: 700; text-decoration: none; padding: 14px 32px; border-radius: 4px; }
+  .lp-ff-cta-row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+  .lp-ff-coupon { max-width: 480px; margin: 0 auto; text-align: center; background: #f5f5f5; border: 1px dashed #0F218B; border-radius: 8px; padding: 28px 20px; }
+  .lp-ff-coupon__code { font-size: 24px; font-weight: 700; color: #0F218B; letter-spacing: .04em; }
+  .lp-ff-coupon__desc { font-size: 13px; color: #666; margin: 8px 0 18px; }
+  .lp-ff-text { font-size: 14px; line-height: 1.8; color: #333; text-align: center; max-width: 640px; margin: 0 auto; white-space: pre-wrap; }
+  .lp-ff-product-grid { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
+  .lp-ff-product-card { display: block; width: 200px; text-decoration: none; color: #333; }
+  .lp-ff-product-card__image { background: #f5f5f5; border-radius: 8px; height: 140px; display: flex; align-items: center; justify-content: center; color: #aaa; font-size: 11px; overflow: hidden; margin-bottom: 8px; }
+  .lp-ff-product-card__image img { width: 100%; height: 100%; object-fit: cover; }
+  .lp-ff-product-card__name { font-size: 13px; margin-bottom: 4px; }
+  .lp-ff-product-card__price { font-size: 15px; font-weight: 700; color: #0F218B; }
+  .lp-ff-empty-hint { text-align: center; color: #999; font-size: 12px; }
+`;
+
 // ==========================================================================
 // 블록 레지스트리 — mockData.js LP 템플릿의 blocks 배열에 쓰인 이름과 정확히 일치해야 합니다.
 // ==========================================================================
@@ -320,21 +676,27 @@ export function assembleLpHtml(draft, template, seoMeta = {}) {
   const bodyClass = isEconomy ? LP_ECONOMY_LAYOUT.class : (widthInfo.class || "page-unknown");
   const keywordsAttr = (seoMeta.keywords || []).join(", ");
 
-  const blockNames = (template && template.blocks && template.blocks.length)
-    ? template.blocks
-    : FALLBACK_BLOCKS;
+  // ⚠️ 2026-09 — "기본형"을 EDM 자유 조합 파일럿과 같은 개념(히어로+섹션 자유 조합)으로
+  // 전환했습니다. lpTemplates.js의 템플릿 항목에 freeform:true가 있으면 이 경로를 쓰고,
+  // 없으면(예: 템플릿을 못 찾아 FALLBACK_BLOCKS로 폴백하는 안전망 상황) 기존 고정 블록
+  // 배열 조립 방식을 그대로 유지합니다 — 신규 기능이 기존 폴백 경로를 깨지 않습니다.
+  const isFreeform = !!(template && template.freeform);
 
-  // 경제형은 브레드크럼을 사이드로 빼고, 나머지 블록만 오른쪽 컨텐츠 컬럼에 놓습니다.
-  const contentBlockNames = isEconomy ? blockNames.filter(name => name !== "브레드크럼") : blockNames;
-
-  const bodyHtml = contentBlockNames.map(name => {
-    const render = blockRegistry[name];
-    if (!render) {
-      console.warn(`[blocksLP.js] 레지스트리에 없는 블록명입니다: "${name}"`);
-      return "";
-    }
-    return render(draft) || "";
-  }).filter(Boolean).join("\n");
+  const bodyHtml = isFreeform ? buildFreeformLpBodyHtml(draft) : (() => {
+    const blockNames = (template && template.blocks && template.blocks.length)
+      ? template.blocks
+      : FALLBACK_BLOCKS;
+    // 경제형은 브레드크럼을 사이드로 빼고, 나머지 블록만 오른쪽 컨텐츠 컬럼에 놓습니다.
+    const contentBlockNames = isEconomy ? blockNames.filter(name => name !== "브레드크럼") : blockNames;
+    return contentBlockNames.map(name => {
+      const render = blockRegistry[name];
+      if (!render) {
+        console.warn(`[blocksLP.js] 레지스트리에 없는 블록명입니다: "${name}"`);
+        return "";
+      }
+      return render(draft) || "";
+    }).filter(Boolean).join("\n");
+  })();
 
   const wrapInner = isEconomy
     ? `${economySideBlock(draft)}<div class="lp-economy__content">${bodyHtml}</div>`
@@ -345,12 +707,13 @@ export function assembleLpHtml(draft, template, seoMeta = {}) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${esc((seoMeta.title || draft.catchcopy || "") + LP_TITLE_SUFFIX)}</title>
+<title>${esc((seoMeta.title || draft.freeformHeroValues?.catchcopy || draft.catchcopy || "") + LP_TITLE_SUFFIX)}</title>
 <meta name="description" content="${esc(withRequiredDescriptionSuffix(seoMeta.description))}">
 <meta name="keywords" content="${esc(keywordsAttr)}">
 <style>
   .lp-wrap { max-width: ${effectiveWidthPattern}px; }
   ${STYLE}
+  ${isFreeform ? LP_FREEFORM_STYLE : ""}
 </style>
 </head>
 <body class="${bodyClass}">
